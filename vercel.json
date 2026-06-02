@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "buildCommand": "next build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "functions": {
+    "app/api/analyze/route.ts": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "app/api/health/route.ts": {
+      "maxDuration": 10,
+      "memory": 128
+    }
+  },
+  "crons": [],
+  "regions": ["sin1"]
+}

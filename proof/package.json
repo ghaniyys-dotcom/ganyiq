@@ -1,0 +1,22 @@
+{
+  "name": "ganyiq-proof-of-intelligence",
+  "version": "0.5.0",
+  "description": "Phase 0.5 Proof of Intelligence local prototype for ganyIQ",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "analyze": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.7.0",
+    "dotenv": "^16.4.5",
+    "youtube-transcript": "^1.3.1",
+    "youtubei.js": "^17.0.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.5"
+  }
+}
