@@ -380,7 +380,7 @@ function selectTrack(tracks: CaptionTrack[]): CaptionTrack {
  */
 async function fetchMetadata(videoId: string): Promise<VideoMetadata> {
   try {
-    const yt = await Innertube.create({ cache: new UniversalCache(true) });
+    const yt = await Innertube.create({ cache: new UniversalCache(false) });
     const info = await yt.getInfo(videoId);
 
     return {
