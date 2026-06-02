@@ -146,6 +146,7 @@ async function callLLM(system: string, user: string): Promise<string> {
   }
 
   try {
+    console.log(`[LLM] request start | model=${TARGET_MODEL}`);
     const response = await fetch(LLM_API_URL, {
       method: 'POST',
       headers: {
@@ -159,9 +160,11 @@ async function callLLM(system: string, user: string): Promise<string> {
           { role: 'user', content: user },
         ],
         temperature: 0.3,
-        max_tokens: 8192,
+        max_tokens: 16384,
       }),
+      signal: AbortSignal.timeout(120_000),
     });
+    console.log(`[LLM] response received | status=${response.status}`);
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => 'unknown');

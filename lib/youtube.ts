@@ -15,6 +15,7 @@
 import { Innertube, UniversalCache } from 'youtubei.js';
 import { AppError } from '@/lib/errors';
 import { query } from '@/db/client';
+import { loadYoutubeCookies } from '@/lib/cookies';
 import type {
   VideoData,
   VideoMetadata,
@@ -24,6 +25,14 @@ import type {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
+
+/** Enable debug logging by setting DEBUG_TRANSCRIPT=true in .env.local */
+const DEBUG = process.env.DEBUG_TRANSCRIPT === 'true';
+
+/** Log helper — only prints when DEBUG is enabled */
+function debugLog(...args: unknown[]): void {
+  if (DEBUG) console.log('[YT-DEBUG]', ...args);
+}
 
 const INNERTUBE_PLAYER_URL =
   'https://www.youtube.com/youtubei/v1/player?prettyPrint=false';
@@ -39,6 +48,9 @@ const SEGMENT_TARGET = 5.0;
 
 /** Preferred language for caption tracks. */
 const PREFERRED_LANG = 'id';
+
+/** Timeout for all YouTube fetch requests (15 seconds). */
+const FETCH_TIMEOUT = 15_000;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,45 +71,141 @@ interface CaptionTrack {
  * Fetch caption tracks from a YouTube video via InnerTube API.
  * Uses Android client context (same approach as youtube-transcript library).
  *
+ * @param videoId - YouTube video ID
+ * @param cookieHeader - Optional Cookie header for authenticated requests
  * @throws AppError TRANSCRIPT_UNAVAILABLE if no tracks found.
  */
-async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
-  const resp = await fetch(INNERTUBE_PLAYER_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': INNERTUBE_UA,
-    },
-    body: JSON.stringify({
-      context: {
-        client: { clientName: 'ANDROID', clientVersion: '20.10.38' },
-      },
-      videoId,
-    }),
-  });
+async function fetchCaptionTracks(videoId: string, cookieHeader?: string): Promise<CaptionTrack[]> {
+  debugLog(`[${videoId}] Fetching caption tracks via InnerTube API${cookieHeader ? ' (with cookies)' : ' (anonymous)'}...`);
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'User-Agent': INNERTUBE_UA,
+  };
+  if (cookieHeader) {
+    headers['Cookie'] = cookieHeader;
+  }
+
+  let resp: Response;
+  try {
+    resp = await fetch(INNERTUBE_PLAYER_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        context: {
+          client: { clientName: 'ANDROID', clientVersion: '20.10.38' },
+        },
+        videoId,
+      }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT),
+    });
+  } catch (fetchErr: unknown) {
+    if (fetchErr instanceof DOMException && fetchErr.name === 'TimeoutError') {
+      throw new AppError(
+        'TRANSCRIPT_UNAVAILABLE',
+        `InnerTube API timed out after ${FETCH_TIMEOUT / 1000}s for video ${videoId}.`,
+        408,
+      );
+    }
+    throw new AppError(
+      'TRANSCRIPT_UNAVAILABLE',
+      `InnerTube API request failed: ${fetchErr instanceof Error ? fetchErr.message : 'Unknown error'}`,
+      500,
+    );
+  }
+
+  debugLog(`[${videoId}] InnerTube API response status: ${resp.status} ${resp.statusText}`);
+
+  const data = await resp.json();
+  const playability = data?.playabilityStatus;
+  debugLog(`[${videoId}] Playability status: ${playability?.status ?? 'N/A'}`);
+  if (playability?.status === 'LOGIN_REQUIRED' || playability?.status === 'ERROR') {
+    debugLog(`[${videoId}] Login required / error reason: ${playability?.reason ?? 'N/A'}`);
+    debugLog(`[${videoId}] InnerTube response keys: ${Object.keys(data).join(', ')}`);
+  }
 
   if (!resp.ok) {
     throw new AppError(
       'TRANSCRIPT_UNAVAILABLE',
-      `YouTube API returned HTTP ${resp.status} for video ${videoId}.`,
+      `YouTube API returned HTTP ${resp.status} for video ${videoId}. ` +
+        `Status: ${playability?.status ?? 'N/A'} — ${playability?.reason ?? 'Unknown'}`,
       404,
     );
   }
 
-  const data = await resp.json();
   const tracks: CaptionTrack[] =
     data?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
 
+  debugLog(`[${videoId}] Caption tracks found: ${tracks.length}`);
+  for (const track of tracks) {
+    debugLog(`[${videoId}]   Track: lang=${track.languageCode}, kind=${track.kind ?? 'manual'}, name=${getTrackName(track)}`);
+  }
+
   if (tracks.length === 0) {
+    const status = playability?.status ?? 'UNKNOWN';
+    const reason = playability?.reason ?? 'No captions available';
     throw new AppError(
       'TRANSCRIPT_UNAVAILABLE',
       `No caption tracks available for video ${videoId}. ` +
-        'The video may not have captions enabled.',
+        `Playability: ${status} — ${reason}.`,
       404,
     );
   }
 
   return tracks;
+}
+
+// ---------------------------------------------------------------------------
+// 1b. CAPTION TRACK DISCOVERY WITH COOKIE FALLBACK
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch caption tracks with automatic cookie fallback.
+ *
+ * Flow:
+ *   1. Try anonymous InnerTube API call (current behavior)
+ *   2. If LOGIN_REQUIRED and cookies are available → retry with cookies
+ *   3. If both fail → throw TRANSCRIPT_UNAVAILABLE
+ *
+ * This preserves the existing anonymous flow for when it works,
+ * and only uses cookies when necessary.
+ */
+async function fetchCaptionTracksWithFallback(videoId: string): Promise<CaptionTrack[]> {
+  try {
+    // Step 1: Try anonymous (existing behavior)
+    return await fetchCaptionTracks(videoId);
+  } catch (err: unknown) {
+    // Step 2: Check if this is a LOGIN_REQUIRED failure
+    const isLoginRequired =
+      err instanceof AppError &&
+      err.code === 'TRANSCRIPT_UNAVAILABLE' &&
+      err.message.includes('LOGIN_REQUIRED');
+
+    if (!isLoginRequired) {
+      // Not a login issue — rethrow immediately
+      throw err;
+    }
+
+    // Step 3: Try with cookies
+    const cookies = loadYoutubeCookies();
+    if (!cookies.valid) {
+      debugLog(`[${videoId}] LOGIN_REQUIRED but no cookies available — failing`);
+      throw err; // Re-throw original error
+    }
+
+    debugLog(`[${videoId}] LOGIN_REQUIRED — retrying with ${cookies.count} cookies from ${cookies.sourcePath}`);
+
+    try {
+      const tracks = await fetchCaptionTracks(videoId, cookies.header);
+      debugLog(`[${videoId}] Cookie-authenticated request succeeded — ${tracks.length} caption tracks found`);
+      return tracks;
+    } catch (cookieErr: unknown) {
+      // Both attempts failed
+      debugLog(`[${videoId}] Cookie-authenticated request also failed`);
+      if (cookieErr instanceof AppError) throw cookieErr;
+      throw err; // Throw original error
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -116,9 +224,26 @@ async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
  * @throws AppError TRANSCRIPT_UNAVAILABLE if XML is empty or unparseable.
  */
 async function fetchTranscriptXml(baseUrl: string): Promise<TranscriptSegment[]> {
-  const resp = await fetch(baseUrl, {
-    headers: { 'User-Agent': INNERTUBE_UA },
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(baseUrl, {
+      headers: { 'User-Agent': INNERTUBE_UA },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT),
+    });
+  } catch (fetchErr: unknown) {
+    if (fetchErr instanceof DOMException && fetchErr.name === 'TimeoutError') {
+      throw new AppError(
+        'TRANSCRIPT_UNAVAILABLE',
+        `Transcript XML fetch timed out after ${FETCH_TIMEOUT / 1000}s.`,
+        408,
+      );
+    }
+    throw new AppError(
+      'TRANSCRIPT_UNAVAILABLE',
+      `Transcript XML fetch failed: ${fetchErr instanceof Error ? fetchErr.message : 'Unknown error'}`,
+      500,
+    );
+  }
   const xml = await resp.text();
 
   // -------------------------------------------------------
@@ -288,14 +413,20 @@ async function fetchMetadata(videoId: string): Promise<VideoMetadata> {
  */
 async function extractVideo(videoId: string): Promise<VideoData> {
   // Step 1: Get metadata via youtubei.js (reliable)
+  console.log(`[YT] metadata start`);
   const metadata = await fetchMetadata(videoId);
+  console.log(`[YT] metadata done`);
 
-  // Step 2: Get caption tracks via InnerTube API
-  const tracks = await fetchCaptionTracks(videoId);
+  // Step 2: Get caption tracks via InnerTube API (with cookie fallback)
+  console.log(`[YT] captions start`);
+  const tracks = await fetchCaptionTracksWithFallback(videoId);
   const track = selectTrack(tracks);
+  console.log(`[YT] captions done | ${tracks.length} tracks, selected ${track.languageCode}`);
 
   // Step 3: Fetch and parse transcript XML
+  console.log(`[YT] transcript start`);
   const transcript = await fetchTranscriptXml(track.baseUrl);
+  console.log(`[YT] transcript done | ${transcript.length} segments`);
 
   return { metadata, transcript };
 }
