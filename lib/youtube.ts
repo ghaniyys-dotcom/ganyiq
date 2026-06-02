@@ -378,7 +378,7 @@ function selectTrack(tracks: CaptionTrack[]): CaptionTrack {
  * @returns VideoMetadata with title, channelName, durationSeconds, youtubeId
  * @throws AppError if metadata cannot be fetched
  */
-async function fetchMetadata(videoId: string): Promise<VideoMetadata> {
+export async function fetchMetadata(videoId: string): Promise<VideoMetadata> {
   try {
     const yt = await Innertube.create({ cache: new UniversalCache(false) });
     const info = await yt.getInfo(videoId);
@@ -439,7 +439,7 @@ async function extractVideo(videoId: string): Promise<VideoData> {
  * Check the database for a cached video by youtube_id.
  * Returns VideoData if a cached entry with transcript exists, or null.
  */
-async function getCachedVideo(youtubeId: string): Promise<VideoData | null> {
+export async function getCachedVideo(youtubeId: string): Promise<VideoData | null> {
   const result = await query<{
     title: string;
     channel_name: string;
@@ -484,7 +484,7 @@ async function getCachedVideo(youtubeId: string): Promise<VideoData | null> {
  * Insert a fetched video into the database cache.
  * Returns the UUID of the inserted row.
  */
-async function cacheVideo(data: VideoData): Promise<string> {
+export async function cacheVideo(data: VideoData): Promise<string> {
   const result = await query<{ id: string }>(
     `INSERT INTO videos (youtube_id, title, channel_name, duration_seconds, transcript)
      VALUES ($1, $2, $3, $4, $5::jsonb)

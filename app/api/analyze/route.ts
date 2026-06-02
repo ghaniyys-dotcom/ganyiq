@@ -31,7 +31,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AppError } from '@/lib/errors';
 import { query } from '@/db/client';
 import { validateYouTubeUrl, extractVideoId } from '@/lib/validators';
-import { fetchVideoData } from '@/lib/youtube';
+import { fetchVideoDataWithFallback } from '@/lib/transcript-service';
 import { analyzeTranscript } from '@/lib/analyzer';
 import { rankMoments } from '@/lib/ranking';
 import { PROMPT_VERSION, TARGET_MODEL } from '@/lib/prompt';
@@ -112,10 +112,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // ---- 3. Fetch video data (with DB caching) ----
-    let videoData: Awaited<ReturnType<typeof fetchVideoData>>;
+    // ---- 3. Fetch video data (with DB caching + Deepgram fallback) ----
+    let videoData: Awaited<ReturnType<typeof fetchVideoDataWithFallback>>;
     try {
-      videoData = await fetchVideoData(youtubeId);
+      videoData = await fetchVideoDataWithFallback(youtubeId, trimmedUrl);
     } catch (e) {
       if (e instanceof AppError) {
         return error(e.statusCode, e.code, e.message);
@@ -145,8 +145,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const result = await query<{ id: string }>(
         `INSERT INTO analyses
            (video_id, ip_address, total_moments_found, processing_time_ms,
-            llm_model, prompt_version, status, error_message)
-         VALUES ($1, $2, $3, $4, $5, $6, 'completed', NULL)
+            llm_model, prompt_version, status, error_message, transcript_source)
+         VALUES ($1, $2, $3, $4, $5, $6, 'completed', NULL, $7)
          RETURNING id`,
         [
           videoData.videoDbId,
@@ -155,6 +155,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           processingTimeMs,
           TARGET_MODEL,
           PROMPT_VERSION,
+          videoData.transcriptSource,
         ],
       );
       analysisId = result.rows[0].id;
