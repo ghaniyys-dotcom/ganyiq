@@ -106,7 +106,9 @@ export async function analyzeTranscript(
     const moments = validateMoments(parsed, metadata.durationSeconds);
 
     if (moments.length === 0 && parsed.length > 0) {
-      lastError = 'All moments failed validation';
+      // DIAGNOSTIC: include raw text preview for debugging
+      const rawPreview = cleaned.slice(0, 500);
+      lastError = `All moments failed validation. Raw LLM output preview: ${rawPreview}`;
       continue;
     }
 
@@ -188,9 +190,19 @@ async function callLLM(system: string, user: string): Promise<string> {
       data?.choices?.[0]?.message?.content;
 
     if (!text || text.trim().length === 0) {
+      // DIAGNOSTIC: include raw response details in error
+      const diagnosticInfo = JSON.stringify({
+        hasChoices: !!data?.choices?.length,
+        choice0Keys: data?.choices?.[0] ? Object.keys(data.choices[0]) : null,
+        finishReason: data?.choices?.[0]?.finish_reason ?? null,
+        contentLength: data?.choices?.[0]?.message?.content?.length ?? null,
+        contentPreview: (data?.choices?.[0]?.message?.content ?? '').slice(0, 200),
+        usage: data?.usage ?? null,
+        responseKeys: Object.keys(data),
+      });
       throw new AppError(
         'ANALYSIS_FAILED',
-        'LLM returned an empty response.',
+        `LLM returned an empty response. Diagnostic: ${diagnosticInfo}`,
         500,
       );
     }
