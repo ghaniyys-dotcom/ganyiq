@@ -174,6 +174,16 @@ async function callLLM(system: string, user: string): Promise<string> {
     }
 
     const data = await response.json();
+    // DIAGNOSTIC: log raw response structure for debugging empty content
+    console.log(`[LLM] raw response keys: ${JSON.stringify(Object.keys(data))}`);
+    console.log(`[LLM] choices length: ${data?.choices?.length ?? 'N/A'}`);
+    if (data?.choices?.[0]) {
+      console.log(`[LLM] choice[0] keys: ${JSON.stringify(Object.keys(data.choices[0]))}`);
+      console.log(`[LLM] finish_reason: ${data.choices[0].finish_reason ?? 'N/A'}`);
+      console.log(`[LLM] content length: ${data.choices[0].message?.content?.length ?? 'N/A'}`);
+      console.log(`[LLM] content preview: ${(data.choices[0].message?.content ?? '').slice(0, 100)}`);
+    }
+    console.log(`[LLM] usage: ${JSON.stringify(data?.usage ?? {})}`);
     const text: string | undefined =
       data?.choices?.[0]?.message?.content;
 
