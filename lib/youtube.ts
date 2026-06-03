@@ -52,6 +52,25 @@ const PREFERRED_LANG = 'id';
 /** Timeout for all YouTube fetch requests (15 seconds). */
 const FETCH_TIMEOUT = 15_000;
 
+/** Timeout for Innertube initialization (10 seconds). */
+const INNERTUBE_INIT_TIMEOUT = 10_000;
+
+/** Timeout for individual Innertube getInfo calls (10 seconds). */
+const INNERTUBE_INFO_TIMEOUT = 10_000;
+
+/**
+ * Race a promise against a timeout. Whichever settles first wins.
+ * If the timeout wins, the returned promise rejects with TimeoutError.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -380,8 +399,23 @@ function selectTrack(tracks: CaptionTrack[]): CaptionTrack {
  */
 export async function fetchMetadata(videoId: string): Promise<VideoMetadata> {
   try {
-    const yt = await Innertube.create({ cache: new UniversalCache(false) });
-    const info = await yt.getInfo(videoId);
+    console.log(`[TIMING] [${videoId}] Innertube.create() start`);
+    console.time(`[TIMING] [${videoId}] Innertube.create()`);
+    const yt = await withTimeout(
+      Innertube.create({ cache: new UniversalCache(false) }),
+      INNERTUBE_INIT_TIMEOUT,
+      `Innertube.create(${videoId})`,
+    );
+    console.timeEnd(`[TIMING] [${videoId}] Innertube.create()`);
+
+    console.log(`[TIMING] [${videoId}] yt.getInfo() start`);
+    console.time(`[TIMING] [${videoId}] yt.getInfo()`);
+    const info = await withTimeout(
+      yt.getInfo(videoId),
+      INNERTUBE_INFO_TIMEOUT,
+      `yt.getInfo(${videoId})`,
+    );
+    console.timeEnd(`[TIMING] [${videoId}] yt.getInfo()`);
 
     return {
       youtubeId: videoId,

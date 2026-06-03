@@ -52,19 +52,33 @@ export async function fetchVideoDataWithFallback(
 ): Promise<VideoDataWithSource> {
   // ---- Step 1: Try YouTube transcript acquisition ----
   try {
+    console.log(`[TIMING] [${youtubeId}] fetchVideoData() start`);
+    console.time(`[TIMING] [${youtubeId}] fetchVideoData()`);
     const data = await fetchVideoData(youtubeId);
+    console.timeEnd(`[TIMING] [${youtubeId}] fetchVideoData()`);
+    console.log(`[TIMING] [${youtubeId}] YouTube transcript succeeded (${data.transcript.length} segments)`);
     return { ...data, transcriptSource: 'youtube' };
   } catch (err) {
+    console.timeEnd(`[TIMING] [${youtubeId}] fetchVideoData()`);
     if (!(err instanceof AppError) || err.code !== 'TRANSCRIPT_UNAVAILABLE') {
+      console.log(`[TIMING] [${youtubeId}] fetchVideoData() threw non-TRANSCRIPT error: ${err instanceof AppError ? err.code : err instanceof Error ? err.message : err}`);
       throw err;
     }
+    console.log(`[TIMING] [${youtubeId}] YouTube transcript unavailable — trying worker queue`);
   }
 
   // ---- Step 2: Try residential worker queue ----
   // Removed VERCEL guard: Vercel API must be able to enqueue jobs to Neon
   // for residential workers (PC-GANY, LAPTOP-GANY) to claim and process.
+  console.log(`[TIMING] [${youtubeId}] tryWorkerQueue() start`);
+  console.time(`[TIMING] [${youtubeId}] tryWorkerQueue()`);
   const result = await tryWorkerQueue(youtubeId, youtubeUrl);
-  if (result) return result;
+  console.timeEnd(`[TIMING] [${youtubeId}] tryWorkerQueue()`);
+  if (result) {
+    console.log(`[TIMING] [${youtubeId}] Worker queue returned result (transcript_source=${result.transcriptSource}, ${result.transcript.length} segments)`);
+    return result;
+  }
+  console.log(`[TIMING] [${youtubeId}] Worker queue returned null — falling through`);
 
   // ---- Step 3: Direct Deepgram fallback (VPS-only) ----
   // Note: on Vercel, this path is skipped (VERCEL=1), so Vercel users
@@ -174,8 +188,13 @@ async function resolveCompletedJob(
   let metadata: { youtubeId: string; title: string; channelName: string; durationSeconds: number };
 
   try {
+    console.log(`[TIMING] [${youtubeId}] resolveCompletedJob: fetchMetadata() start`);
+    console.time(`[TIMING] [${youtubeId}] resolveCompletedJob: fetchMetadata()`);
     metadata = await fetchMetadata(youtubeId);
+    console.timeEnd(`[TIMING] [${youtubeId}] resolveCompletedJob: fetchMetadata()`);
   } catch {
+    console.timeEnd(`[TIMING] [${youtubeId}] resolveCompletedJob: fetchMetadata()`);
+    console.log(`[TIMING] [${youtubeId}] resolveCompletedJob: fetchMetadata() failed — using placeholder metadata`);
     // Use placeholder metadata if fetch fails
     metadata = {
       youtubeId,
