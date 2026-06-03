@@ -160,9 +160,9 @@ async function callLLM(system: string, user: string): Promise<string> {
           { role: 'user', content: user },
         ],
         temperature: 0.3,
-        max_tokens: 16384,
+        max_tokens: 4096,
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(300_000),
     });
     console.log(`[LLM] response received | status=${response.status}`);
 
