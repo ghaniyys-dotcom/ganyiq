@@ -1,22 +1,25 @@
 /**
  * lib/transcript-service.ts — Orchestration layer for transcript acquisition.
  *
- * Tries YouTube transcript first, falls back to Deepgram STT on failure.
- *
- * Separation of concerns:
- *   - lib/youtube.ts       → YouTube transcript acquisition (unchanged)
- *   - lib/deepgram.ts      → Deepgram STT transcription
- *   - lib/transcript-service.ts → Fallback orchestration (this file)
+ * Three acquisition paths, tried in order:
+ *   1. YouTube InnerTube API (works for English / captioned videos)
+ *   2. Residential worker queue (yt-dlp on PC/Laptop with real IP)
+ *   3. Direct Deepgram fallback (VPS-only, may be blocked by YouTube)
  *
  * Flow:
  *   fetchVideoDataWithFallback()
  *     ├─ try:    fetchVideoData()          → transcript_source: 'youtube'
  *     ├─ catch:  TRANSCRIPT_UNAVAILABLE
- *     │           ├─ VERCEL=1? → throw original (no yt-dlp)
- *     │           └─ fetchDeepgramTranscript() → transcript_source: 'deepgram'
- *     └─ return: VideoDataWithSource
+ *     │           ├─ VERCEL=1?
+ *     │           │     └─ throw (no yt-dlp on Vercel)
+ *     │           ├─ Workers online?
+ *     │           │     ├─ Enqueue job → poll for result → return
+ *     │           │     └─ No workers → fall through
+ *     │           └─ isDeepgramConfigured()?
+ *     │                 └─ fallbackToDeepgram() (VPS-only)
  */
 
+import { query } from '@/db/client';
 import { fetchVideoData, fetchMetadata, cacheVideo } from '@/lib/youtube';
 import { fetchDeepgramTranscript } from '@/lib/deepgram';
 import { AppError } from '@/lib/errors';
@@ -27,29 +30,22 @@ import type { VideoData } from '@/lib/types';
 // ---------------------------------------------------------------------------
 
 export interface VideoDataWithSource extends VideoData {
-  /** Database UUID of the videos row (set by fetchVideoData or cacheVideo). */
   videoDbId: string;
-  /** Identifies which transcription source produced the transcript. */
   transcriptSource: 'youtube' | 'deepgram';
+}
+
+interface JobResult {
+  segments: Array<{ start: number; duration: number; text: string }>;
+  transcript_source: string;
+  confidence: number;
+  full_transcript: string;
+  duration_ms: number;
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-/**
- * Fetch video data (metadata + transcript) with automatic Deepgram fallback.
- *
- * Steps:
- *   1. Try YouTube transcript acquisition (with DB caching)
- *   2. If TRANSCRIPT_UNAVAILABLE and not on Vercel → fallback to Deepgram
- *   3. Deepgram path: download audio → Deepgram STT → metadata fetch → cache
- *
- * @param youtubeId - 11-character YouTube video ID
- * @param youtubeUrl - Full YouTube URL (needed for yt-dlp in fallback)
- * @returns Video data with transcript, DB ID, and source indicator
- * @throws AppError TRANSCRIPT_UNAVAILABLE if both sources fail
- */
 export async function fetchVideoDataWithFallback(
   youtubeId: string,
   youtubeUrl: string,
@@ -59,56 +55,163 @@ export async function fetchVideoDataWithFallback(
     const data = await fetchVideoData(youtubeId);
     return { ...data, transcriptSource: 'youtube' };
   } catch (err) {
-    // Only fallback for transcript-specific errors
     if (!(err instanceof AppError) || err.code !== 'TRANSCRIPT_UNAVAILABLE') {
       throw err;
     }
-
-    // ---- Step 2: Check if fallback is possible ----
-    // Vercel has no yt-dlp — skip fallback, throw original error
-    if (process.env.VERCEL === '1') throw err;
-
-    // Check Deepgram API key is configured
-    if (!isDeepgramConfigured()) {
-      // Key not present — skip fallback
-      throw err;
-    }
-
-    // ---- Step 3: Fallback to Deepgram ----
-    return await fallbackToDeepgram(youtubeId, youtubeUrl, err);
   }
+
+  // ---- Step 2: Try residential worker queue ----
+  // Removed VERCEL guard: Vercel API must be able to enqueue jobs to Neon
+  // for residential workers (PC-GANY, LAPTOP-GANY) to claim and process.
+  const result = await tryWorkerQueue(youtubeId, youtubeUrl);
+  if (result) return result;
+
+  // ---- Step 3: Direct Deepgram fallback (VPS-only) ----
+  // Note: on Vercel, this path is skipped (VERCEL=1), so Vercel users
+  // always get TRANSCRIPT_UNAVAILABLE if Step 1 and 2 fail.
+  if (process.env.VERCEL !== '1' && isDeepgramConfigured()) {
+    return await fallbackToDeepgram(youtubeId, youtubeUrl);
+  }
+
+  throw new AppError('TRANSCRIPT_UNAVAILABLE', 'No caption tracks available.', 404);
 }
 
 // ---------------------------------------------------------------------------
-// Internal: Deepgram Fallback
+// Worker Queue Path
 // ---------------------------------------------------------------------------
 
-/**
- * Execute the Deepgram fallback path.
- *
- * Separated into its own async function to keep the dynamic import isolated
- * from the main module scope. This ensures that on Vercel:
- *   - The `lib/deepgram.ts` module (which imports `child_process`) is NEVER
- *     loaded at module evaluation time
- *   - It's only loaded when the fallback path actually executes
- *   - The VERCEL guard above prevents this code from running on Vercel
- */
+async function tryWorkerQueue(
+  youtubeId: string,
+  youtubeUrl: string,
+): Promise<VideoDataWithSource | null> {
+  // Check if any workers are online
+  const workers = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM workers
+     WHERE status = 'online' AND last_heartbeat > NOW() - INTERVAL '5 minutes'`,
+  );
+
+  const onlineCount = parseInt(workers.rows[0]?.count || '0');
+  if (onlineCount === 0) return null;  // No workers — skip queue path
+
+  // Check for existing job for this video
+  const existing = await query<{ id: string; status: string }>(
+    `SELECT id, status FROM jobs_queue
+     WHERE youtube_id = $1
+       AND status IN ('pending', 'claimed', 'completed')
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [youtubeId],
+  );
+
+  let jobId: string;
+
+  if (existing.rows.length > 0) {
+    const job = existing.rows[0];
+    jobId = job.id;
+
+    // If already completed, return the cached result
+    if (job.status === 'completed') {
+      return await resolveCompletedJob(jobId, youtubeId);
+    }
+    // If pending or claimed, poll it
+  } else {
+    // Enqueue new job
+    const inserted = await query<{ id: string }>(
+      `INSERT INTO jobs_queue (youtube_id, youtube_url)
+       VALUES ($1, $2)
+       RETURNING id`,
+      [youtubeId, youtubeUrl],
+    );
+    jobId = inserted.rows[0].id;
+  }
+
+  // Poll for completion (up to 10 seconds, every 2 seconds)
+  // If the job completes within this window, great. Otherwise the user
+  // retries later and picks up the completed result.
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    await sleep(2000);
+
+    const check = await query<{ status: string }>(
+      'SELECT status FROM jobs_queue WHERE id = $1',
+      [jobId],
+    );
+
+    if (check.rows.length === 0) break;
+
+    if (check.rows[0].status === 'completed') {
+      return await resolveCompletedJob(jobId, youtubeId);
+    }
+
+    if (check.rows[0].status === 'failed') {
+      return null;  // Worker failed — fall through to Deepgram
+    }
+  }
+
+  return null;  // Timeout — fall through to Deepgram
+}
+
+async function resolveCompletedJob(
+  jobId: string,
+  youtubeId: string,
+): Promise<VideoDataWithSource> {
+  const jobResult = await query<{ result: unknown; transcript_source: string }>(
+    'SELECT result, transcript_source FROM jobs_queue WHERE id = $1',
+    [jobId],
+  );
+
+  if (jobResult.rows.length === 0) {
+    throw new AppError('TRANSCRIPT_UNAVAILABLE', 'Job record not found.', 404);
+  }
+
+  const segments = jobResult.rows[0].result as Array<{ start: number; duration: number; text: string }>;
+  if (!segments || !Array.isArray(segments) || segments.length === 0) {
+    throw new AppError('TRANSCRIPT_UNAVAILABLE', 'Job completed but result is empty.', 404);
+  }
+
+  // Get or create video metadata
+  let videoDbId: string;
+  let metadata: { youtubeId: string; title: string; channelName: string; durationSeconds: number };
+
+  try {
+    metadata = await fetchMetadata(youtubeId);
+  } catch {
+    // Use placeholder metadata if fetch fails
+    metadata = {
+      youtubeId,
+      title: 'Unknown',
+      channelName: 'Unknown',
+      durationSeconds: 0,
+    };
+  }
+
+  // Cache in database
+  try {
+    videoDbId = await cacheVideo({ metadata, transcript: segments });
+  } catch {
+    // If caching fails (e.g. duplicate), generate a fake UUID for the response
+    videoDbId = '00000000-0000-0000-0000-000000000000';
+  }
+
+  return {
+    metadata,
+    transcript: segments,
+    videoDbId,
+    transcriptSource: 'deepgram',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Direct Deepgram Fallback (unchanged from original)
+// ---------------------------------------------------------------------------
+
 async function fallbackToDeepgram(
   youtubeId: string,
   youtubeUrl: string,
-  originalError: Error,
 ): Promise<VideoDataWithSource> {
   try {
-    // Dynamic import with relative path to avoid @ alias resolution issues in Next.js production
-    // Note: on Vercel, this code path is never reached (VERCEL guard above)
-    const dgModulePath = require('path').resolve(__dirname, 'deepgram');
-    const dgModule = require(dgModulePath);
-    const dgResult = await dgModule.fetchDeepgramTranscript(youtubeUrl);
-
-    // Get metadata (lightweight — uses youtubei.js, no caption fetch)
+    const dgResult = await fetchDeepgramTranscript(youtubeUrl);
     const metadata = await fetchMetadata(youtubeId);
-
-    // Cache in database so future requests are instant
     const videoDbId = await cacheVideo({
       metadata,
       transcript: dgResult.segments,
@@ -121,26 +224,22 @@ async function fallbackToDeepgram(
       transcriptSource: 'deepgram',
     };
   } catch (fallbackErr) {
-    // If Deepgram fallback fails, throw the original YouTube error
-    // so the API returns the expected TRANSCRIPT_UNAVAILABLE code
-    throw originalError;
+    throw new AppError(
+      'TRANSCRIPT_UNAVAILABLE',
+      `Deepgram fallback failed: ${fallbackErr instanceof Error ? fallbackErr.message.slice(0, 120) : 'Unknown error'}`,
+      404,
+    );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Internal: Deepgram Availability Check
+// Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Quick check whether Deepgram API key is available.
- * Avoids the expensive module import just to check config.
- */
 function isDeepgramConfigured(): boolean {
-  // Check environment variable
   const envKey = process.env.DEEPGRAM_API_KEY;
   if (envKey && envKey.length > 10 && envKey !== '***') return true;
 
-  // Check .env.local without importing deepgram module
   try {
     const { readFileSync } = require('node:fs') as typeof import('node:fs');
     const { join } = require('node:path') as typeof import('node:path');
@@ -150,9 +249,11 @@ function isDeepgramConfigured(): boolean {
       const key = match[1].trim();
       if (key.length > 10 && key !== '***') return true;
     }
-  } catch {
-    // .env.local may not exist — that's fine
-  }
+  } catch { /* .env.local may not exist */ }
 
   return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }

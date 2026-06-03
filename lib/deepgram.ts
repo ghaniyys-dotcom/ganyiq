@@ -29,9 +29,6 @@ const SEGMENT_TARGET = 5.0;
 /** Max gap between words in seconds before forcing a new segment. */
 const MAX_WORD_GAP = 1.0;
 
-/** Path to YouTube cookies file for yt-dlp authentication. */
-const COOKIES_PATH = join(process.cwd(), 'cookies.txt');
-
 /** Deepgram API base URL. */
 const DEEPGRAM_BASE = 'https://api.deepgram.com/v1/listen';
 
@@ -101,7 +98,7 @@ export async function fetchDeepgramTranscript(
   youtubeUrl: string,
 ): Promise<DeepgramResult> {
   const apiKey = resolveApiKey();
-  const tmpFile = `/tmp/ganyiq-dg-${Date.now()}.webm`;
+  const tmpFile = `/tmp/ganyiq-dg-${Date.now()}.mp4`;
 
   try {
     // Step 1: Download audio with yt-dlp
@@ -166,13 +163,9 @@ function downloadAudio(youtubeUrl: string, outputPath: string): Buffer {
     );
   }
 
-  const cookieFlag = existsSync(COOKIES_PATH)
-    ? `--cookies "${COOKIES_PATH}"`
-    : '';
-
   try {
     execSync(
-      `yt-dlp ${cookieFlag} -f bestaudio -o "${outputPath}" "${youtubeUrl}" 2>&1`,
+      `yt-dlp --extractor-args "youtube:player_client=android" -f "bestaudio/best" -o "${outputPath}" "${youtubeUrl}" 2>&1`,
       { timeout: DL_TIMEOUT, encoding: 'utf-8' },
     );
   } catch (err: unknown) {
@@ -219,7 +212,7 @@ async function transcribeAudio(
       method: 'POST',
       headers: {
         Authorization: `Token ${apiKey}`,
-        'Content-Type': 'audio/webm',
+        'Content-Type': 'audio/mp4',
       },
       body: new Uint8Array(audioBuffer),
       signal: AbortSignal.timeout(DG_TIMEOUT),
