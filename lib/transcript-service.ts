@@ -60,11 +60,15 @@ export async function fetchVideoDataWithFallback(
     return { ...data, transcriptSource: 'youtube' };
   } catch (err) {
     console.timeEnd(`[TIMING] [${youtubeId}] fetchVideoData()`);
-    if (!(err instanceof AppError) || err.code !== 'TRANSCRIPT_UNAVAILABLE') {
-      console.log(`[TIMING] [${youtubeId}] fetchVideoData() threw non-TRANSCRIPT error: ${err instanceof AppError ? err.code : err instanceof Error ? err.message : err}`);
-      throw err;
+    const originalError = err instanceof AppError ? err : undefined;
+    if (originalError && originalError.code !== 'TRANSCRIPT_UNAVAILABLE') {
+      console.log(`[TIMING] [${youtubeId}] fetchVideoData() error (${originalError.code}): ${originalError.message.slice(0, 100)}`);
     }
-    console.log(`[TIMING] [${youtubeId}] YouTube transcript unavailable — trying worker queue`);
+    if (originalError && originalError.code === 'TRANSCRIPT_UNAVAILABLE') {
+      console.log(`[TIMING] [${youtubeId}] YouTube transcript unavailable — trying worker queue`);
+    } else {
+      console.log(`[TIMING] [${youtubeId}] fetchVideoData() failed but attempting worker queue fallback`);
+    }
   }
 
   // ---- Step 2: Try residential worker queue ----
