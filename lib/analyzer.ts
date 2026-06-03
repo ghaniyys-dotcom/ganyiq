@@ -162,7 +162,7 @@ async function callLLM(system: string, user: string): Promise<string> {
           { role: 'user', content: user },
         ],
         temperature: 0.3,
-        max_tokens: 4096,
+        max_tokens: 8192,
       }),
       signal: AbortSignal.timeout(300_000),
     });
