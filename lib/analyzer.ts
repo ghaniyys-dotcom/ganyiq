@@ -51,6 +51,9 @@ const MAX_SCORE = 100;
 /** OpenCode Go API endpoint (OpenAI-compatible chat completions). */
 const LLM_API_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
 
+/** Deployment version marker — incremented on each fix. */
+const DEPLOY_VERSION = 'v4-max_tokens-8192-timeout-300s';
+
 // ---------------------------------------------------------------------------
 // Main Export
 // ---------------------------------------------------------------------------
@@ -121,7 +124,7 @@ export async function analyzeTranscript(
   // Both attempts failed
   throw new AppError(
     'ANALYSIS_FAILED',
-    `Analysis failed: ${lastError ?? 'Unknown error'}. Please try again.`,
+    `Analysis failed: ${lastError ?? 'Unknown error'} [${DEPLOY_VERSION}]. Please try again.`,
     500,
   );
 }
