@@ -33,6 +33,7 @@ interface EnvConfig {
   DEEPGRAM_API_KEY: string;
   WORKER_NAME: string;
   POLL_INTERVAL_MS: number;
+  FFMPEG_LOCATION?: string;
   WORKER_ID?: string;
   WORKER_API_KEY?: string;
 }
@@ -94,6 +95,7 @@ function loadEnv(): EnvConfig {
     DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || config.DEEPGRAM_API_KEY || '',
     WORKER_NAME: process.env.WORKER_NAME || config.WORKER_NAME || 'PC-GANY',
     POLL_INTERVAL_MS: parseInt(process.env.POLL_INTERVAL_MS || config.POLL_INTERVAL_MS || '30000', 10),
+    FFMPEG_LOCATION: process.env.FFMPEG_LOCATION || config.FFMPEG_LOCATION || undefined,
     WORKER_ID: process.env.WORKER_ID || config.WORKER_ID,
     WORKER_API_KEY: process.env.WORKER_API_KEY || config.WORKER_API_KEY,
   };
@@ -214,7 +216,7 @@ async function sendHeartbeat(env: EnvConfig): Promise<void> {
 // Deepgram Transcription via yt-dlp
 // ---------------------------------------------------------------------------
 
-async function transcribe(youtubeUrl: string, deepgramKey: string): Promise<DeepgramResult> {
+async function transcribe(youtubeUrl: string, deepgramKey: string, ffmpegLocation?: string): Promise<DeepgramResult> {
   const videoId = extractVideoId(youtubeUrl);
   const audioPath = join(TEMP_DIR, `${videoId}.mp3`);
   const segments: TranscriptSegment[] = [];
@@ -228,8 +230,11 @@ async function transcribe(youtubeUrl: string, deepgramKey: string): Promise<Deep
 
   // Download audio with yt-dlp
   try {
+    const ffmpegFlag = ffmpegLocation
+      ? `--ffmpeg-location "${ffmpegLocation}"`
+      : '';
     execSync(
-      `yt-dlp --remote-components ejs:github --extractor-args "youtube:player_client=android" -x --audio-format mp3 -o "${audioPath}" "${youtubeUrl}" --no-playlist --quiet`,
+      `yt-dlp --remote-components ejs:github --extractor-args "youtube:player_client=android" ${ffmpegFlag} -x --audio-format mp3 -o "${audioPath}" "${youtubeUrl}" --no-playlist --quiet`,
       EXEC_OPTS,
     );
   } catch (err) {
@@ -387,7 +392,7 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
       throw new Error('DEEPGRAM_API_KEY is not configured. Set it in .env.local');
     }
 
-    const result = await transcribe(job.youtubeUrl, env.DEEPGRAM_API_KEY);
+    const result = await transcribe(job.youtubeUrl, env.DEEPGRAM_API_KEY, env.FFMPEG_LOCATION);
 
     log('JOB', `Submitting result (${result.segments.length} segments)...`);
 
@@ -479,6 +484,7 @@ async function main(): Promise<void> {
   log('CONFIG', `API URL:        ${env.GANYIQ_API_URL}`);
   log('CONFIG', `Worker Name:    ${env.WORKER_NAME}`);
   log('CONFIG', `Poll Interval:  ${env.POLL_INTERVAL_MS}ms`);
+  log('CONFIG', `FFmpeg Path:    ${env.FFMPEG_LOCATION || 'default (PATH)'}`);
   log('CONFIG', `Deepgram Key:   ${env.DEEPGRAM_API_KEY ? env.DEEPGRAM_API_KEY.slice(0, 8) + '...' : 'NOT SET'}`);
   log('CONFIG', `Worker ID:      ${env.WORKER_ID || 'NOT REGISTERED'}`);
 
