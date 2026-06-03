@@ -1,6 +1,5 @@
 {
   "version": 2,
   "framework": "nextjs",
-  "regions": ["sin1"],
-  "maxDuration": 300
+  "regions": ["sin1"]
 }
