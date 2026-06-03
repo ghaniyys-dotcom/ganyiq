@@ -200,11 +200,16 @@ async function resolveCompletedJob(
     console.timeEnd(`[TIMING] [${youtubeId}] resolveCompletedJob: fetchMetadata()`);
     console.log(`[TIMING] [${youtubeId}] resolveCompletedJob: fetchMetadata() failed — using placeholder metadata`);
     // Use placeholder metadata if fetch fails
+    // Estimate duration from transcript: last segment start + its duration
+    const lastSeg = segments[segments.length - 1];
+    const estimatedDuration = lastSeg
+      ? Math.ceil(lastSeg.start + lastSeg.duration)
+      : 0;
     metadata = {
       youtubeId,
       title: 'Unknown',
       channelName: 'Unknown',
-      durationSeconds: 0,
+      durationSeconds: estimatedDuration || 1, // minimum 1s to avoid division by zero
     };
   }
 
