@@ -99,8 +99,10 @@ async function fallbackToDeepgram(
   originalError: Error,
 ): Promise<VideoDataWithSource> {
   try {
-    // Dynamic import to avoid bundling child_process on Vercel
-    const dgModule = await import('@/lib/deepgram');
+    // Dynamic import with relative path to avoid @ alias resolution issues in Next.js production
+    // Note: on Vercel, this code path is never reached (VERCEL guard above)
+    const dgModulePath = require('path').resolve(__dirname, 'deepgram');
+    const dgModule = require(dgModulePath);
     const dgResult = await dgModule.fetchDeepgramTranscript(youtubeUrl);
 
     // Get metadata (lightweight — uses youtubei.js, no caption fetch)
