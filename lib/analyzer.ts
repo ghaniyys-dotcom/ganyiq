@@ -108,7 +108,7 @@ export async function analyzeTranscript(
     if (moments.length === 0 && parsed.length > 0) {
       // DIAGNOSTIC: include raw text preview for debugging
       const rawPreview = cleaned.slice(0, 500);
-      lastError = `All moments failed validation. Raw LLM output preview: ${rawPreview}`;
+      lastError = `All moments failed validation [CODE_v3]. Raw LLM output preview: ${rawPreview}`;
       continue;
     }
 
