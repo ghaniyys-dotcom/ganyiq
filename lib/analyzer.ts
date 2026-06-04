@@ -91,14 +91,21 @@ export async function analyzeTranscript(
   console.log(`[V2] Found ${candidates.length} candidates`);
 
   if (candidates.length === 0) {
-    // No candidates found — return empty (no viral moments detected)
     console.log(`[V2] No candidates extracted. Returning empty.`);
     return [];
   }
 
+  // Compute effective duration: use metadata duration, but fall back to transcript
+  const lastSeg = transcript[transcript.length - 1];
+  const transcriptDuration = lastSeg ? Math.ceil(lastSeg.start + lastSeg.duration) : 0;
+  const effectiveDuration = metadata.durationSeconds > 0 ? metadata.durationSeconds : transcriptDuration;
+  if (effectiveDuration !== metadata.durationSeconds) {
+    console.log(`[V2] Metadata duration was ${metadata.durationSeconds}s, using transcript duration: ${effectiveDuration}s`);
+  }
+
   // Step 2: Build batch scoring prompt (all candidates in one call)
   const { system, user } = buildBatchCandidateScoringPrompt(metadata, candidates);
-  console.log(`[V2] Batch prompt built. Prompt length: ${user.length} chars`);
+  console.log(`[V2] Batch prompt built. Prompt length: ${user.length} chars. Video duration: ${metadata.durationSeconds}s`);
 
   // Step 3: Call LLM with retry
   let lastError: string | null = null;
@@ -126,7 +133,7 @@ export async function analyzeTranscript(
     }
 
     // Validate each moment
-    const moments = validateMoments(parsed, metadata.durationSeconds);
+    const moments = validateMoments(parsed, effectiveDuration);
 
     if (moments.length === 0 && parsed.length > 0) {
       const rawPreview = cleaned.slice(0, 500);
