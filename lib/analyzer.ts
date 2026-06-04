@@ -116,7 +116,7 @@ export async function analyzeTranscript(
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      lastError = `JSON parse failed on attempt ${attempt + 1}`;
+      lastError = `JSON parse failed on attempt ${attempt + 1}. Raw preview: ${cleaned.slice(0, 200)}`;
       continue;
     }
 
