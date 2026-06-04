@@ -1,5 +1,5 @@
 /**
- * ganyIQ L analysis pipeline — V2 Candidate Extraction + Batch Scoring.
+ * ganyIQ LLM analysis pipeline — V2 Candidate Extraction + Batch Scoring.
  *
  * V2 ARCHITECTURE:
  *   1. extractCandidates(transcript) → CandidateWindow[] (deterministic, <50ms)
@@ -38,6 +38,8 @@ const VALID_DNA_TAGS: ReadonlySet<string> = new Set([
   'educational',
   'motivation',
   'relatability',
+  'vulnerability',
+  'inspiration',
 ]);
 
 const VALID_CONFIDENCE: ReadonlySet<string> = new Set([
@@ -55,7 +57,7 @@ const MAX_SCORE = 100;
 const LLM_API_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
 
 /** Maximum candidates to send to LLM in one batch. */
-const MAX_CANDIDATES_PER_BATCH = 25;
+const MAX_CANDIDATES_PER_BATCH = 15;
 
 /** Deployment version marker — incremented on each fix. */
 const DEPLOY_VERSION = 'v2-candidate-extraction';
@@ -316,8 +318,19 @@ function validateMoments(
 function coerceNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
+    // Try direct number parse first
     const parsed = Number(value);
     if (Number.isFinite(parsed)) return parsed;
+    // Try timestamp format "MM:SS" or "H:MM:SS"
+    const tsMatch = value.match(/^(\d+):(\d{2})(?::(\d{2}))?$/);
+    if (tsMatch) {
+      if (tsMatch[3]) {
+        // H:MM:SS
+        return parseInt(tsMatch[1]) * 3600 + parseInt(tsMatch[2]) * 60 + parseInt(tsMatch[3]);
+      }
+      // MM:SS
+      return parseInt(tsMatch[1]) * 60 + parseInt(tsMatch[2]);
+    }
   }
   return null;
 }

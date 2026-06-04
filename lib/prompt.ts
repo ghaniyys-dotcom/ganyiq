@@ -126,7 +126,7 @@ export function buildBatchCandidateScoringPrompt(
     const endMin = Math.floor(c.endSeconds / 60);
     const endSec = Math.floor(c.endSeconds % 60);
     const ts = `${startMin}:${String(startSec).padStart(2, '0')} - ${endMin}:${String(endSec).padStart(2, '0')}`;
-    return `CANDIDATE ${i + 1} (${ts}, ${Math.round(c.durationSeconds)}s):\n"${c.text}"\nSignals: ${c.signals.join(', ')}\n`;
+    return `CANDIDATE ${i + 1} (${ts}, ${Math.round(c.durationSeconds)}s):\n"${c.text}"\nSignals: ${c.signals.join(', ')}\nstartTime: ${c.startSeconds}\nendTime: ${c.endSeconds}`;
   }).join('\n---\n\n');
 
   const userMessage =
@@ -144,10 +144,12 @@ export function buildBatchCandidateScoringPrompt(
     `\n` +
     `For EACH candidate, provide:\n` +
     `  1. candidateIndex (1-based, matching the input)\n` +
-    `  2. worthClippingScore (0-100) — be harsh. Only truly viral moments should score above 85.\n` +
-    `  3. confidence ("high", "medium", or "low")\n` +
-    `  4. dnaTags (array of 1-3 strings) — from: hookPower, curiosity, controversy, emotion, humor, storytelling, authority, money, shock, educational, motivation, relatability\n` +
-    `  5. reasoning (1-2 sentences) — explain why this clip would or wouldn't perform well\n` +
+    `  2. startTime (number) — MUST be the start time in SECONDS as a plain number (e.g., 1690), NOT a timestamp string\n` +
+    `  3. endTime (number) — MUST be the end time in SECONDS as a plain number (e.g., 1752), NOT a timestamp string\n` +
+    `  4. worthClippingScore (0-100) — be harsh. Only truly viral moments should score above 85.\n` +
+    `  5. confidence ("high", "medium", or "low")\n` +
+    `  6. dnaTags (array of 1-3 strings) — from: hookPower, curiosity, controversy, emotion, humor, storytelling, authority, money, shock, educational, motivation, relatability\n` +
+    `  7. reasoning (1-2 sentences) — explain why this clip would or wouldn't perform well\n` +
     `\n` +
     `RULES:\n` +
     `  - Each clip must stand alone — a viewer should understand it without watching the full video\n` +
@@ -155,6 +157,7 @@ export function buildBatchCandidateScoringPrompt(
     `  - Score based ONLY on the transcript text provided\n` +
     `  - Consider Indonesian audience preferences: controversy, money, emotion, humor, authority\n` +
     `  - Be honest: if a candidate is not clip-worthy, give it a low score (below 40)\n` +
+    `  - startTime and endTime MUST be numbers (seconds), not strings. Example: 1690, not "28:10"\n` +
     `\n` +
     `OUTPUT FORMAT:\n` +
     `Return ONLY a valid JSON array. No markdown, no code fences, no extra text.\n` +
