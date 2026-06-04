@@ -102,14 +102,16 @@ async function tryWorkerQueue(
   youtubeId: string,
   youtubeUrl: string,
 ): Promise<VideoDataWithSource | null> {
-  // Check if any workers are online
+  // Check if any workers are registered (not just recently online)
+  // Workers may be polling a different API endpoint (e.g., Vercel) but
+  // still process jobs from the shared DB.
   const workers = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM workers
-     WHERE status = 'online' AND last_heartbeat > NOW() - INTERVAL '5 minutes'`,
+     WHERE status IN ('online', 'offline')`,
   );
 
-  const onlineCount = parseInt(workers.rows[0]?.count || '0');
-  if (onlineCount === 0) return null;  // No workers — skip queue path
+  const workerCount = parseInt(workers.rows[0]?.count || '0');
+  if (workerCount === 0) return null;  // No workers registered at all
 
   // Check for existing job for this video
   const existing = await query<{ id: string; status: string }>(
