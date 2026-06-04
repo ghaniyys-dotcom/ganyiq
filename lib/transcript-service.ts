@@ -143,12 +143,11 @@ async function tryWorkerQueue(
     jobId = inserted.rows[0].id;
   }
 
-  // Poll for completion (up to 10 seconds, every 2 seconds)
-  // If the job completes within this window, great. Otherwise the user
-  // retries later and picks up the completed result.
-  const deadline = Date.now() + 10_000;
+  // Poll for completion (up to 120 seconds, every 3 seconds)
+  // Worker needs time for yt-dlp download + Deepgram transcription.
+  const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
-    await sleep(2000);
+    await sleep(3000);
 
     const check = await query<{ status: string }>(
       'SELECT status FROM jobs_queue WHERE id = $1',
