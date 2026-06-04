@@ -22,7 +22,8 @@ export interface VideoData {
 export type DnaTag =
   | 'hookPower' | 'curiosity' | 'controversy' | 'emotion'
   | 'humor' | 'storytelling' | 'authority' | 'money'
-  | 'shock' | 'educational' | 'motivation' | 'relatability';
+  | 'shock' | 'educational' | 'motivation' | 'relatability'
+  | 'vulnerability' | 'inspiration';
 
 export type ConfidenceLevel = 'high' | 'medium' | 'low';
 export type MomentTier = 'elite' | 'secondary';

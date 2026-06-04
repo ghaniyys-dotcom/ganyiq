@@ -75,7 +75,7 @@ export function buildCandidateScoringPrompt(
     `Provide:\n` +
     `  1. worthClippingScore (0-100) — be harsh. Only truly viral moments should score above 85.\n` +
     `  2. confidence ("high", "medium", or "low")\n` +
-    `  3. dnaTags (array of 1-3 strings) — from: hookPower, curiosity, controversy, emotion, humor, storytelling, authority, money, shock, educational, motivation, relatability\n` +
+    `  3. dnaTags (array of 1-3 strings) — from: hookPower, curiosity, controversy, emotion, humor, storytelling, authority, money, shock, educational, motivation, relatability, vulnerability, inspiration\n` +
     `  4. reasoning (1-2 sentences) — explain why this clip would or wouldn't perform well\n` +
     `\n` +
     `RULES:\n` +
@@ -148,7 +148,7 @@ export function buildBatchCandidateScoringPrompt(
     `  3. endTime (number) — MUST be the end time in SECONDS as a plain number (e.g., 1752), NOT a timestamp string\n` +
     `  4. worthClippingScore (0-100) — be harsh. Only truly viral moments should score above 85.\n` +
     `  5. confidence ("high", "medium", or "low")\n` +
-    `  6. dnaTags (array of 1-3 strings) — from: hookPower, curiosity, controversy, emotion, humor, storytelling, authority, money, shock, educational, motivation, relatability\n` +
+    `  6. dnaTags (array of 1-3 strings) — from: hookPower, curiosity, controversy, emotion, humor, storytelling, authority, money, shock, educational, motivation, relatability, vulnerability, inspiration\n` +
     `  7. reasoning (1-2 sentences) — explain why this clip would or wouldn't perform well\n` +
     `\n` +
     `RULES:\n` +
