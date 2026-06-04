@@ -1,18 +1,24 @@
 /**
  * ganyIQ analysis prompt template.
  *
- * Reuses the proven worth-clipping logic from proof/src/index.ts.
- * Preserves the Viral DNA framework and Indonesian creator context.
+ * TWO MODES:
+ *   1. buildAnalysisPrompt() — LEGACY: full transcript → LLM (pre-V2, broken on long videos)
+ *   2. buildCandidateScoringPrompt() — V2: per-candidate scoring (current)
+ *
+ * V2 Pipeline:
+ *   Candidate Extraction (deterministic) → CandidateWindow[]
+ *   → LLM scores EACH candidate (small prompt, ~300 tokens)
+ *   → RawMoment[] → ranking → output
  *
  * OUTPUT CONTRACT: RawMoment[] (flat array, NOT grouped by elite/secondary).
  * Tier assignment is done deterministically in lib/ranking.ts.
  */
 
-import { formatTranscriptForPrompt } from '@/lib/youtube';
 import type { VideoMetadata, TranscriptSegment } from '@/lib/types';
+import type { CandidateWindow } from '@/lib/candidate-extraction';
 
 // ---------------------------------------------------------------------------
-// System Prompt
+// System Prompt (shared)
 // ---------------------------------------------------------------------------
 
 /**
@@ -26,93 +32,144 @@ const SYSTEM_PROMPT =
   'You spot viral moments faster than any algorithm.';
 
 // ---------------------------------------------------------------------------
-// Analysis Task Prompt
+// V2: Per-Candidate Scoring Prompt
 // ---------------------------------------------------------------------------
 
 /**
- * The core analysis task injected as the user message.
+ * Build a prompt to score a SINGLE candidate window.
  *
- * Key design decisions (compared to proof):
- *   1. Output is a flat JSON array `Moment[]` — NO elite_moments / secondary_moments
- *      grouping. The LLM's ONLY job is to find and score moments. Tier
- *      assignment (elite / secondary) is handled deterministically by the
- *      ranking module (lib/ranking.ts).
- *   2. The LLM returns ALL moments it identifies as worthy (up to 20). No
- *      hard cap at 5 elite + 10 secondary — the LLM focuses purely on quality
- *      detection. Deterministic ranking handles ordering and deduplication.
- *   3. No overall "reasoning" or "confidence" arrays — those were metadata
- *      that belong in the analysis record, not in the prompt output.
- *   4. Duration range tightened to 15-90 seconds (per MVP LOCK), aligning
- *      with professional short-form content standards.
- */
-const ANALYSIS_TASK = `
-
-TASK:
-Analyze the podcast transcript below and identify the moments worth clipping into short-form content.
-
-For each moment you identify, provide:
-  1. startTime (seconds) — when the moment begins
-  2. endTime (seconds) — when the moment ends
-  3. worthClippingScore (0-100) — be harsh. Only the very best moments should score above 85.
-  4. confidence ("high", "medium", or "low") — how confident you are that this moment will perform well
-  5. dnaTags (array of exactly 3 strings) — pick the top 3 that best describe this moment's viral DNA, from: hookPower, curiosity, controversy, emotion, humor, storytelling, authority, money, shock, educational, motivation, relatability
-  6. reasoning (1-2 sentences) — explain in English why this moment is worth clipping. Speak like a clipper, not a professor. Be specific about what makes this moment work.
-
-RULES:
-  1. Standalone value — each moment must make sense to someone who hasn't watched the full video. No inside jokes, no multi-episode context.
-  2. Hook-first — the first 3 seconds of the clip must grab attention. If the moment has a slow start, score it lower.
-  3. Duration — each moment must be between 15 and 90 seconds long.
-  4. Be honest — if the transcript only has 3 good moments, return 3 moments. Do NOT pad to meet a count.
-  5. Text-only — score only what is visible in the transcript. Do not imagine tone, delivery, facial expressions, or audience reaction.
-  6. Indonesian audience — consider what resonates with Indonesian viewers: controversy, money topics, relatable humor, emotional stories, and authority figures perform well on Indonesian TikTok/Reels/Shorts.
-  7. Timestamps must exist within the video duration. Do not invent timestamps beyond the transcript range.
-  8. Sort your output by worthClippingScore descending (highest score first).
-
-OUTPUT FORMAT:
-Return ONLY a valid JSON array. No markdown, no code fences, no extra text.
-
-[
-  {
-    "startTime": number,
-    "endTime": number,
-    "worthClippingScore": number,
-    "confidence": "high" | "medium" | "low",
-    "dnaTags": ["tag1", "tag2", "tag3"],
-    "reasoning": "1-2 sentence explanation"
-  }
-]
-
-The array should contain between 3 and 20 moments.
-If you identify fewer than 3 moments worth clipping, still return them.
-Do NOT include any text outside the JSON array — no summary, no explanations, no notes.`;
-
-// ---------------------------------------------------------------------------
-// Prompt Builder
-// ---------------------------------------------------------------------------
-
-/**
- * Build the complete prompt payload for a Gemini LLM call.
+ * This is the V2 approach: instead of sending the full transcript to the LLM,
+ * we send one pre-extracted candidate at a time. Each prompt is ~300 tokens
+ * instead of ~20,000 tokens.
  *
- * @param metadata - Video metadata (title, channel, duration)
- * @param transcript - Parsed transcript segments
+ * @param metadata - Video metadata
+ * @param candidate - A single candidate window from the extraction stage
  * @returns An object with `system` and `user` strings for the LLM API.
  */
-export function buildAnalysisPrompt(
+export function buildCandidateScoringPrompt(
   metadata: VideoMetadata,
-  transcript: TranscriptSegment[],
+  candidate: CandidateWindow,
 ): { system: string; user: string } {
-  const transcriptText = formatTranscriptForPrompt(transcript);
+  const startMin = Math.floor(candidate.startSeconds / 60);
+  const startSec = Math.floor(candidate.startSeconds % 60);
+  const endMin = Math.floor(candidate.endSeconds / 60);
+  const endSec = Math.floor(candidate.endSeconds % 60);
+  const ts = `${startMin}:${String(startSec).padStart(2, '0')} - ${endMin}:${String(endSec).padStart(2, '0')}`;
 
   const userMessage =
-    `${ANALYSIS_TASK}\n` +
+    `TASK:\n` +
+    `Score the following candidate clip from a podcast for viral potential.\n` +
     `\n` +
     `VIDEO:\n` +
     `Title: ${metadata.title}\n` +
     `Channel: ${metadata.channelName}\n` +
     `Duration: ${Math.round(metadata.durationSeconds / 60)} minutes\n` +
     `\n` +
-    `TRANSCRIPT:\n` +
-    `${transcriptText}`;
+    `CANDIDATE CLIP (${ts}, ${Math.round(candidate.durationSeconds)}s):\n` +
+    `"${candidate.text}"\n` +
+    `\n` +
+    `SIGNALS DETECTED IN THIS CLIP: ${candidate.signals.join(', ')}\n` +
+    `\n` +
+    `Rate this candidate on viral potential for Indonesian short-form content (TikTok, Reels, Shorts).\n` +
+    `\n` +
+    `Provide:\n` +
+    `  1. worthClippingScore (0-100) — be harsh. Only truly viral moments should score above 85.\n` +
+    `  2. confidence ("high", "medium", or "low")\n` +
+    `  3. dnaTags (array of 1-3 strings) — from: hookPower, curiosity, controversy, emotion, humor, storytelling, authority, money, shock, educational, motivation, relatability\n` +
+    `  4. reasoning (1-2 sentences) — explain why this clip would or wouldn't perform well\n` +
+    `\n` +
+    `RULES:\n` +
+    `  - The clip must stand alone — a viewer should understand it without watching the full video\n` +
+    `  - Hook-first: the first 3 seconds must grab attention\n` +
+    `  - Score based ONLY on the transcript text provided\n` +
+    `  - Consider Indonesian audience preferences: controversy, money, emotion, humor, authority\n` +
+    `\n` +
+    `OUTPUT FORMAT:\n` +
+    `Return ONLY a valid JSON object. No markdown, no code fences, no extra text.\n` +
+    `\n` +
+    `{\n` +
+    `  "startTime": ${candidate.startSeconds},\n` +
+    `  "endTime": ${candidate.endSeconds},\n` +
+    `  "worthClippingScore": number,\n` +
+    `  "confidence": "high" | "medium" | "low",\n` +
+    `  "dnaTags": ["tag1", "tag2", "tag3"],\n` +
+    `  "reasoning": "1-2 sentence explanation"\n` +
+    `}`;
+
+  return {
+    system: SYSTEM_PROMPT,
+    user: userMessage,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// V2: Batch Candidate Scoring Prompt (all candidates in one call)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a prompt to score ALL candidates in a SINGLE LLM call.
+ *
+ * This is the optimal V2 approach: one LLM call with all candidates,
+ * each scored independently. Total prompt ~2000-4000 tokens (vs 20,000+ for full transcript).
+ *
+ * @param metadata - Video metadata
+ * @param candidates - All candidate windows from the extraction stage
+ * @returns An object with `system` and `user` strings for the LLM API.
+ */
+export function buildBatchCandidateScoringPrompt(
+  metadata: VideoMetadata,
+  candidates: CandidateWindow[],
+): { system: string; user: string } {
+  const candidateTexts = candidates.map((c, i) => {
+    const startMin = Math.floor(c.startSeconds / 60);
+    const startSec = Math.floor(c.startSeconds % 60);
+    const endMin = Math.floor(c.endSeconds / 60);
+    const endSec = Math.floor(c.endSeconds % 60);
+    const ts = `${startMin}:${String(startSec).padStart(2, '0')} - ${endMin}:${String(endSec).padStart(2, '0')}`;
+    return `CANDIDATE ${i + 1} (${ts}, ${Math.round(c.durationSeconds)}s):\n"${c.text}"\nSignals: ${c.signals.join(', ')}\n`;
+  }).join('\n---\n\n');
+
+  const userMessage =
+    `TASK:\n` +
+    `Score each of the following ${candidates.length} candidate clips from a podcast for viral potential.\n` +
+    `These candidates were pre-extracted using text signal analysis.\n` +
+    `\n` +
+    `VIDEO:\n` +
+    `Title: ${metadata.title}\n` +
+    `Channel: ${metadata.channelName}\n` +
+    `Duration: ${Math.round(metadata.durationSeconds / 60)} minutes\n` +
+    `\n` +
+    `CANDIDATES:\n` +
+    `${candidateTexts}\n` +
+    `\n` +
+    `For EACH candidate, provide:\n` +
+    `  1. candidateIndex (1-based, matching the input)\n` +
+    `  2. worthClippingScore (0-100) — be harsh. Only truly viral moments should score above 85.\n` +
+    `  3. confidence ("high", "medium", or "low")\n` +
+    `  4. dnaTags (array of 1-3 strings) — from: hookPower, curiosity, controversy, emotion, humor, storytelling, authority, money, shock, educational, motivation, relatability\n` +
+    `  5. reasoning (1-2 sentences) — explain why this clip would or wouldn't perform well\n` +
+    `\n` +
+    `RULES:\n` +
+    `  - Each clip must stand alone — a viewer should understand it without watching the full video\n` +
+    `  - Hook-first: the first 3 seconds must grab attention\n` +
+    `  - Score based ONLY on the transcript text provided\n` +
+    `  - Consider Indonesian audience preferences: controversy, money, emotion, humor, authority\n` +
+    `  - Be honest: if a candidate is not clip-worthy, give it a low score (below 40)\n` +
+    `\n` +
+    `OUTPUT FORMAT:\n` +
+    `Return ONLY a valid JSON array. No markdown, no code fences, no extra text.\n` +
+    `\n` +
+    `[\n` +
+    `  {\n` +
+    `    "candidateIndex": number,\n` +
+    `    "startTime": number,\n` +
+    `    "endTime": number,\n` +
+    `    "worthClippingScore": number,\n` +
+    `    "confidence": "high" | "medium" | "low",\n` +
+    `    "dnaTags": ["tag1", "tag2", "tag3"],\n` +
+    `    "reasoning": "1-2 sentence explanation"\n` +
+    `  }\n` +
+    `]`;
 
   return {
     system: SYSTEM_PROMPT,
@@ -127,14 +184,11 @@ export function buildAnalysisPrompt(
 /**
  * Current prompt version identifier.
  * Stored alongside each analysis in the database for traceability.
- * Increment this when making prompt changes that affect output quality,
- * so we can A/B test and debug by comparing prompt versions.
  */
-export const PROMPT_VERSION = 'mvp-v1';
+export const PROMPT_VERSION = 'v2-candidate-scoring';
 
 /**
  * The LLM model this prompt is designed for.
- * DeepSeek V4 Flash via OpenCode Go API — fast inference, proven in proof.
- * 1M+ token context window, low cost, Indonesian content optimized.
+ * DeepSeek V4 Flash via OpenCode Go API.
  */
 export const TARGET_MODEL = 'deepseek-v4-flash';

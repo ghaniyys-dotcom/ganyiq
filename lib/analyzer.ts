@@ -1,12 +1,14 @@
 /**
- * ganyIQ LLM analysis pipeline.
+ * ganyIQ L analysis pipeline — V2 Candidate Extraction + Batch Scoring.
  *
- * Takes video metadata + transcript → builds prompt → calls DeepSeek V4 Flash
- * via OpenCode Go API (OpenAI-compatible) → parses JSON output → validates
- * every field → returns RawMoment[].
+ * V2 ARCHITECTURE:
+ *   1. extractCandidates(transcript) → CandidateWindow[] (deterministic, <50ms)
+ *   2. buildBatchCandidateScoringPrompt(candidates) → single LLM prompt (~2000-4000 tokens)
+ *   3. LLM scores ALL candidates in ONE call → RawMoment[]
+ *   4. validateMoments() → filter invalid → sort by score
  *
- * The LLM's ONLY job is to detect and score moments. Tier assignment (elite
- * vs. secondary) is deferred to lib/ranking.ts.
+ * This replaces the old approach of sending the full transcript (~20,000 tokens)
+ * to the LLM, which caused token exhaustion on DeepSeek V4 Flash.
  *
  * THREE-LAYER VALIDATION:
  *   1. JSON structure — valid array, valid objects, no missing fields
@@ -15,7 +17,8 @@
  */
 
 import { AppError } from '@/lib/errors';
-import { buildAnalysisPrompt, TARGET_MODEL, PROMPT_VERSION } from '@/lib/prompt';
+import { buildBatchCandidateScoringPrompt, TARGET_MODEL, PROMPT_VERSION } from '@/lib/prompt';
+import { extractCandidates } from '@/lib/candidate-extraction';
 import type { RawMoment, DnaTag, ConfidenceLevel, VideoMetadata, TranscriptSegment } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
@@ -51,8 +54,11 @@ const MAX_SCORE = 100;
 /** OpenCode Go API endpoint (OpenAI-compatible chat completions). */
 const LLM_API_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
 
+/** Maximum candidates to send to LLM in one batch. */
+const MAX_CANDIDATES_PER_BATCH = 25;
+
 /** Deployment version marker — incremented on each fix. */
-const DEPLOY_VERSION = 'v4-max_tokens-8192-timeout-300s';
+const DEPLOY_VERSION = 'v2-candidate-extraction';
 
 // ---------------------------------------------------------------------------
 // Main Export
@@ -61,36 +67,49 @@ const DEPLOY_VERSION = 'v4-max_tokens-8192-timeout-300s';
 /**
  * Analyze a podcast transcript and extract worth-clipping moments.
  *
+ * V2 Pipeline:
+ *   1. Extract candidate windows using deterministic text signal analysis
+ *   2. Send all candidates to LLM in a single batch scoring prompt
+ *   3. Parse and validate LLM response
+ *
  * @param metadata  - Video metadata (title, channel, duration)
  * @param transcript - Parsed transcript segments from the YouTube video
  * @returns Validated RawMoment[], sorted by score descending
  *
  * @throws AppError
  *   - ANALYSIS_FAILED: LLM call failed, empty response, or unparseable output
- *   - (retries once on JSON parse failure)
  */
 export async function analyzeTranscript(
   metadata: VideoMetadata,
   transcript: TranscriptSegment[],
 ): Promise<RawMoment[]> {
-  // 1. Build prompt
-  const { system, user } = buildAnalysisPrompt(metadata, transcript);
+  // Step 1: Extract candidate windows (deterministic, no LLM)
+  console.log(`[V2] Extracting candidates from ${transcript.length} segments...`);
+  const candidates = extractCandidates(transcript, MAX_CANDIDATES_PER_BATCH);
+  console.log(`[V2] Found ${candidates.length} candidates`);
 
-  // 2. Call LLM with one retry on parse failure
+  if (candidates.length === 0) {
+    // No candidates found — return empty (no viral moments detected)
+    console.log(`[V2] No candidates extracted. Returning empty.`);
+    return [];
+  }
+
+  // Step 2: Build batch scoring prompt (all candidates in one call)
+  const { system, user } = buildBatchCandidateScoringPrompt(metadata, candidates);
+  console.log(`[V2] Batch prompt built. Prompt length: ${user.length} chars`);
+
+  // Step 3: Call LLM with retry
   let lastError: string | null = null;
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    // Append retry instruction on second attempt
     const userPrompt = attempt === 0
       ? user
       : `${user}\n\nYour previous response could not be parsed as valid JSON. Output valid JSON only. No markdown, no code fences, no extra text.`;
 
     const rawText = await callLLM(system, userPrompt);
-
-    // Clean the response
     const cleaned = stripMarkdownFences(rawText);
 
-    // Parse JSON
+    // Parse JSON array
     let parsed: unknown;
     try {
       parsed = JSON.parse(cleaned);
@@ -99,7 +118,6 @@ export async function analyzeTranscript(
       continue;
     }
 
-    // Must be an array
     if (!Array.isArray(parsed)) {
       lastError = `Expected JSON array, got ${typeof parsed}`;
       continue;
@@ -109,15 +127,15 @@ export async function analyzeTranscript(
     const moments = validateMoments(parsed, metadata.durationSeconds);
 
     if (moments.length === 0 && parsed.length > 0) {
-      // DIAGNOSTIC: include raw text preview for debugging
       const rawPreview = cleaned.slice(0, 500);
-      lastError = `All moments failed validation [CODE_v3]. Raw LLM output preview: ${rawPreview}`;
+      lastError = `All moments failed validation [${DEPLOY_VERSION}]. Raw LLM output preview: ${rawPreview}`;
       continue;
     }
 
-    // Sort by score descending (defensive — prompt asks for this)
+    // Sort by score descending
     moments.sort((a, b) => b.worthClippingScore - a.worthClippingScore);
 
+    console.log(`[V2] Analysis complete. ${moments.length} valid moments from ${candidates.length} candidates.`);
     return moments;
   }
 
@@ -135,8 +153,6 @@ export async function analyzeTranscript(
 
 /**
  * Call DeepSeek V4 Flash via OpenCode Go API.
- *
- * OpenAI-compatible chat completions format. Proven working in Phase 0.5.
  *
  * @throws AppError ANALYSIS_FAILED if the API call fails or returns empty.
  */
@@ -179,29 +195,22 @@ async function callLLM(system: string, user: string): Promise<string> {
     }
 
     const data = await response.json();
-    // DIAGNOSTIC: log raw response structure for debugging empty content
-    console.log(`[LLM] raw response keys: ${JSON.stringify(Object.keys(data))}`);
     console.log(`[LLM] choices length: ${data?.choices?.length ?? 'N/A'}`);
     if (data?.choices?.[0]) {
-      console.log(`[LLM] choice[0] keys: ${JSON.stringify(Object.keys(data.choices[0]))}`);
       console.log(`[LLM] finish_reason: ${data.choices[0].finish_reason ?? 'N/A'}`);
       console.log(`[LLM] content length: ${data.choices[0].message?.content?.length ?? 'N/A'}`);
-      console.log(`[LLM] content preview: ${(data.choices[0].message?.content ?? '').slice(0, 100)}`);
     }
     console.log(`[LLM] usage: ${JSON.stringify(data?.usage ?? {})}`);
+
     const text: string | undefined =
       data?.choices?.[0]?.message?.content;
 
     if (!text || text.trim().length === 0) {
-      // DIAGNOSTIC: include raw response details in error
       const diagnosticInfo = JSON.stringify({
         hasChoices: !!data?.choices?.length,
-        choice0Keys: data?.choices?.[0] ? Object.keys(data.choices[0]) : null,
         finishReason: data?.choices?.[0]?.finish_reason ?? null,
         contentLength: data?.choices?.[0]?.message?.content?.length ?? null,
-        contentPreview: (data?.choices?.[0]?.message?.content ?? '').slice(0, 200),
         usage: data?.usage ?? null,
-        responseKeys: Object.keys(data),
       });
       throw new AppError(
         'ANALYSIS_FAILED',
@@ -229,21 +238,13 @@ async function callLLM(system: string, user: string): Promise<string> {
 
 /**
  * Strip markdown code fences from LLM output if present.
- *
- * Handles:
- *   ```json\n...\n```  (json-fenced)
- *   ```\n...\n```      (bare-fenced)
- *   plain text          (no fence — returned as-is)
  */
 function stripMarkdownFences(text: string): string {
   const trimmed = text.trim();
-
-  // Try json-fenced first
   const jsonFenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
   if (jsonFenceMatch) {
     return jsonFenceMatch[1].trim();
   }
-
   return trimmed;
 }
 
@@ -253,12 +254,7 @@ function stripMarkdownFences(text: string): string {
 
 /**
  * Validate an array of raw parsed moments against all constraints.
- *
- * Invalid moments are silently dropped. This is intentional — the LLM may
- * produce candidates with bad timestamps (hallucination) or malformed fields.
- * Silent dropping protects the pipeline without crashing the entire analysis.
- *
- * Returns only moments that pass ALL validation checks.
+ * Invalid moments are silently dropped.
  */
 function validateMoments(
   items: unknown[],
@@ -268,7 +264,6 @@ function validateMoments(
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i] as Record<string, unknown> | null;
-
     if (!item || typeof item !== 'object') continue;
 
     const startTime = coerceNumber(item.startTime);
@@ -318,9 +313,6 @@ function validateMoments(
 // Field Validators
 // ---------------------------------------------------------------------------
 
-/**
- * Safely coerce a value to a number, returning null if not possible.
- */
 function coerceNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
@@ -330,10 +322,6 @@ function coerceNumber(value: unknown): number | null {
   return null;
 }
 
-/**
- * Validate DNA tags array. Returns only valid tags (drop invalid entries).
- * Requires at least 1 valid tag, max 3.
- */
 function validateDnaTags(value: unknown): DnaTag[] {
   if (!Array.isArray(value)) return [];
 
@@ -343,14 +331,14 @@ function validateDnaTags(value: unknown): DnaTag[] {
     if (VALID_DNA_TAGS.has(strTag)) {
       tags.push(strTag as DnaTag);
     }
-    if (tags.length >= 3) break; // max 3 tags
+    if (tags.length >= 3) break;
   }
 
   return tags;
 }
 
 // ---------------------------------------------------------------------------
-// Prompt Version (re-exported for convenience)
+// Re-exports
 // ---------------------------------------------------------------------------
 
 export { PROMPT_VERSION, TARGET_MODEL };
