@@ -302,7 +302,7 @@ async function callLLM(model: string, system: string, user: string): Promise<str
         temperature: 0.3,
         max_tokens: 8192,
       }),
-      signal: AbortSignal.timeout(300_000),
+      signal: AbortSignal.timeout(500_000),
     });
     console.log(`[LLM] response received | model=${model} status=${response.status}`);
 
