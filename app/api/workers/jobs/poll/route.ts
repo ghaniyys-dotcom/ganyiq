@@ -32,6 +32,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       youtube_id: string;
       youtube_url: string;
       created_at: string;
+      job_type: string;
+      clip_params: any;
     }>(
       `WITH next_job AS (
         SELECT id FROM jobs_queue
@@ -46,7 +48,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           claimed_at = NOW(),
           updated_at = NOW()
       WHERE id = (SELECT id FROM next_job)
-      RETURNING id, youtube_id, youtube_url, created_at`,
+      RETURNING id, youtube_id, youtube_url, created_at, job_type, clip_params`,
       [workerId],
     );
 
@@ -62,6 +64,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         youtubeId: job.youtube_id,
         youtubeUrl: job.youtube_url,
         createdAt: job.created_at,
+        jobType: job.job_type || 'transcript',
+        clipParams: job.clip_params || null,
       },
     });
   } catch (err: unknown) {

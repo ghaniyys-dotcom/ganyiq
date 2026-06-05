@@ -8,7 +8,7 @@
  *   npx tsx worker/index.ts
  *
  * Environment (.env.local):
- *   GANYIQ_API_URL       = https://ganyiq.vercel.app
+ *   GANYIQ_API_URL       = https://ganyiq.ganys.me
  *   DEEPGRAM_API_KEY     = your_deepgram_key
  *   WORKER_NAME          = PC-GANY (default)
  *   POLL_INTERVAL_MS     = 30000 (default)
@@ -43,6 +43,12 @@ interface Job {
   youtubeId: string;
   youtubeUrl: string;
   createdAt: string;
+  jobType?: string;
+  clipParams?: {
+    videoId: string;
+    startTime: number;
+    endTime: number;
+  };
 }
 
 interface TranscriptSegment {
@@ -60,6 +66,7 @@ interface DeepgramResult {
 
 /** Shared exec options for yt-dlp/ffmpeg calls. */
 import { platform } from 'os';
+import { renderClip } from './clip-renderer';
 
 /** Path to the system shell — cmd.exe on Windows, /bin/sh on Unix. */
 const SHELL = platform() === 'win32' ? (process.env.COMSPEC || 'cmd.exe') : '/bin/sh';
@@ -91,7 +98,7 @@ function loadEnv(): EnvConfig {
 
   // Also read from process.env (higher priority)
   return {
-    GANYIQ_API_URL: (process.env.GANYIQ_API_URL || config.GANYIQ_API_URL || 'https://ganyiq.vercel.app').replace(/\/+$/, ''),
+    GANYIQ_API_URL: (process.env.GANYIQ_API_URL || config.GANYIQ_API_URL || 'https://ganyiq.ganys.me').replace(/\/+$/, ''),
     DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || config.DEEPGRAM_API_KEY || '',
     WORKER_NAME: process.env.WORKER_NAME || config.WORKER_NAME || 'PC-GANY',
     POLL_INTERVAL_MS: parseInt(process.env.POLL_INTERVAL_MS || config.POLL_INTERVAL_MS || '30000', 10),
@@ -384,8 +391,31 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
 
   log('JOB', `Claimed job ${job.id}`);
   log('JOB', `  Video: ${job.youtubeId}`);
+  log('JOB', `  Type:  ${job.jobType || 'transcript'}`);
   log('JOB', `  URL:   ${job.youtubeUrl}`);
 
+  // Branch by job type
+  if (job.jobType === 'clip') {
+    try {
+      await renderClip(job, env);
+    } catch (err) {
+      const errorMsg = (err as Error).message.slice(0, 500);
+      log('CLIP', `❌ Failed: ${errorMsg}`);
+
+      // Report failure
+      await apiPost(
+        `/api/workers/jobs/${job.id}/fail`,
+        {
+          worker_id: env.WORKER_ID,
+          error_message: errorMsg,
+        },
+        env.WORKER_API_KEY,
+      ).catch(() => {}); // fail-report failure is non-fatal
+    }
+    return;
+  }
+
+  // ── Transcript job (existing flow) ──
   try {
     // Check if we have a Deepgram API key
     if (!env.DEEPGRAM_API_KEY) {
