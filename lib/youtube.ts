@@ -417,12 +417,36 @@ export async function fetchMetadata(videoId: string): Promise<VideoMetadata> {
     );
     console.timeEnd(`[TIMING] [${videoId}] yt.getInfo()`);
 
-    return {
+    const metadata = {
       youtubeId: videoId,
       title: info.basic_info.title?.toString() ?? 'Unknown',
       channelName: info.basic_info.author?.toString() ?? 'Unknown',
       durationSeconds: info.basic_info.duration ?? 0,
     };
+
+    // If youtubei.js returned incomplete metadata (proven root cause for 7/8 videos),
+    // fetch missing fields from YouTube oEmbed API as fallback.
+    // oEmbed is fast, free, requires no auth, and always returns title + author_name.
+    if (metadata.title === 'Unknown' || metadata.channelName === 'Unknown' || metadata.durationSeconds === 0) {
+      try {
+        const oembed = await fetchOEmbedMetadata(videoId);
+        // Merge missing fields — NEVER overwrite valid youtubei.js values.
+        // oEmbed returns: title, author_name. No duration.
+        if (metadata.title === 'Unknown' && oembed.title) {
+          metadata.title = oembed.title;
+          console.log(`[YT] oEmbed fallback: title → "${metadata.title}"`);
+        }
+        if (metadata.channelName === 'Unknown' && oembed.author_name) {
+          metadata.channelName = oembed.author_name;
+          console.log(`[YT] oEmbed fallback: channel → "${metadata.channelName}"`);
+        }
+      } catch (oembedErr: unknown) {
+        const omsg = oembedErr instanceof Error ? oembedErr.message.slice(0, 100) : 'Unknown error';
+        console.log(`[YT] oEmbed fallback failed: ${omsg}`);
+      }
+    }
+
+    return metadata;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     throw new AppError(
@@ -431,6 +455,49 @@ export async function fetchMetadata(videoId: string): Promise<VideoMetadata> {
       500,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// 4b. oEmbed METADATA FALLBACK
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch video metadata from YouTube oEmbed API.
+ *
+ * Used as fallback when youtubei.js returns incomplete metadata.
+ * oEmbed is fast, free, requires no auth, and is never blocked.
+ *
+ * @param videoId - YouTube video ID
+ * @returns Object with title and author_name
+ * @throws Error if fetch fails, timeout, or response is malformed
+ */
+async function fetchOEmbedMetadata(videoId: string): Promise<{ title: string; author_name: string }> {
+  const url = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'ganyIQ/1.0' },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`oEmbed returned HTTP ${response.status}`);
+  }
+
+  const data = await response.json() as Record<string, unknown>;
+
+  const title = typeof data.title === 'string' && data.title.trim().length > 0
+    ? data.title.trim()
+    : null;
+
+  const authorName = typeof data.author_name === 'string' && data.author_name.trim().length > 0
+    ? data.author_name.trim()
+    : null;
+
+  if (!title || !authorName) {
+    throw new Error('oEmbed response missing title or author_name');
+  }
+
+  return { title, author_name: authorName };
 }
 
 // ---------------------------------------------------------------------------
