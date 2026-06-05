@@ -181,7 +181,86 @@ export function buildBatchCandidateScoringPrompt(
 }
 
 // ---------------------------------------------------------------------------
-// Prompt Version Tracking
+// V2-Compact: Production-Ready Prompt (evidence-based, Q4 2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * V2-Compact system prompt — professional clipper persona, no drama.
+ * Reverted from "brutally honest" to "viral-focused" to fix dnaTag compliance.
+ */
+const SYSTEM_PROMPT_V2C =
+  'You are a professional short-form content clipper in Indonesia. ' +
+  'Your income depends entirely on views. ' +
+  'You have 3+ years of experience. ' +
+  'Your job: score podcast clips for viral potential.';
+
+/**
+ * Build a V2-Compact batch scoring prompt.
+ *
+ * Design principles:
+ *   - Shorter than V1 to avoid DeepSeek reasoning token explosion
+ *   - Strict dnaTag enum to eliminate soft failures
+ *   - Compressed tier + confidence instructions
+ *   - Anti-hallucination guardrail
+ *   - No few-shot examples (proven unnecessary in forensic audit)
+ *
+ * @param metadata   - Video metadata
+ * @param candidates - Candidate windows from extraction stage
+ * @returns System and user prompt strings
+ */
+export function buildV2CompactPrompt(
+  metadata: VideoMetadata,
+  candidates: CandidateWindow[],
+): { system: string; user: string } {
+  const candidateTexts = candidates.map((c, i) => {
+    const ts = `${Math.floor(c.startSeconds / 60)}:${String(Math.floor(c.startSeconds % 60)).padStart(2, '0')} - ${Math.floor(c.endSeconds / 60)}:${String(Math.floor(c.endSeconds % 60)).padStart(2, '0')}`;
+    return `CANDIDATE ${i + 1} (${ts}, ${Math.round(c.durationSeconds)}s):"${c.text}" startTime:${c.startSeconds} endTime:${c.endSeconds}`;
+  }).join('\n---\n');
+
+  const userMessage =
+    `TASK: Score each of the following ${candidates.length} candidate clips. Score each independently — this is NOT a ranking task.\n` +
+    `\n` +
+    `VIDEO: ${metadata.title} by ${metadata.channelName}, ${Math.round(metadata.durationSeconds / 60)} min\n` +
+    `\n` +
+    `CANDIDATES:\n${candidateTexts}\n` +
+    `\n` +
+    `SCORING:\n` +
+    `  85-100 ELITE (rare — max 1-2 per batch) | 70-84 STRONG | 50-69 MODERATE | 0-49 REJECT (expect 3-5 per batch)\n` +
+    `\n` +
+    `CONFIDENCE: high=clear hook, standalone | medium=ambiguous | low=fragmented or very weak\n` +
+    `\n` +
+    `DNA TAGS — ONLY use values from this exact list:\n` +
+    `  hookPower, curiosity, controversy, emotion, humor, storytelling,\n` +
+    `  authority, money, shock, educational, motivation, relatability,\n` +
+    `  vulnerability, inspiration\n` +
+    `  DO NOT invent your own tags. Choose 1-3 from the list above.\n` +
+    `\n` +
+    `RULES:\n` +
+    `  - Base score ONLY on transcript text. Do not imagine tone, delivery, or expressions.\n` +
+    `  - Hook-first: first 3 seconds must grab attention.\n` +
+    `  - If content is generic or fragmented, score REJECT (< 50).\n` +
+    `\n` +
+    `OUTPUT: Valid JSON array only. No markdown.\n` +
+    `[\n` +
+    `  {\n` +
+    `    "candidateIndex": number,\n` +
+    `    "startTime": number,\n` +
+    `    "endTime": number,\n` +
+    `    "worthClippingScore": number,\n` +
+    `    "confidence": "high" | "medium" | "low",\n` +
+    `    "dnaTags": ["tag1", "tag2"],\n` +
+    `    "reasoning": "1 sentence"\n` +
+    `  }\n` +
+    `]`;
+
+  return { system: SYSTEM_PROMPT_V2C, user: userMessage };
+}
+
+/** Prompt version identifier for V2-Compact. */
+export const PROMPT_VERSION_V2C = 'v2-compact';
+
+// ---------------------------------------------------------------------------
+// Prompt Version Tracking (legacy)
 // ---------------------------------------------------------------------------
 
 /**
@@ -195,3 +274,13 @@ export const PROMPT_VERSION = 'v2-candidate-scoring';
  * DeepSeek V4 Flash via OpenCode Go API.
  */
 export const TARGET_MODEL = 'deepseek-v4-flash';
+
+/**
+ * Fallback model priority order — only OpenCode Go models.
+ * No new providers, API keys, or SDKs needed.
+ */
+export const MODELS: readonly string[] = [
+  'deepseek-v4-flash',  // PRIMARY
+  'mimo-v2.5',          // FALLBACK #1
+  'qwen3.7-plus',       // FALLBACK #2
+];

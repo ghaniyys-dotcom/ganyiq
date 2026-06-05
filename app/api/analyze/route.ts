@@ -34,7 +34,7 @@ import { validateYouTubeUrl, extractVideoId } from '@/lib/validators';
 import { fetchVideoDataWithFallback } from '@/lib/transcript-service';
 import { analyzeTranscript } from '@/lib/analyzer';
 import { rankMoments } from '@/lib/ranking';
-import { PROMPT_VERSION, TARGET_MODEL } from '@/lib/prompt';
+import { PROMPT_VERSION } from '@/lib/prompt';
 import { checkRateLimit, getRateLimitPerDay } from '@/lib/rate-limit';
 import type { RankedMoment } from '@/lib/types';
 
@@ -124,9 +124,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // ---- 3. Run LLM analysis ----
-    let rawMoments: Awaited<ReturnType<typeof analyzeTranscript>>;
+    let analysisResult: Awaited<ReturnType<typeof analyzeTranscript>>;
     try {
-      rawMoments = await analyzeTranscript(videoData.metadata, videoData.transcript);
+      analysisResult = await analyzeTranscript(videoData.metadata, videoData.transcript);
     } catch (e) {
       if (e instanceof AppError) {
         return error(e.statusCode, e.code, e.message);
@@ -135,6 +135,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // ---- 4. Deterministic ranking + tier assignment ----
+    const rawMoments = analysisResult.moments;
+    const servingModel = analysisResult.model;
     const rankedMoments: RankedMoment[] = rankMoments(rawMoments, videoData.transcript);
     const processingTimeMs = Date.now() - startTime;
     const totalMomentsFound = rankedMoments.length;
@@ -153,7 +155,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           ipAddress,
           totalMomentsFound,
           processingTimeMs,
-          TARGET_MODEL,
+          servingModel,
           PROMPT_VERSION,
           videoData.transcriptSource,
         ],
