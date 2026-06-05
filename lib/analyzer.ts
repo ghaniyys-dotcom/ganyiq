@@ -140,9 +140,11 @@ export async function analyzeTranscript(
     }
 
     // Each model gets 2 attempts (matching existing retry behavior)
+    // Primary (DeepSeek) gets only 1 attempt — if it fails, immediately fallback
     let lastError: string | null = null;
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    const maxAttempts = isPrimary ? 1 : 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       console.log(`[LLM] model=${model} attempt=${attempt + 1}`);
 
       const userPrompt = attempt === 0
