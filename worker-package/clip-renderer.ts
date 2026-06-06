@@ -192,10 +192,30 @@ export async function renderClip(
     log('YTDLP', `Downloading video: ${videoUrl}`);
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     execSync(
-      `yt-dlp --remote-components ejs:github --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "best[height<=720]" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
+      `yt-dlp --remote-components ejs:github --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=720]" --merge-output-format mp4 -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
       EXEC_OPTS,
     );
     addToCache(videoId, videoPath);
+  }
+
+  // SOURCE QUALITY LOG
+  try {
+    const ffprobePath = env.FFMPEG_LOCATION
+      ? `"${env.FFMPEG_LOCATION}/ffprobe"`
+      : 'ffprobe';
+    const probeOut = execSync(
+      `${ffprobePath} -v quiet -print_format json -show_format -show_streams "${videoPath}"`,
+      { ...EXEC_OPTS, timeout: 15_000 },
+    );
+    const probe = JSON.parse(probeOut);
+    const vStream = probe?.streams?.find((s: any) => s.codec_type === 'video') || {};
+    const aStream = probe?.streams?.find((s: any) => s.codec_type === 'audio') || {};
+    log('SOURCE', `video=${vStream.width}x${vStream.height} codec=${vStream.codec_name} video_bitrate=${vStream.bit_rate || 'N/A'} audio_bitrate=${aStream.bit_rate || 'N/A'} duration=${probe?.format?.duration}s size=${probe?.format?.size} bytes`);
+    if (vStream.width < 1280 || vStream.height < 720) {
+      log('WARN', `Source quality below 720p (${vStream.width}x${vStream.height})`);
+    }
+  } catch (e) {
+    log('SOURCE', `ffprobe error: ${(e as Error).message.slice(0, 120)}`);
   }
 
   // 2. ffmpeg cut
@@ -255,8 +275,7 @@ export async function renderClip(
 
   log('FFMPEG', `Output: ${outputFilename} (${(fileSizeBytes / 1024 / 1024).toFixed(1)} MB, ${durationSec}s)`);
 
-  // ffprobe full output
-  log('DEBUG', `[9] ffprobe START`);
+  // OUTPUT QUALITY LOG
   try {
     const ffprobePath = env.FFMPEG_LOCATION
       ? `"${env.FFMPEG_LOCATION}/ffprobe"`
@@ -266,20 +285,12 @@ export async function renderClip(
       { ...EXEC_OPTS, timeout: 15_000 },
     );
     const probe = JSON.parse(probeOut);
-    const stream = probe?.streams?.[0] || {};
-    log('DEBUG', `[9] ffprobe_ok=true`);
-    log('DEBUG', `[9] duration=${probe?.format?.duration}s`);
-    log('DEBUG', `[9] size=${probe?.format?.size} bytes`);
-    log('DEBUG', `[9] codec=${stream.codec_name}`);
-    log('DEBUG', `[9] resolution=${stream.width}x${stream.height}`);
-    log('DEBUG', `[9] bitrate=${probe?.format?.bit_rate}`);
-    log('DEBUG', `[9] nb_streams=${probe?.streams?.length}`);
-    log('DEBUG', `[9] format_name=${probe?.format?.format_name}`);
+    const vStream = probe?.streams?.find((s: any) => s.codec_type === 'video') || {};
+    const aStream = probe?.streams?.find((s: any) => s.codec_type === 'audio') || {};
+    log('OUTPUT', `resolution=${vStream.width}x${vStream.height} codec=${vStream.codec_name} video_bitrate=${vStream.bit_rate || 'N/A'} audio_bitrate=${aStream.bit_rate || 'N/A'} duration=${probe?.format?.duration}s size=${probe?.format?.size} bytes total_bitrate=${probe?.format?.bit_rate}`);
   } catch (e) {
-    log('DEBUG', `[9] ffprobe_ok=false`);
-    log('DEBUG', `[9] error=${(e as Error).message.slice(0, 200)}`);
+    log('OUTPUT', `ffprobe error: ${(e as Error).message.slice(0, 120)}`);
   }
-  log('DEBUG', `[9] ffprobe END`);
 
   // 3. Upload to VPS
   log('UPLOAD', `Uploading ${outputFilename}...`);
