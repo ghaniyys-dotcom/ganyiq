@@ -90,7 +90,7 @@ function loadCacheManifest(): Record<string, CacheEntry> {
 }
 
 function saveCacheManifest(manifest: Record<string, CacheEntry>): void {
-  if (!existsSync(CACHE_DIR)) execSync(`mkdir -p "${CACHE_DIR}"`, EXEC_OPTS);
+  if (!existsSync(CACHE_DIR)) execSync(`mkdir "${CACHE_DIR}"`, EXEC_OPTS);
   writeFileSync(CACHE_MANIFEST, JSON.stringify(manifest, null, 2), 'utf-8');
 }
 
@@ -182,8 +182,8 @@ export async function renderClip(
   log('CLIP', `Rendering clip ${videoId} ${startTime}s-${endTime}s`);
 
   // Ensure cache directory
-  if (!existsSync(CACHE_DIR)) execSync(`mkdir -p "${CACHE_DIR}"`, EXEC_OPTS);
-  if (!existsSync(TEMP_DIR)) execSync(`mkdir -p "${TEMP_DIR}"`, EXEC_OPTS);
+  if (!existsSync(CACHE_DIR)) execSync(`mkdir "${CACHE_DIR}"`, EXEC_OPTS);
+  if (!existsSync(TEMP_DIR)) execSync(`mkdir "${TEMP_DIR}"`, EXEC_OPTS);
 
   // 1. Get video (cached or download)
   let videoPath = getCachedVideoPath(videoId);
@@ -331,28 +331,38 @@ export async function renderClip(
   })}`);
 
   log('DEBUG', `[11] fetch POST ${uploadUrl}`);
-  const uploadResponse = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.WORKER_API_KEY}`,
-      'Content-Type': `multipart/form-data; boundary=${boundary}`,
-      'Content-Length': String(totalLength),
-    },
-    body: (() => {
-      const { Readable } = require('stream');
-      const { ReadableStream } = require('stream/web');
-      const chunks = [bodyPrefix, fileBuffer, bodySuffix];
-      return new Blob(chunks);
-    })(),
-  });
+  let uploadResponse: Response | null = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120_000);
+      uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.WORKER_API_KEY}`,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': String(totalLength),
+        },
+        signal: controller.signal,
+        body: (() => {
+          const { Readable } = require('stream');
+          const { ReadableStream } = require('stream/web');
+          const chunks = [bodyPrefix, fileBuffer, bodySuffix];
+          return new Blob(chunks);
+        })(),
+      });
+      clearTimeout(timeout);
+      break;
+    } catch (e: any) {
+      log('WARN', `Upload attempt ${attempt}/2 failed: ${e.message?.slice(0, 100)}`);
+      if (attempt === 2) throw new Error(`Upload failed after 2 attempts: ${e.message?.slice(0, 100)}`);
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
 
-  if (!uploadResponse.ok) {
-    const errBody = await uploadResponse.text();
-    log('DEBUG', `[12] uploadResponse.status=${uploadResponse.status}`);
-    log('DEBUG', `[12] uploadResponse.url=${uploadResponse.url}`);
-    log('DEBUG', `[12] uploadResponse.headers=${JSON.stringify([...uploadResponse.headers.entries()])}`);
-    log('DEBUG', `[12] responseBody=${errBody.slice(0, 500)}`);
-    throw new Error(`Upload failed (${uploadResponse.status}): ${errBody.slice(0, 200)}`);
+  if (!uploadResponse || !uploadResponse.ok) {
+    const errBody = uploadResponse ? await uploadResponse.text() : 'no response';
+    throw new Error(`Upload failed (${uploadResponse?.status || 'no status'}): ${errBody.slice(0, 200)}`);
   }
 
   const uploadData = await uploadResponse.json();
