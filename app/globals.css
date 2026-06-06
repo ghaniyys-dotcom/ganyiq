@@ -527,6 +527,18 @@ html, body {
   color: var(--error);
 }
 
+.clip-error-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.clip-error-text {
+  font-size: 11px;
+  color: var(--error);
+  line-height: 1.4;
+}
+
 /* New Analysis */
 .new-analysis {
   text-align: center;

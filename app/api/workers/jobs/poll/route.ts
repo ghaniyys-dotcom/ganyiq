@@ -26,6 +26,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     await authenticateWorker(workerId, request.headers.get('Authorization'));
 
+    // Auto-recover stuck claimed jobs (claimed > 15 min with no progress)
+    await query(
+      `UPDATE jobs_queue
+       SET status = 'pending',
+           worker_id = NULL,
+           claimed_at = NULL,
+           updated_at = NOW()
+       WHERE status = 'claimed'
+         AND claimed_at < NOW() - INTERVAL '15 minutes'`,
+    );
+
     // Atomic claim: FOR UPDATE SKIP LOCKED ensures no conflicts
     const result = await query<{
       id: string;

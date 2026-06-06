@@ -290,6 +290,57 @@ const SIGNALS: Record<string, SignalDef> = {
 };
 
 // ---------------------------------------------------------------------------
+// Sentence Boundary Recovery (SBR)
+// ---------------------------------------------------------------------------
+
+const SBR_START_WORDS = [
+  'nah', 'jadi', 'terus', 'sebetulnya', 'sebenernya',
+  'misalnya', 'waktu itu', 'dulu', 'pernah', 'kalau',
+  'kenapa', 'gimana', 'bagaimana',
+];
+
+const SBR_CONTAINS = ['?', 'ceritanya', 'awalnya', 'suatu hari', 'tiba-tiba'];
+
+const MAX_SBR_SCAN = 3;
+
+/**
+ * Format seconds to MM:SS timestamp for logging.
+ */
+function fmtTimestamp(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * Scan backward from a candidate window's start segment to find a natural
+ * sentence/thought boundary. Returns the best recovery index, or null if
+ * no boundary found within scan range.
+ *
+ * Scans from closest to furthest (extStart-1 → extStart-2 → extStart-3)
+ * and picks the FIRST match — minimal viable expansion.
+ */
+function recoverSentenceBoundary(
+  text: string,
+): { found: boolean; reason: string } {
+  const lower = text.toLowerCase().trim();
+
+  for (const word of SBR_START_WORDS) {
+    if (lower.startsWith(word)) {
+      return { found: true, reason: `startsWith("${word}")` };
+    }
+  }
+
+  for (const pattern of SBR_CONTAINS) {
+    if (lower.includes(pattern)) {
+      return { found: true, reason: `contains("${pattern}")` };
+    }
+  }
+
+  return { found: false, reason: 'no_boundary_found' };
+}
+
+// ---------------------------------------------------------------------------
 // Segment Scoring
 // ---------------------------------------------------------------------------
 
@@ -371,8 +422,37 @@ function formWindows(
 
     // j is now the first inactive segment after the cluster
     // Extend by 1 segment on each side for context (if possible)
-    const extStart = Math.max(0, i - 1);
+    let extStart = Math.max(0, i - 1);
     const extEnd = Math.min(n - 1, j);  // j is already past the last active
+
+    // ── Sentence Boundary Recovery ──────────────────────────────────
+    // Scan up to MAX_SBR_SCAN segments backward from extStart.
+    // If a natural boundary is found, shift extStart to that segment.
+    // Pick the FIRST boundary found (closest to original → minimal shift).
+    const sbrStart = extStart;
+    const sbrLimit = Math.max(0, extStart - MAX_SBR_SCAN);
+    for (let sbr = sbrStart - 1; sbr >= sbrLimit; sbr--) {
+      const result = recoverSentenceBoundary(segments[sbr].text);
+      if (result.found) {
+        const candidateDuration = (segments[extEnd].start + segments[extEnd].duration) - segments[sbr].start;
+        if (candidateDuration <= maxDuration) {
+          const origSec = segments[extStart].start;
+          extStart = sbr;
+          console.log(
+            `[SBR] Candidate shifted: original=${fmtTimestamp(origSec)} recovered=${fmtTimestamp(segments[sbr].start)} reason="${result.reason}"`
+          );
+        } else {
+          console.log(
+            `[SBR] Candidate FOUND but DROPPED (exceeds ${maxDuration}s): original=${fmtTimestamp(segments[extStart].start)} boundary_at=${fmtTimestamp(segments[sbr].start)} reason="${result.reason}"`
+          );
+        }
+        break; // first match (closest to original), stop scanning
+      }
+    }
+    if (extStart === sbrStart) {
+      console.log(`[SBR] Candidate unchanged: start=${fmtTimestamp(segments[extStart].start)} reason="no_boundary_found"`);
+    }
+    // ── End SBR ─────────────────────────────────────────────────────
 
     const startSec = segments[extStart].start;
     const endSeg = segments[extEnd];

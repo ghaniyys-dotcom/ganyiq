@@ -86,7 +86,11 @@ export default function Home() {
   // Clip generation state
   const [clipStates, setClipStates] = useState<Record<number, ClipStatus>>({});
   const [clipUrls, setClipUrls] = useState<Record<number, string>>({});
+  const [clipErrors, setClipErrors] = useState<Record<number, string>>({});
   const pollTimers = useRef<Record<number, ReturnType<typeof setInterval>>>({});
+  const pollStartTimes = useRef<Record<number, number>>({});
+
+  const MAX_POLL_DURATION = 5 * 60 * 1000; // 5 minutes
 
   useEffect(() => {
     return () => {
@@ -167,8 +171,20 @@ export default function Home() {
 
       // Poll
       const clipId = data.clipId;
+      pollStartTimes.current[momentIndex] = Date.now();
       const timer = setInterval(async () => {
         try {
+          // Stop if exceeded max poll duration
+          const elapsed = Date.now() - (pollStartTimes.current[momentIndex] || 0);
+          if (elapsed > MAX_POLL_DURATION) {
+            clearInterval(timer);
+            delete pollTimers.current[momentIndex];
+            delete pollStartTimes.current[momentIndex];
+            setClipStates((prev) => ({ ...prev, [momentIndex]: 'failed' }));
+            setClipErrors((prev) => ({ ...prev, [momentIndex]: 'Processing is taking longer than expected. Please refresh or try again.' }));
+            return;
+          }
+
           const statusRes = await fetch(`/api/clips/${clipId}/status`);
           const statusData = await statusRes.json();
 
@@ -177,10 +193,13 @@ export default function Home() {
             setClipUrls((prev) => ({ ...prev, [momentIndex]: statusData.clipUrl }));
             clearInterval(timer);
             delete pollTimers.current[momentIndex];
+            delete pollStartTimes.current[momentIndex];
           } else if (statusData.status === 'failed') {
             setClipStates((prev) => ({ ...prev, [momentIndex]: 'failed' }));
+            setClipErrors((prev) => ({ ...prev, [momentIndex]: statusData.error || 'Clip generation failed.' }));
             clearInterval(timer);
             delete pollTimers.current[momentIndex];
+            delete pollStartTimes.current[momentIndex];
           }
         } catch { /* keep polling */ }
       }, 5000);
@@ -296,12 +315,17 @@ export default function Home() {
         );
       case 'failed':
         return (
-          <button
-            className="clip-btn clip-btn-failed"
-            onClick={() => generateClip(moment.rank)}
-          >
-            Retry
-          </button>
+          <div className="clip-error-group">
+            <button
+              className="clip-btn clip-btn-failed"
+              onClick={() => generateClip(moment.rank)}
+            >
+              Retry
+            </button>
+            {clipErrors[moment.rank] && (
+              <span className="clip-error-text">{clipErrors[moment.rank]}</span>
+            )}
+          </div>
         );
     }
   }
