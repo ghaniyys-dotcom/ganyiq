@@ -82,11 +82,24 @@ export interface CropSegment {
   hasFace: boolean;
 }
 
+/** Multi-crop segment for Dynamic Split Screen (V2.5). */
+export interface MultiCropSegment {
+  startTime: number;
+  endTime: number;
+  crops: Array<{
+    cropX: number;
+    cropY: number;
+    faceId: number;
+    confidence: number;
+  }>;
+}
+
 export interface TrackResult {
   segments: CropSegment[];
   totalSamples: number;
   faceSamples: number;
   faceRatio: number;
+  multiFaces?: MultiFaceSample[];  // all faces data for split screen
 }
 
 // ---------------------------------------------------------------------------
@@ -946,6 +959,7 @@ export function analyzeFaces(
 
   return {
     segments,
+    multiFaces: interpolated,  // expose all faces for split screen
     totalSamples: totalFrames,
     faceSamples,
     faceRatio: totalFrames > 0 ? faceSamples / totalFrames : 0,
