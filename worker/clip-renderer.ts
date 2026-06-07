@@ -269,6 +269,10 @@ export async function renderClip(
         log('SPLIT', 'No split segments — falling back to single-face tracking');
         renderMode = 'vertical'; // fallback
       }
+    } else if (renderMode === 'vertical-split') {
+      // Fallback: split screen conditions not met (no multi-face / low coverage)
+      log('SPLIT', 'Split screen unavailable — falling back to single-face tracking');
+      renderMode = 'vertical';
     }
 
     if (renderMode === 'vertical') {

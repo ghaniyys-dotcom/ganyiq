@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs';
 import { join, resolve } from 'path';
 import { execSync } from 'child_process';
 import { platform } from 'os';
-import { analyzeFaces, type CropSegment } from './face-tracker';
+import { analyzeFaces, type CropSegment, type MultiCropSegment, type MultiFaceSample } from './face-tracker';
 
 // ---------------------------------------------------------------------------
 // Interfaces (mirrors the types in worker/index.ts)
@@ -39,7 +39,7 @@ interface Job {
     videoId: string;
     startTime: number;
     endTime: number;
-    renderMode?: 'landscape' | 'vertical';
+    renderMode?: 'landscape' | 'vertical' | 'vertical-split';
   };
 }
 
@@ -80,7 +80,7 @@ interface ClipParams {
   videoId: string;
   startTime: number;
   endTime: number;
-  renderMode?: 'landscape' | 'vertical';
+  renderMode?: 'landscape' | 'vertical' | 'vertical-split';
 }
 
 function loadCacheManifest(): Record<string, CacheEntry> {
@@ -172,9 +172,12 @@ function enforceCacheLimit(): void {
   saveCacheManifest(manifest);
 }
 
+export type HeartbeatFn = () => Promise<void>;
+
 export async function renderClip(
   job: Job & { jobType?: string; clipParams?: ClipParams },
   env: EnvConfig,
+  heartbeatFn?: HeartbeatFn,
 ): Promise<void> {
   const params = job.clipParams;
   if (!params) throw new Error('clip_params missing from job');
@@ -194,6 +197,7 @@ export async function renderClip(
     videoPath = join(CACHE_DIR, `${videoId}.mp4`);
     log('YTDLP', `Downloading video: ${videoUrl}`);
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
+    if (heartbeatFn) await heartbeatFn();
     execSync(
       `yt-dlp ${ffmpegFlag} -f "best[height<=720]" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
       EXEC_OPTS,
@@ -226,7 +230,8 @@ export async function renderClip(
   }
 
   // 2. ffmpeg cut
-  const outputFilename = `${videoId}_${Math.round(startTime)}s_${Math.round(endTime)}s.mp4`;
+  const renderMode = params.renderMode || 'landscape';
+  const outputFilename = `${videoId}_${Math.round(startTime)}s_${Math.round(endTime)}s_${renderMode}.mp4`;
   const outputPath = join(TEMP_DIR, outputFilename);
   log('FFMPEG', `Cutting ${startTime}s-${endTime}s → ${outputFilename}`);
 
@@ -235,15 +240,44 @@ export async function renderClip(
     ? `"${env.FFMPEG_LOCATION}/ffmpeg"`
     : 'ffmpeg';
 
-  const renderMode = params.renderMode || 'landscape';
   log('FFMPEG', `renderMode=${renderMode}`);
 
   let ffmpegCmd: string;
-  if (renderMode === 'vertical') {
+  if (renderMode === 'vertical' || renderMode === 'vertical-split') {
     // ── Vertical mode: Face-tracking crop with center-crop fallback ──
-    const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight);
+    if (heartbeatFn) await heartbeatFn();
+    const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight, startTime, endTime);
 
-    if (trackResult && trackResult.segments.length > 0 && trackResult.faceRatio > 0.3) {
+    if (renderMode === 'vertical-split' && trackResult && trackResult.multiFaces && trackResult.faceRatio > 0.3) {
+      // ── Dynamic Split Screen mode ──
+      log('SPLIT', `Split screen mode: ${trackResult.multiFaces.length} frames, ${trackResult.segments.length} base segments`);
+      const splitSegments = buildSplitSegments(
+        trackResult.multiFaces,
+        trackResult.segments,
+        sourceWidth, sourceHeight,
+      );
+      if (splitSegments.length > 0) {
+        await renderVerticalSplit(
+          ffmpegPath, videoPath, outputPath,
+          startTime, endTime,
+          splitSegments,
+          sourceWidth, sourceHeight,
+          heartbeatFn,
+        );
+        ffmpegCmd = ''; // marker: already rendered
+      } else {
+        log('SPLIT', 'No split segments — falling back to single-face tracking');
+        renderMode = 'vertical'; // fallback
+      }
+    } else if (renderMode === 'vertical-split') {
+      // Fallback: split screen conditions not met (no multi-face / low coverage)
+      log('SPLIT', 'Split screen unavailable — falling back to single-face tracking');
+      renderMode = 'vertical';
+    }
+
+    if (renderMode === 'vertical') {
+      // Original vertical tracking (also reached via fallback from split)
+      if (trackResult && trackResult.segments.length > 0 && trackResult.faceRatio > 0.3) {
       // Face tracking available — segmented render
       log('FACE', `Face tracking active: ${trackResult.segments.length} segments, ${(trackResult.faceRatio * 100).toFixed(0)}% face coverage`);
       await renderVerticalTracked(
@@ -251,6 +285,7 @@ export async function renderClip(
         startTime, endTime,
         trackResult.segments,
         sourceWidth, sourceHeight,
+        heartbeatFn,
       );
       // Skip the single-command ffmpeg below
       ffmpegCmd = ''; // marker: already rendered
@@ -263,6 +298,7 @@ export async function renderClip(
     // ── Landscape mode (existing): stream copy ──
     ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -c copy -movflags +faststart "${outputPath}"`;
   }
+  }  // closes outer if (vertical || vertical-split)
 
   // Skip if already rendered by face-tracking path
   if (ffmpegCmd !== '') {
@@ -286,6 +322,7 @@ export async function renderClip(
     // Exact ffmpeg command
     log('DEBUG', `[6] ffmpegCmd=${ffmpegCmd}`);
 
+    if (heartbeatFn) await heartbeatFn();
     execSync(ffmpegCmd, { ...EXEC_OPTS, timeout: 120_000 });
   }
 
@@ -437,6 +474,7 @@ async function renderVerticalTracked(
   segments: CropSegment[],
   sourceWidth: number,
   sourceHeight: number,
+  heartbeatFn?: HeartbeatFn,
 ): Promise<void> {
   if (segments.length === 0) {
     throw new Error('No crop segments provided for face-tracked render');
@@ -476,6 +514,7 @@ async function renderVerticalTracked(
 
       log('TRACK', `Segment ${i}: crop=${Math.round(cx)},${Math.round(cy)} time=${segStart}-${segEnd}s`);
 
+      if (heartbeatFn && i % 10 === 0) await heartbeatFn();
       execSync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
 
       if (!existsSync(segFile)) {
@@ -515,6 +554,292 @@ async function renderVerticalTracked(
     log('TRACK', `Concatenated ${segmentPaths.length} segments → ${outputPath}`);
   } finally {
     // Cleanup segment files
+    for (const p of segmentPaths) {
+      try { unlinkSync(p); } catch { /* ignore */ }
+    }
+    try { unlinkSync(concatFile); } catch { /* ignore */ }
+  }
+}
+
+// =============================================================================
+// DYNAMIC SPLIT SCREEN (V2.5)
+// =============================================================================
+//
+// Uses ALL face data from face-tracker.ts (MultiFaceSample[]) to generate
+// multi-crop segments where 2-3 faces are visible simultaneously.
+//
+// Split rules:
+//   1 active face  → full screen single crop (current V2.4A)
+//   2 active faces → 50/50 vertical stack
+//   3 active faces → 33/33/33 vertical stack
+//   MIN_HOLD_SPLIT=3s before switching back to single
+//   MIN_HOLD_SINGLE=3s before activating split
+//
+// =============================================================================
+
+const SPLIT_MIN_HOLD_SINGLE = 3.0;   // seconds before split can activate
+const SPLIT_MIN_HOLD_SPLIT = 3.0;    // seconds before split can deactivate
+const SPLIT_MAX_FACES = 3;           // max faces shown in split
+const SPLIT_CONFIDENCE_FLOOR = 0.1;  // min confidence to be "active"
+
+/**
+ * Build multi-crop segments for split-screen rendering.
+ * Frame-by-face analysis → split decision with hold timers → segment grouping.
+ */
+function buildSplitSegments(
+  multiFaces: MultiFaceSample[],
+  baseSegments: CropSegment[],
+  sourceWidth: number,
+  sourceHeight: number,
+): MultiCropSegment[] {
+  const cropH = sourceHeight;
+  const cropW = sourceHeight * (1080 / 1920);
+  const totalFrames = multiFaces.length;
+
+  // Step 1: Per-frame — extract all faces, compute crop coordinates
+  interface FrameState {
+    time: number;
+    activeFaces: Array<{ faceId: number; cx: number; cy: number; confidence: number }>;
+    activeCount: number;
+  }
+
+  const frameStates: FrameState[] = multiFaces.map((sample) => {
+    const activeFaces = sample.faces.map((f) => {
+      // Convert face center (f.cx/f.cy) to crop coordinates
+      const cropX = Math.max(0, Math.min(sourceWidth - cropW, f.cx - cropW / 2));
+      const cropY = Math.max(0, Math.min(sourceHeight - cropH, f.cy - cropH * 0.35));
+      const confidence = (f.w * f.h) / (sourceWidth * sourceHeight);
+      return { faceId: f.id, cx: cropX, cy: cropY, confidence };
+    }).filter((f) => f.confidence >= SPLIT_CONFIDENCE_FLOOR);
+
+    return {
+      time: sample.time,
+      activeFaces,
+      activeCount: Math.min(activeFaces.length, SPLIT_MAX_FACES),
+    };
+  });
+
+  // Step 2: Determine split mode per-frame with hold timers
+  enum SplitMode { SINGLE = 1, SPLIT_2 = 2, SPLIT_3 = 3 }
+
+  interface ModeFrame {
+    time: number;
+    mode: SplitMode;
+    topFaces: typeof frameStates[0]['activeFaces'];
+  }
+
+  let currentMode = SplitMode.SINGLE;
+  let modeSwitchTime = 0;
+  const modeFrames: ModeFrame[] = [];
+
+  for (let i = 0; i < totalFrames; i++) {
+    const fs = frameStates[i];
+    const timeSinceSwitch = fs.time - modeSwitchTime;
+
+    // Desired mode based on face count
+    let desiredMode = SplitMode.SINGLE;
+    if (fs.activeCount >= 3) desiredMode = SplitMode.SPLIT_3;
+    else if (fs.activeCount >= 2) desiredMode = SplitMode.SPLIT_2;
+
+    // Hold timer: prevent flicker
+    if (desiredMode !== currentMode) {
+      if (timeSinceSwitch >= (currentMode === SplitMode.SINGLE ? SPLIT_MIN_HOLD_SINGLE : SPLIT_MIN_HOLD_SPLIT)) {
+        currentMode = desiredMode;
+        modeSwitchTime = fs.time;
+      }
+    }
+
+    // Select top N faces sorted by confidence
+    const topFaces = fs.activeFaces
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, currentMode);
+
+    modeFrames.push({ time: fs.time, mode: currentMode, topFaces });
+  }
+
+  // Step 3: Group into segments with stable split mode
+  const result: MultiCropSegment[] = [];
+
+  for (let i = 0; i < modeFrames.length; ) {
+    const mode = modeFrames[i].mode;
+    const segFrames: ModeFrame[] = [];
+
+    while (i < modeFrames.length && modeFrames[i].mode === mode) {
+      segFrames.push(modeFrames[i]);
+      i++;
+    }
+
+    if (segFrames.length === 0) continue;
+
+    // Average crop coordinates per face across the segment
+    const cropMap = new Map<number, { sumCx: number; sumCy: number; sumConfidence: number; count: number }>();
+
+    for (const sf of segFrames) {
+      for (const face of sf.topFaces) {
+        const entry = cropMap.get(face.faceId) || { sumCx: 0, sumCy: 0, sumConfidence: 0, count: 0 };
+        entry.sumCx += face.cx;
+        entry.sumCy += face.cy;
+        entry.sumConfidence += face.confidence;
+        entry.count++;
+        cropMap.set(face.faceId, entry);
+      }
+    }
+
+    const crops = Array.from(cropMap.entries())
+      .sort((a, b) => (b[1].sumConfidence / b[1].count) - (a[1].sumConfidence / a[1].count))
+      .slice(0, mode)
+      .map(([faceId, data]) => ({
+        cropX: Math.round(data.sumCx / data.count),
+        cropY: Math.round(data.sumCy / data.count),
+        faceId,
+        confidence: data.sumConfidence / data.count,
+      }));
+
+    result.push({
+      startTime: segFrames[0].time,
+      endTime: segFrames[segFrames.length - 1].time,
+      crops,
+    });
+  }
+
+  // Step 4: Merge tiny segments (< 1s) into next segment
+  const cleaned: MultiCropSegment[] = [];
+  for (let i = 0; i < result.length; i++) {
+    const seg = result[i];
+    const dur = seg.endTime - seg.startTime;
+
+    if (dur < 1.0 && i < result.length - 1) {
+      const next = result[i + 1];
+      cleaned.push({ startTime: seg.startTime, endTime: next.endTime, crops: next.crops });
+      i++;
+    } else {
+      cleaned.push(seg);
+    }
+  }
+
+  log('SPLIT', `Split segments: ${cleaned.length} (1-face=${cleaned.filter(s => s.crops.length === 1).length}, 2-way=${cleaned.filter(s => s.crops.length === 2).length}, 3-way=${cleaned.filter(s => s.crops.length === 3).length})`);
+  return cleaned;
+}
+
+// =============================================================================
+// SPLIT SCREEN RENDERER
+// =============================================================================
+
+/**
+ * Render vertical clip with dynamic split using FFmpeg complex filter.
+ *
+ * For each segment:
+ *   crops=1 → standard single-crop (full 1080x1920)
+ *   crops=2 → each crop to 1080x960, vstack
+ *   crops=3 → each crop to 1080x640, vstack
+ *
+ * Concat all segments at the end.
+ */
+async function renderVerticalSplit(
+  ffmpegPath: string,
+  sourceVideo: string,
+  outputPath: string,
+  jobStartTime: number,
+  jobEndTime: number,
+  segments: MultiCropSegment[],
+  sourceWidth: number,
+  sourceHeight: number,
+  heartbeatFn?: HeartbeatFn,
+): Promise<void> {
+  if (segments.length === 0) {
+    throw new Error('No split segments provided');
+  }
+
+  const tempDir = join(resolve(__dirname || '.'), 'temp');
+  const concatFile = join(tempDir, `split_concat_${Date.now()}.txt`);
+  const segmentPaths: string[] = [];
+
+  const cropH = sourceHeight;
+  const cropW = sourceHeight * (1080 / 1920);
+
+  try {
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const segStart = Math.max(jobStartTime, seg.startTime);
+      const segEnd = Math.min(jobEndTime, seg.endTime);
+      if (segEnd <= segStart) continue;
+
+      const segFile = join(tempDir, `split_seg_${i}_${Date.now()}.mp4`);
+      segmentPaths.push(segFile);
+
+      const numFaces = seg.crops.length;
+
+      if (numFaces <= 1) {
+        // Single-face: standard crop (same as V2.4A)
+        const cx = Math.max(0, Math.min(sourceWidth - cropW, seg.crops[0]?.cropX || (sourceWidth - cropW) / 2));
+        const cy = Math.max(0, Math.min(sourceHeight - cropH, seg.crops[0]?.cropY || 0));
+        const cmd = `${ffmpegPath} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" ` +
+          `-vf "crop=${Math.round(cropW)}:${cropH}:${Math.round(cx)}:${Math.round(cy)},scale=1080:1920" ` +
+          `-c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${segFile}"`;
+        log('SPLIT', `Seg ${i}: single-face crop=${Math.round(cx)},${Math.round(cy)}`);
+        execSync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
+      } else {
+        // Multi-face: vstack via complex filter
+        const faceCount = Math.min(numFaces, SPLIT_MAX_FACES);
+        const outHeight = 1920;
+        const segHeight = Math.floor(outHeight / faceCount);
+        const filterParts: string[] = [];
+        const inputLabels: string[] = [];
+
+        for (let fi = 0; fi < faceCount; fi++) {
+          const face = seg.crops[fi];
+          const cx = Math.max(0, Math.min(sourceWidth - cropW, face.cropX));
+          const cy = Math.max(0, Math.min(sourceHeight - cropH, face.cropY));
+          const label = `f${fi}`;
+          filterParts.push(
+            `[0:v]crop=${Math.round(cropW)}:${cropH}:${Math.round(cx)}:${Math.round(cy)},scale=1080:${segHeight}[${label}]`
+          );
+          inputLabels.push(`[${label}]`);
+        }
+
+        filterParts.push(inputLabels.join('') + `vstack=inputs=${faceCount}[v]`);
+
+        const cmd = `${ffmpegPath} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" ` +
+          `-filter_complex "${filterParts.join(';')}" ` +
+          `-map "[v]" -map 0:a? ` +
+          `-c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${segFile}"`;
+        log('SPLIT', `Seg ${i}: ${faceCount}-way split`);
+        execSync(cmd, { ...EXEC_OPTS, timeout: 180_000 });
+      }
+
+      if (!existsSync(segFile)) {
+        throw new Error(`Split segment ${i} produced no output`);
+      }
+
+      if (heartbeatFn && i % 5 === 0) await heartbeatFn();
+    }
+
+    if (segmentPaths.length === 0) {
+      throw new Error('No valid split segments produced');
+    }
+
+    if (segmentPaths.length === 1) {
+      execSync(
+        platform() === 'win32'
+          ? `move /y "${segmentPaths[0]}" "${outputPath}"`
+          : `mv "${segmentPaths[0]}" "${outputPath}"`,
+        EXEC_OPTS,
+      );
+      log('SPLIT', 'Single segment — direct output');
+      return;
+    }
+
+    // Concat multiple segments
+    const concatLines = segmentPaths.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
+    writeFileSync(concatFile, concatLines, 'utf-8');
+    const concatCmd = `${ffmpegPath} -y -f concat -safe 0 -i "${concatFile}" -c copy "${outputPath}"`;
+    execSync(concatCmd, { ...EXEC_OPTS, timeout: 120_000 });
+
+    if (!existsSync(outputPath)) {
+      throw new Error('Split concat produced no output file');
+    }
+    log('SPLIT', `Concatenated ${segmentPaths.length} split segments`);
+  } finally {
     for (const p of segmentPaths) {
       try { unlinkSync(p); } catch { /* ignore */ }
     }
