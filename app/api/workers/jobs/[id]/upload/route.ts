@@ -129,6 +129,12 @@ export async function POST(
 
     if (cacheUpdate.rows.length === 0) {
       // No clips_cache entry found for this job — insert one
+      // Read renderMode from clip_params if available
+      const renderModeResult = await query<{ render_mode: string }>(
+        `SELECT clip_params->>'renderMode' AS render_mode FROM jobs_queue WHERE id = $1`,
+        [jobId],
+      );
+      const jobRenderMode = renderModeResult.rows[0]?.render_mode || 'landscape';
       await query(
         `INSERT INTO clips_cache (video_id, start_time, end_time, filename, file_size_bytes, duration_seconds, job_id, render_mode)
          VALUES (
@@ -137,9 +143,9 @@ export async function POST(
             JOIN videos v ON v.id = a.video_id
             WHERE v.youtube_id = $1
             LIMIT 1),
-           $2, $3, $4, $5, $6, $7, 'landscape'
+           $2, $3, $4, $5, $6, $7, $8
          )`,
-        [job.youtube_id, startTime, endTime, filename, fileSizeBytes, durationSeconds, jobId],
+        [job.youtube_id, startTime, endTime, filename, fileSizeBytes, durationSeconds, jobId, jobRenderMode],
       );
     }
 

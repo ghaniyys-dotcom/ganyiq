@@ -9,8 +9,8 @@
 
 -- ── 1. Add render_mode to clips_cache ─────────────────────────────────────
 ALTER TABLE clips_cache
-  ADD COLUMN IF NOT EXISTS render_mode VARCHAR(10) NOT NULL DEFAULT 'landscape'
-  CHECK (render_mode IN ('landscape', 'vertical'));
+  ADD COLUMN IF NOT EXISTS render_mode VARCHAR(20) NOT NULL DEFAULT 'landscape'
+  CHECK (render_mode IN ('landscape', 'vertical', 'vertical-split'));
 
 COMMENT ON COLUMN clips_cache.render_mode IS
   'Output aspect ratio: landscape (16:9) or vertical (9:16 shorts)';
