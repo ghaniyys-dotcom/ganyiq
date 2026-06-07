@@ -740,8 +740,13 @@ async function renderVerticalSplit(
   const concatFile = join(tempDir, `split_concat_${Date.now()}.txt`);
   const segmentPaths: string[] = [];
 
-  const cropH = sourceHeight;
-  const cropW = sourceHeight * (1080 / 1920);
+  const FULL_H = sourceHeight;
+  const OLD_CROP_W = FULL_H * (1080 / 1920); // 405 for 720p — width used by buildSplitSegments
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+  // Consistent encoder settings for all segments → no mismatch on concat
+  const ENC = '-c:v libx264 -preset fast -crf 20 -c:a aac -b:a 128k -movflags +faststart';
+  const KF = '-force_key_frames expr:gte(t,n_forced*1)'; // keyframe every 1s for smooth concat
 
   try {
     for (let i = 0; i < segments.length; i++) {
@@ -756,40 +761,65 @@ async function renderVerticalSplit(
       const numFaces = seg.crops.length;
 
       if (numFaces <= 1) {
-        // Single-face: standard crop (same as V2.4A)
-        const cx = Math.max(0, Math.min(sourceWidth - cropW, seg.crops[0]?.cropX || (sourceWidth - cropW) / 2));
-        const cy = Math.max(0, Math.min(sourceHeight - cropH, seg.crops[0]?.cropY || 0));
-        const cmd = `${ffmpegPath} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" ` +
-          `-vf "crop=${Math.round(cropW)}:${cropH}:${Math.round(cx)}:${Math.round(cy)},scale=1080:1920" ` +
-          `-c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${segFile}"`;
-        log('SPLIT', `Seg ${i}: single-face crop=${Math.round(cx)},${Math.round(cy)}`);
+        // ── Single-face: tight crop (9:16 → 1080×1920) ──
+        // Reconstruct face center from stored cropX (computed with OLD_CROP_W)
+        const faceCx = seg.crops[0]?.cropX !== undefined
+          ? seg.crops[0].cropX + OLD_CROP_W / 2
+          : sourceWidth / 2;
+        const faceCy = seg.crops[0]?.cropY !== undefined
+          ? seg.crops[0].cropY + FULL_H * 0.35
+          : FULL_H / 2;
+
+        const cw = OLD_CROP_W; // 405 — tight vertical strip
+        const ch = FULL_H;     // full source height
+        const cx = clamp(Math.round(faceCx - cw / 2), 0, sourceWidth - cw);
+        const cy = clamp(Math.round(faceCy - ch * 0.35), 0, sourceHeight - ch);
+
+        const cmd = `${ffmpegPath} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" `
+          + `-vf "crop=${Math.round(cw)}:${ch}:${cx}:${cy},scale=1080:1920" `
+          + `${KF} ${ENC} "${segFile}"`;
+        log('SPLIT', `Seg ${i}: single-face crop=${cx},${cy}`);
         execSync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
       } else {
-        // Multi-face: vstack via complex filter
+        // ── Multi-face: wider crop matching target panel aspect ──
         const faceCount = Math.min(numFaces, SPLIT_MAX_FACES);
-        const outHeight = 1920;
-        const segHeight = Math.floor(outHeight / faceCount);
+        const segHeight = Math.floor(1920 / faceCount); // panel height in output
+
+        // Crop width that fills 1080-wide panel at target height (preserves aspect)
+        let panelCropW = Math.round(FULL_H * (1080 / segHeight));
+        // Clamp to source width
+        panelCropW = Math.min(panelCropW, sourceWidth);
+
         const filterParts: string[] = [];
         const inputLabels: string[] = [];
 
         for (let fi = 0; fi < faceCount; fi++) {
           const face = seg.crops[fi];
-          const cx = Math.max(0, Math.min(sourceWidth - cropW, face.cropX));
-          const cy = Math.max(0, Math.min(sourceHeight - cropH, face.cropY));
+          // Reconstruct face center from stored cropX
+          const faceCx = face.cropX !== undefined
+            ? face.cropX + OLD_CROP_W / 2
+            : sourceWidth / 2;
+          const faceCy = face.cropY !== undefined
+            ? face.cropY + FULL_H * 0.35
+            : FULL_H / 2;
+
+          const cx = clamp(Math.round(faceCx - panelCropW / 2), 0, sourceWidth - panelCropW);
+          const cy = clamp(Math.round(faceCy - FULL_H * 0.35), 0, sourceHeight - FULL_H);
+
           const label = `f${fi}`;
           filterParts.push(
-            `[0:v]crop=${Math.round(cropW)}:${cropH}:${Math.round(cx)}:${Math.round(cy)},scale=1080:${segHeight}[${label}]`
+            `[0:v]crop=${panelCropW}:${FULL_H}:${cx}:${cy},scale=1080:${segHeight}[${label}]`
           );
           inputLabels.push(`[${label}]`);
         }
 
         filterParts.push(inputLabels.join('') + `vstack=inputs=${faceCount}[v]`);
 
-        const cmd = `${ffmpegPath} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" ` +
-          `-filter_complex "${filterParts.join(';')}" ` +
-          `-map "[v]" -map 0:a? ` +
-          `-c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${segFile}"`;
-        log('SPLIT', `Seg ${i}: ${faceCount}-way split`);
+        const cmd = `${ffmpegPath} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" `
+          + `-filter_complex "${filterParts.join(';')}" `
+          + `-map "[v]" -map 0:a? `
+          + `${KF} ${ENC} "${segFile}"`;
+        log('SPLIT', `Seg ${i}: ${faceCount}-way split cw=${panelCropW} sh=${segHeight}`);
         execSync(cmd, { ...EXEC_OPTS, timeout: 180_000 });
       }
 
