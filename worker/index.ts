@@ -399,7 +399,7 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
     try {
       await renderClip(job, env, () => sendHeartbeat(env));
     } catch (err) {
-      const errorMsg = (err as Error).message.slice(0, 500);
+      const errorMsg = (err as Error).message.slice(0, 2000);
       log('CLIP', `❌ Failed: ${errorMsg}`);
 
       // Report failure
@@ -446,7 +446,7 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
       log('JOB', `❌ Submit failed (${submitResponse.status}): ${JSON.stringify(errBody)}`);
     }
   } catch (err) {
-    const errorMsg = (err as Error).message.slice(0, 500);
+    const errorMsg = (err as Error).message.slice(0, 2000);
     log('JOB', `❌ Failed: ${errorMsg}`);
 
     // Report failure
