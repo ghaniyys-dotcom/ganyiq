@@ -913,6 +913,11 @@ export function analyzeFaces(
   segments = fillSegmentGaps(segments, sourceWidth, sourceHeight);
   log('SEGMENT', `After gap-fill: ${segments.length} segments`);
 
+  // DEBUG: log actual segment values
+  for (let i = 0; i < segments.length && i < 3; i++) {
+    log('SEGMENT', `DEBUG seg[${i}]: start=${segments[i].startTime.toFixed(1)} end=${segments[i].endTime.toFixed(1)} cropX=${segments[i].cropX} cropY=${segments[i].cropY} hasFace=${segments[i].hasFace}`);
+  }
+
   return {
     segments,
     totalSamples: totalFrames,

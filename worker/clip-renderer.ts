@@ -466,6 +466,8 @@ async function renderVerticalTracked(
       const segStart = Math.max(jobStartTime, seg.startTime);
       const segEnd = Math.min(jobEndTime, seg.endTime);
 
+      log('TRACK', `DEBUG seg[${i}]: seg.startTime=${seg.startTime} seg.endTime=${seg.endTime} jobStart=${jobStartTime} jobEnd=${jobEndTime} segStart=${segStart} segEnd=${segEnd} skip=${segEnd <= segStart}`);
+
       if (segEnd <= segStart) continue;
 
       const segFile = join(tempDir, `seg_${i}_${Date.now()}.mp4`);
@@ -485,6 +487,7 @@ async function renderVerticalTracked(
       log('TRACK', `Segment ${i}: crop=${Math.round(cx)},${Math.round(cy)} time=${segStart}-${segEnd}s`);
 
       if (heartbeatFn && i % 10 === 0) await heartbeatFn();
+      log('TRACK', `DEBUG Segment ${i}: seg.startTime=${seg.startTime} seg.endTime=${seg.endTime} jobStart=${jobStartTime} jobEnd=${jobEndTime} segStart=${segStart} segEnd=${segEnd}`);
       execSync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
 
       if (!existsSync(segFile)) {
