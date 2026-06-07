@@ -91,7 +91,7 @@ export default function Home() {
   const pollTimers = useRef<Record<number, ReturnType<typeof setInterval>>>({});
   const pollStartTimes = useRef<Record<number, number>>({});
 
-  const MAX_POLL_DURATION = 5 * 60 * 1000; // 5 minutes
+  const MAX_POLL_DURATION = 12 * 60 * 1000; // 12 minutes (face tracking + download + render)
 
   useEffect(() => {
     return () => {
