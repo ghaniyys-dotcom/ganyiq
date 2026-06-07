@@ -773,7 +773,7 @@ async function renderVerticalSplit(
 
         filterParts.push(
           `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
-          + `crop=${Math.round(cw)}:${FULL_H}:${cx}:${cy},scale=1080:1920,setpts=PTS-STARTPTS[${vLabel}]`
+          + `crop=${Math.round(cw)}:${FULL_H}:${cx}:${cy},scale=1080:1920,setsar=1,setpts=PTS-STARTPTS[${vLabel}]`
         );
         filterParts.push(
           `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
@@ -801,13 +801,13 @@ async function renderVerticalSplit(
           const cx = clamp(Math.round(faceCx - panelCropW / 2), 0, sourceWidth - panelCropW);
           const subLabel = `sf${segIdx}_${fi}`;
           filterParts.push(
-            `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,scale=1080:${segHeight},setpts=PTS-STARTPTS[${subLabel}]`
+            `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,scale=1080:${segHeight},setsar=1,setpts=PTS-STARTPTS[${subLabel}]`
           );
           vstackInputs.push(`[${subLabel}]`);
         }
 
         filterParts.push(
-          `${vstackInputs.join('')}vstack=inputs=${faceCount},setpts=PTS-STARTPTS[${vLabel}]`
+          `${vstackInputs.join('')}vstack=inputs=${faceCount},setsar=1,setpts=PTS-STARTPTS[${vLabel}]`
         );
         filterParts.push(
           `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
