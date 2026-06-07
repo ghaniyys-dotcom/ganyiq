@@ -563,10 +563,10 @@ async function renderVerticalTracked(
 //
 // =============================================================================
 
-const SPLIT_MIN_HOLD_SINGLE = 3.0;   // seconds before split can activate
-const SPLIT_MIN_HOLD_SPLIT = 3.0;    // seconds before split can deactivate
+const SPLIT_MIN_HOLD_SINGLE = 1.5;   // seconds before split can activate
+const SPLIT_MIN_HOLD_SPLIT = 1.5;    // seconds before split can deactivate
 const SPLIT_MAX_FACES = 3;           // max faces shown in split
-const SPLIT_CONFIDENCE_FLOOR = 0.1;  // min confidence to be "active"
+const SPLIT_CONFIDENCE_FLOOR = 0.01; // min confidence to be "active" (was 0.1 — too high for 720p)
 
 /**
  * Build multi-crop segments for split-screen rendering.
