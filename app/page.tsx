@@ -87,6 +87,7 @@ export default function Home() {
   const [clipStates, setClipStates] = useState<Record<number, ClipStatus>>({});
   const [clipUrls, setClipUrls] = useState<Record<number, string>>({});
   const [clipErrors, setClipErrors] = useState<Record<number, string>>({});
+  const [renderMode, setRenderMode] = useState<'landscape' | 'vertical'>('landscape');
   const pollTimers = useRef<Record<number, ReturnType<typeof setInterval>>>({});
   const pollStartTimes = useRef<Record<number, number>>({});
 
@@ -154,7 +155,7 @@ export default function Home() {
       const res = await fetch('/api/clips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ analysisId: result.analysisId, momentIndex }),
+        body: JSON.stringify({ analysisId: result.analysisId, momentIndex, renderMode }),
       });
       const data = await res.json();
 
@@ -454,6 +455,23 @@ export default function Home() {
             <div className="results-header">
               <h2>Clip Recommendations</h2>
               <span className="moment-count">{result.moments.length} moments</span>
+            </div>
+
+            {/* Render Mode Toggle */}
+            <div className="render-mode-toggle">
+              <span className="toggle-label">Output Format:</span>
+              <button
+                className={`toggle-btn ${renderMode === 'landscape' ? 'toggle-active' : ''}`}
+                onClick={() => setRenderMode('landscape')}
+              >
+                Landscape 16:9
+              </button>
+              <button
+                className={`toggle-btn ${renderMode === 'vertical' ? 'toggle-active' : ''}`}
+                onClick={() => setRenderMode('vertical')}
+              >
+                Vertical Shorts 9:16
+              </button>
             </div>
 
             <div className="moments-list">

@@ -130,14 +130,14 @@ export async function POST(
     if (cacheUpdate.rows.length === 0) {
       // No clips_cache entry found for this job — insert one
       await query(
-        `INSERT INTO clips_cache (video_id, start_time, end_time, filename, file_size_bytes, duration_seconds, job_id)
+        `INSERT INTO clips_cache (video_id, start_time, end_time, filename, file_size_bytes, duration_seconds, job_id, render_mode)
          VALUES (
            (SELECT video_id FROM moments m
             JOIN analyses a ON a.id = m.analysis_id
             JOIN videos v ON v.id = a.video_id
             WHERE v.youtube_id = $1
             LIMIT 1),
-           $2, $3, $4, $5, $6, $7
+           $2, $3, $4, $5, $6, $7, 'landscape'
          )`,
         [job.youtube_id, startTime, endTime, filename, fileSizeBytes, durationSeconds, jobId],
       );

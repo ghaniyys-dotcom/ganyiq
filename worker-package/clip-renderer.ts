@@ -10,10 +10,11 @@
  *   TTL: 7 days | Max cache: 50GB
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs';
 import { join, resolve } from 'path';
 import { execSync } from 'child_process';
 import { platform } from 'os';
+import { analyzeFaces, type CropSegment } from './face-tracker';
 
 // ---------------------------------------------------------------------------
 // Interfaces (mirrors the types in worker/index.ts)
@@ -38,6 +39,7 @@ interface Job {
     videoId: string;
     startTime: number;
     endTime: number;
+    renderMode?: 'landscape' | 'vertical';
   };
 }
 
@@ -78,6 +80,7 @@ interface ClipParams {
   videoId: string;
   startTime: number;
   endTime: number;
+  renderMode?: 'landscape' | 'vertical';
 }
 
 function loadCacheManifest(): Record<string, CacheEntry> {
@@ -199,6 +202,8 @@ export async function renderClip(
   }
 
   // SOURCE QUALITY LOG
+  let sourceWidth = 1280;
+  let sourceHeight = 720;
   try {
     const ffprobePath = env.FFMPEG_LOCATION
       ? `"${env.FFMPEG_LOCATION}/ffprobe"`
@@ -211,6 +216,8 @@ export async function renderClip(
     const vStream = probe?.streams?.find((s: any) => s.codec_type === 'video') || {};
     const aStream = probe?.streams?.find((s: any) => s.codec_type === 'audio') || {};
     log('SOURCE', `video=${vStream.width}x${vStream.height} codec=${vStream.codec_name} video_bitrate=${vStream.bit_rate || 'N/A'} audio_bitrate=${aStream.bit_rate || 'N/A'} duration=${probe?.format?.duration}s size=${probe?.format?.size} bytes`);
+    sourceWidth = vStream.width || 1280;
+    sourceHeight = vStream.height || 720;
     if (vStream.width < 1280 || vStream.height < 720) {
       log('WARN', `Source quality below 720p (${vStream.width}x${vStream.height})`);
     }
@@ -228,29 +235,61 @@ export async function renderClip(
     ? `"${env.FFMPEG_LOCATION}/ffmpeg"`
     : 'ffmpeg';
 
-  const ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -c copy -movflags +faststart "${outputPath}"`;
-  log('DEBUG', `[1] CACHE_DIR=${CACHE_DIR}`);
-  log('DEBUG', `[2] TEMP_DIR=${TEMP_DIR}`);
-  log('DEBUG', `[3] sourceVideoPath=${videoPath}`);
-  log('DEBUG', `[4] outputPath=${outputPath}`);
-  
-  // Source cache file size
-  try {
-    const srcStats = existsSync(videoPath)
-      ? execSync(platform() === 'win32' ? `dir /-c "${videoPath}"` : `stat -c%s "${videoPath}"`, { ...EXEC_OPTS, encoding: 'utf-8' })
-      : '0';
-    const srcSizeMatch = srcStats.match(/\d+/);
-    log('DEBUG', `[5] sourceVideoSizeBytes=${srcSizeMatch ? parseInt(srcSizeMatch[0], 10) : 0}`);
-  } catch (e) {
-    log('DEBUG', `[5] sourceVideoSizeBytes=ERROR: ${(e as Error).message.slice(0, 80)}`);
+  const renderMode = params.renderMode || 'landscape';
+  log('FFMPEG', `renderMode=${renderMode}`);
+
+  let ffmpegCmd: string;
+  if (renderMode === 'vertical') {
+    // ── Vertical mode: Face-tracking crop with center-crop fallback ──
+    const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight);
+
+    if (trackResult && trackResult.segments.length > 0 && trackResult.faceRatio > 0.3) {
+      // Face tracking available — segmented render
+      log('FACE', `Face tracking active: ${trackResult.segments.length} segments, ${(trackResult.faceRatio * 100).toFixed(0)}% face coverage`);
+      await renderVerticalTracked(
+        ffmpegPath, videoPath, outputPath,
+        startTime, endTime,
+        trackResult.segments,
+        sourceWidth, sourceHeight,
+      );
+      // Skip the single-command ffmpeg below
+      ffmpegCmd = ''; // marker: already rendered
+    } else {
+      // Fallback: center crop (V1 behavior)
+      log('FACE', 'Face tracking unavailable — using center crop');
+      ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -vf "scale=-1:1920,crop=1080:1920" -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${outputPath}"`;
+    }
+  } else {
+    // ── Landscape mode (existing): stream copy ──
+    ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -c copy -movflags +faststart "${outputPath}"`;
   }
 
-  // Exact ffmpeg command
-  log('DEBUG', `[6] ffmpegCmd=${ffmpegCmd}`);
+  // Skip if already rendered by face-tracking path
+  if (ffmpegCmd !== '') {
+    // Single-command render (landscape or vertical center-crop fallback)
+    log('DEBUG', `[1] CACHE_DIR=${CACHE_DIR}`);
+    log('DEBUG', `[2] TEMP_DIR=${TEMP_DIR}`);
+    log('DEBUG', `[3] sourceVideoPath=${videoPath}`);
+    log('DEBUG', `[4] outputPath=${outputPath}`);
+  
+    // Source cache file size
+    try {
+      const srcStats = existsSync(videoPath)
+        ? execSync(platform() === 'win32' ? `dir /-c "${videoPath}"` : `stat -c%s "${videoPath}"`, { ...EXEC_OPTS, encoding: 'utf-8' })
+        : '0';
+      const srcSizeMatch = srcStats.match(/\d+/);
+      log('DEBUG', `[5] sourceVideoSizeBytes=${srcSizeMatch ? parseInt(srcSizeMatch[0], 10) : 0}`);
+    } catch (e) {
+      log('DEBUG', `[5] sourceVideoSizeBytes=ERROR: ${(e as Error).message.slice(0, 80)}`);
+    }
 
-  execSync(ffmpegCmd, { ...EXEC_OPTS, timeout: 120_000 });
+    // Exact ffmpeg command
+    log('DEBUG', `[6] ffmpegCmd=${ffmpegCmd}`);
 
-  // Verify output exists
+    execSync(ffmpegCmd, { ...EXEC_OPTS, timeout: 120_000 });
+  }
+
+  // Verify output exists (runs for both single-command and face-tracked paths)
   const fileExists = existsSync(outputPath);
   log('DEBUG', `[7] outputFileExists=${fileExists}`);
   log('DEBUG', `[7b] outputFileAbsPath=${outputPath}`);
@@ -371,4 +410,114 @@ export async function renderClip(
 
   // Cleanup temp clip file
   try { execSync(`del /f "${outputPath}"`, EXEC_OPTS); } catch { try { execSync(`rm -f "${outputPath}"`, { ...EXEC_OPTS, shell: '/bin/sh' }); } catch {} }
+}
+
+// =========================================================================
+// FACE-TRACKED VERTICAL RENDER
+// =========================================================================
+
+/**
+ * Render a vertical (9:16) clip using face-tracking crop segments.
+ *
+ * Strategy:
+ *  1. For each CropSegment, cut the sub-clip with ffmpeg using the
+ *     segment's crop coordinates (cropX, cropY) with scale to 1080x1920.
+ *  2. Create a concat demuxer file listing all segments.
+ *  3. Concatenate all segments into the final output.
+ *
+ * Face coordinates are in source video pixel space (e.g., 1280x720).
+ * Crop is applied as part of the ffmpeg filter chain.
+ */
+async function renderVerticalTracked(
+  ffmpegPath: string,
+  sourceVideo: string,
+  outputPath: string,
+  jobStartTime: number,
+  jobEndTime: number,
+  segments: CropSegment[],
+  sourceWidth: number,
+  sourceHeight: number,
+): Promise<void> {
+  if (segments.length === 0) {
+    throw new Error('No crop segments provided for face-tracked render');
+  }
+
+  const tempDir = join(resolve(__dirname || '.'), 'temp');
+  const concatFile = join(tempDir, `concat_${Date.now()}.txt`);
+  const segmentPaths: string[] = [];
+
+  // Crop dimensions for 9:16 from source
+  const cropH = sourceHeight;
+  const cropW = sourceHeight * (1080 / 1920);  // e.g., 720 * 0.5625 = 405
+
+  log('TRACK', `Rendering ${segments.length} face-tracked segments (crop ${Math.round(cropW)}x${cropH})`);
+
+  try {
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const segStart = Math.max(jobStartTime, seg.startTime);
+      const segEnd = Math.min(jobEndTime, seg.endTime);
+
+      if (segEnd <= segStart) continue;
+
+      const segFile = join(tempDir, `seg_${i}_${Date.now()}.mp4`);
+      segmentPaths.push(segFile);
+
+      // Crop offset: maintain center on face position
+      const cx = Math.max(0, Math.min(sourceWidth - cropW, seg.cropX));
+      const cy = Math.max(0, Math.min(sourceHeight - cropH, seg.cropY));
+
+      const cmd = `${ffmpegPath} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" ` +
+        `-vf "crop=${Math.round(cropW)}:${cropH}:${Math.round(cx)}:${Math.round(cy)},scale=1080:1920" ` +
+        `-c:v libx264 -preset medium -crf 18 ` +
+        `-c:a aac -b:a 128k ` +
+        `-movflags +faststart ` +
+        `"${segFile}"`;
+
+      log('TRACK', `Segment ${i}: crop=${Math.round(cx)},${Math.round(cy)} time=${segStart}-${segEnd}s`);
+
+      execSync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
+
+      if (!existsSync(segFile)) {
+        throw new Error(`Segment ${i} produced no output`);
+      }
+    }
+
+    if (segmentPaths.length === 0) {
+      throw new Error('No valid segments produced');
+    }
+
+    if (segmentPaths.length === 1) {
+      // Single segment — just rename
+      execSync(
+        platform() === 'win32'
+          ? `move /y "${segmentPaths[0]}" "${outputPath}"`
+          : `mv "${segmentPaths[0]}" "${outputPath}"`,
+        EXEC_OPTS,
+      );
+      log('TRACK', 'Single segment — direct output');
+      return;
+    }
+
+    // Build concat demuxer file
+    const concatLines = segmentPaths.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
+    writeFileSync(concatFile, concatLines, 'utf-8');
+
+    log('TRACK', `Concatenating ${segmentPaths.length} segments`);
+
+    const concatCmd = `${ffmpegPath} -y -f concat -safe 0 -i "${concatFile}" -c copy "${outputPath}"`;
+    execSync(concatCmd, { ...EXEC_OPTS, timeout: 120_000 });
+
+    if (!existsSync(outputPath)) {
+      throw new Error('Concat produced no output file');
+    }
+
+    log('TRACK', `Concatenated ${segmentPaths.length} segments → ${outputPath}`);
+  } finally {
+    // Cleanup segment files
+    for (const p of segmentPaths) {
+      try { unlinkSync(p); } catch { /* ignore */ }
+    }
+    try { unlinkSync(concatFile); } catch { /* ignore */ }
+  }
 }

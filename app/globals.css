@@ -364,6 +364,40 @@ html, body {
   gap: 12px;
 }
 
+/* Render Mode Toggle */
+.render-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.toggle-label {
+  font-size: 13px;
+  color: var(--fg-secondary);
+  margin-right: 4px;
+}
+.toggle-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--fg-secondary);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.toggle-btn:hover {
+  border-color: var(--accent);
+  color: var(--fg-primary);
+}
+.toggle-btn.toggle-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+  font-weight: 600;
+}
+
 .moment-card {
   background: var(--bg-card);
   border: 1px solid var(--border);

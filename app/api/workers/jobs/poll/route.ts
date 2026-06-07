@@ -69,6 +69,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const job = result.rows[0];
 
+    // Extract renderMode from clip_params (default 'landscape')
+    const clipParams = job.clip_params || null;
+    const renderMode = clipParams?.renderMode || 'landscape';
+
     return NextResponse.json({
       job: {
         id: job.id,
@@ -76,7 +80,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         youtubeUrl: job.youtube_url,
         createdAt: job.created_at,
         jobType: job.job_type || 'transcript',
-        clipParams: job.clip_params || null,
+        clipParams: clipParams,
+        renderMode: renderMode,
       },
     });
   } catch (err: unknown) {

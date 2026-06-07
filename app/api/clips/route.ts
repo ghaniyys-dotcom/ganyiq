@@ -21,7 +21,7 @@ import { query } from '@/db/client';
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json();
-    const { analysisId, momentIndex } = body || {};
+    const { analysisId, momentIndex, renderMode } = body || {};
 
     if (!analysisId || typeof momentIndex !== 'number') {
       return NextResponse.json(
@@ -29,6 +29,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 400 },
       );
     }
+
+    const validRenderModes = ['landscape', 'vertical'];
+    const finalRenderMode = validRenderModes.includes(renderMode) ? renderMode : 'landscape';
 
     // 1. Look up the moment
     const momentResult = await query<{
@@ -56,12 +59,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const moment = momentResult.rows[0];
 
-    // 2. Check clips_cache
+    // 2. Check clips_cache (include render_mode in cache key)
     const cacheResult = await query<{ id: string; filename: string }>(
       `SELECT id, filename FROM clips_cache
-       WHERE video_id = $1 AND start_time = $2 AND end_time = $3
+       WHERE video_id = $1 AND start_time = $2 AND end_time = $3 AND render_mode = $4
        LIMIT 1`,
-      [moment.video_id, moment.start_time, moment.end_time],
+      [moment.video_id, moment.start_time, moment.end_time, finalRenderMode],
     );
 
     if (cacheResult.rows.length > 0) {
@@ -78,6 +81,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       videoId: moment.video_id,
       startTime: parseFloat(moment.start_time),
       endTime: parseFloat(moment.end_time),
+      renderMode: finalRenderMode,
     };
 
     const youtubeUrl = `https://www.youtube.com/watch?v=${moment.youtube_id}`;
@@ -93,10 +97,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // 4. Create clips_cache entry (pending, will be updated by worker)
     const cacheInsert = await query<{ id: string }>(
-      `INSERT INTO clips_cache (video_id, start_time, end_time, filename, job_id)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO clips_cache (video_id, start_time, end_time, filename, job_id, render_mode)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [moment.video_id, moment.start_time, moment.end_time, '', jobId],
+      [moment.video_id, moment.start_time, moment.end_time, '', jobId, finalRenderMode],
     );
 
     return NextResponse.json(
