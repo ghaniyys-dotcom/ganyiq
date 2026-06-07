@@ -272,7 +272,6 @@ export async function renderClip(
     // ── Landscape mode (existing): stream copy ──
     ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -c copy -movflags +faststart "${outputPath}"`;
   }
-  }  // closes outer if (vertical || vertical-split)
 
   // Skip if already rendered by face-tracking path
   if (ffmpegCmd !== '') {
