@@ -101,7 +101,7 @@ const MIN_HOLD_FRAMES = 1;        // hold camera at least 1 second
 const DOMINANT_SWITCH_RATIO = 1.2; // new face must be 20% more dominant
 const IDENTITY_MATCH_DIST = 100;   // max euclidean dist for same identity
 const IDENTITY_TIMEOUT_FRAMES = 3; // forget ID after 3s absence
-const CONFIDENCE_LOCK_THRESHOLD = 0.6;
+const CONFIDENCE_LOCK_THRESHOLD = 0.25; // lower: real faces score ~10-25/100
 const VERTICAL_HEIGHT = 1920;
 const VERTICAL_WIDTH = 1080;
 
@@ -422,8 +422,12 @@ function calculateDominance(
   sourceHeight: number,
   faceHistory: Map<number, number>, // faceId → consecutive frames seen
 ): FaceDominance {
-  // Face size score: normalize to 720p frame height
-  const faceSizeScore = Math.min(40, (face.w * face.h) / (sourceWidth * sourceHeight / 100));
+  // Face size score: relative to frame area, scaled realistically
+  // A 200x200 face in 720p = ~4.3% of frame → score ~30
+  const frameArea = sourceWidth * sourceHeight;
+  const faceArea = face.w * face.h;
+  const relativeSize = faceArea / frameArea;
+  const faceSizeScore = Math.min(40, relativeSize * 700);
 
   // Center score: prefer faces closer to middle
   const frameCx = sourceWidth / 2;
@@ -432,7 +436,7 @@ function calculateDominance(
     Math.pow((face.cx - frameCx) / sourceWidth, 2) +
     Math.pow((face.cy - frameCy) / sourceHeight, 2)
   );
-  const centerScore = Math.max(0, 30 * (1 - distFromCenter * 2));
+  const centerScore = Math.max(0, 30 * (1 - Math.min(1, distFromCenter * 3)));
 
   // Stability score: face seen consistently = higher score
   const consecutive = faceHistory.get(face.id) || 1;
@@ -661,8 +665,8 @@ function buildSegments(
   const segments: SegmentAccum[] = [];
 
   for (const sample of samples) {
-    if (!sample.hasFace || sample.confidence < CONFIDENCE_LOCK_THRESHOLD) {
-      // Low confidence or no face — use last known good position
+    if (!sample.hasFace) {
+      // No face at all — lock to last known good position, not center crop
       const cx = lastGoodCx;
       const cy = lastGoodCy;
 
@@ -673,7 +677,7 @@ function buildSegments(
           totalCx: cx,
           totalCy: cy,
           count: 1,
-          hasFace: true,       // Still report as face segment (locked position)
+          hasFace: true,       // Report as face segment (locked position)
           lastCx: cx,
           lastCy: cy,
         });
@@ -689,7 +693,8 @@ function buildSegments(
       continue;
     }
 
-    // Valid face with confidence
+    // Face IS present — ALWAYS update position (even with low confidence)
+    // Confidence only affects target switching, not whether to use the position
     lastGoodCx = sample.cx;
     lastGoodCy = sample.cy;
 
