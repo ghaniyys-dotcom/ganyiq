@@ -737,16 +737,19 @@ async function renderVerticalSplit(
   }
 
   const tempDir = join(resolve(__dirname || '.'), 'temp');
-  const concatFile = join(tempDir, `split_concat_${Date.now()}.txt`);
-  const segmentPaths: string[] = [];
-
   const FULL_H = sourceHeight;
   const OLD_CROP_W = FULL_H * (1080 / 1920); // 405 for 720p — width used by buildSplitSegments
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-  // Consistent encoder settings for all segments → no mismatch on concat
+  // ── Build a single filter_complex for ALL segments ──
+  // Each segment produces one video + one audio stream.
+  // Multi-face segments use split + vstack; single-face uses crop+scale.
+  // Final concat filter stitches everything seamlessly.
+
+  const filterParts: string[] = [];
+  const concatInputs: string[] = [];
   const ENC = '-c:v libx264 -preset fast -crf 20 -c:a aac -b:a 128k -movflags +faststart';
-  const KF = '-force_key_frames expr:gte(t,n_forced*1)'; // keyframe every 1s for smooth concat
+  let segIdx = 0;
 
   try {
     for (let i = 0; i < segments.length; i++) {
@@ -755,110 +758,89 @@ async function renderVerticalSplit(
       const segEnd = Math.min(jobEndTime, seg.endTime);
       if (segEnd <= segStart) continue;
 
-      const segFile = join(tempDir, `split_seg_${i}_${Date.now()}.mp4`);
-      segmentPaths.push(segFile);
-
       const numFaces = seg.crops.length;
+      const vLabel = `sv${segIdx}`;
+      const aLabel = `sa${segIdx}`;
 
       if (numFaces <= 1) {
-        // ── Single-face: tight crop (9:16 → 1080×1920) ──
-        // Reconstruct face center from stored cropX (computed with OLD_CROP_W)
+        // ── Single-face: trim → crop → scale ──
         const faceCx = seg.crops[0]?.cropX !== undefined
           ? seg.crops[0].cropX + OLD_CROP_W / 2
           : sourceWidth / 2;
-        const faceCy = seg.crops[0]?.cropY !== undefined
-          ? seg.crops[0].cropY + FULL_H * 0.35
-          : FULL_H / 2;
-
-        const cw = OLD_CROP_W; // 405 — tight vertical strip
-        const ch = FULL_H;     // full source height
+        const cw = OLD_CROP_W;
         const cx = clamp(Math.round(faceCx - cw / 2), 0, sourceWidth - cw);
-        const cy = clamp(Math.round(faceCy - ch * 0.35), 0, sourceHeight - ch);
+        const cy = 0;
 
-        const cmd = `${ffmpegPath} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" `
-          + `-vf "crop=${Math.round(cw)}:${ch}:${cx}:${cy},scale=1080:1920" `
-          + `${KF} ${ENC} "${segFile}"`;
-        log('SPLIT', `Seg ${i}: single-face crop=${cx},${cy}`);
-        execSync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
+        filterParts.push(
+          `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+          + `crop=${Math.round(cw)}:${FULL_H}:${cx}:${cy},scale=1080:1920,setpts=PTS-STARTPTS[${vLabel}]`
+        );
+        filterParts.push(
+          `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
+        );
+        log('SPLIT', `Seg ${segIdx}: single-face crop=${cx},${cy} [${segStart}s-${segEnd}s]`);
       } else {
-        // ── Multi-face: wider crop matching target panel aspect ──
+        // ── Multi-face: trim → split → crop each → vstack ──
         const faceCount = Math.min(numFaces, SPLIT_MAX_FACES);
-        const segHeight = Math.floor(1920 / faceCount); // panel height in output
-
-        // Crop width that fills 1080-wide panel at target height (preserves aspect)
+        const segHeight = Math.floor(1920 / faceCount);
         let panelCropW = Math.round(FULL_H * (1080 / segHeight));
-        // Clamp to source width
         panelCropW = Math.min(panelCropW, sourceWidth);
 
-        const filterParts: string[] = [];
-        const inputLabels: string[] = [];
+        const splitLabel = `sp${segIdx}`;
+        filterParts.push(
+          `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,split=${faceCount}[${splitLabel}_0`
+          + `${Array.from({length: faceCount - 1}, (_, j) => `][${splitLabel}_${j + 1}`).join('')}]`
+        );
 
+        const vstackInputs: string[] = [];
         for (let fi = 0; fi < faceCount; fi++) {
           const face = seg.crops[fi];
-          // Reconstruct face center from stored cropX
           const faceCx = face.cropX !== undefined
             ? face.cropX + OLD_CROP_W / 2
             : sourceWidth / 2;
-          const faceCy = face.cropY !== undefined
-            ? face.cropY + FULL_H * 0.35
-            : FULL_H / 2;
-
           const cx = clamp(Math.round(faceCx - panelCropW / 2), 0, sourceWidth - panelCropW);
-          const cy = clamp(Math.round(faceCy - FULL_H * 0.35), 0, sourceHeight - FULL_H);
-
-          const label = `f${fi}`;
+          const subLabel = `sf${segIdx}_${fi}`;
           filterParts.push(
-            `[0:v]crop=${panelCropW}:${FULL_H}:${cx}:${cy},scale=1080:${segHeight}[${label}]`
+            `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,scale=1080:${segHeight},setpts=PTS-STARTPTS[${subLabel}]`
           );
-          inputLabels.push(`[${label}]`);
+          vstackInputs.push(`[${subLabel}]`);
         }
 
-        filterParts.push(inputLabels.join('') + `vstack=inputs=${faceCount}[v]`);
-
-        const cmd = `${ffmpegPath} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" `
-          + `-filter_complex "${filterParts.join(';')}" `
-          + `-map "[v]" -map 0:a? `
-          + `${KF} ${ENC} "${segFile}"`;
-        log('SPLIT', `Seg ${i}: ${faceCount}-way split cw=${panelCropW} sh=${segHeight}`);
-        execSync(cmd, { ...EXEC_OPTS, timeout: 180_000 });
+        filterParts.push(
+          `${vstackInputs.join('')}vstack=inputs=${faceCount},setpts=PTS-STARTPTS[${vLabel}]`
+        );
+        filterParts.push(
+          `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
+        );
+        log('SPLIT', `Seg ${segIdx}: ${faceCount}-way split cw=${panelCropW} [${segStart}s-${segEnd}s]`);
       }
 
-      if (!existsSync(segFile)) {
-        throw new Error(`Split segment ${i} produced no output`);
-      }
-
-      if (heartbeatFn && i % 5 === 0) await heartbeatFn();
+      concatInputs.push(`[${vLabel}][${aLabel}]`);
+      segIdx++;
     }
 
-    if (segmentPaths.length === 0) {
+    if (segIdx === 0) {
       throw new Error('No valid split segments produced');
     }
 
-    if (segmentPaths.length === 1) {
-      execSync(
-        platform() === 'win32'
-          ? `move /y "${segmentPaths[0]}" "${outputPath}"`
-          : `mv "${segmentPaths[0]}" "${outputPath}"`,
-        EXEC_OPTS,
-      );
-      log('SPLIT', 'Single segment — direct output');
-      return;
-    }
+    // ── Final concat filter ──
+    filterParts.push(
+      `${concatInputs.join('')}concat=n=${segIdx}:v=1:a=1[outv][outa]`
+    );
 
-    // Concat multiple segments
-    const concatLines = segmentPaths.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
-    writeFileSync(concatFile, concatLines, 'utf-8');
-    const concatCmd = `${ffmpegPath} -y -f concat -safe 0 -i "${concatFile}" -c copy "${outputPath}"`;
-    execSync(concatCmd, { ...EXEC_OPTS, timeout: 120_000 });
+    const filterComplex = filterParts.join(';');
+    const cmd = `${ffmpegPath} -y -i "${sourceVideo}"`
+      + ` -filter_complex "${filterComplex}"`
+      + ` -map "[outv]" -map "[outa]" ${ENC} "${outputPath}"`;
+
+    log('SPLIT', `Single-pass render: ${segIdx} segments, filter_complex length=${filterComplex.length}`);
+    execSync(cmd, { ...EXEC_OPTS, timeout: 300_000 });
 
     if (!existsSync(outputPath)) {
-      throw new Error('Split concat produced no output file');
+      throw new Error('Split render produced no output file');
     }
-    log('SPLIT', `Concatenated ${segmentPaths.length} split segments`);
+    log('SPLIT', `✅ Single-pass complete: ${outputPath}`);
   } finally {
-    for (const p of segmentPaths) {
-      try { unlinkSync(p); } catch { /* ignore */ }
-    }
-    try { unlinkSync(concatFile); } catch { /* ignore */ }
+    // Cleanup temp files (if any — this path no longer creates them per-segment)
   }
 }
