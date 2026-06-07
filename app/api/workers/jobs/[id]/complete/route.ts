@@ -82,7 +82,10 @@ export async function POST(
     const confidence = body?.confidence ?? null;
     const durationMs = body?.duration_ms ?? null;
 
-    await query(
+    // Atomic completion: verify job is still claimed AND owned by this worker
+    // Using WHERE status='claimed' ensures idempotency — a concurrent request
+    // that already completed this job gets 0 rows and returns ALREADY_COMPLETED.
+    const updateResult = await query<{ id: string }>(
       `UPDATE jobs_queue
        SET status = 'completed',
            result = $1::jsonb,
@@ -92,9 +95,31 @@ export async function POST(
            duration_ms = $4,
            completed_at = NOW(),
            updated_at = NOW()
-       WHERE id = $5`,
-      [segmentsJson, fullTranscript, confidence, durationMs, jobId],
+       WHERE id = $5
+         AND status = 'claimed'
+         AND worker_id = $6
+       RETURNING id`,
+      [segmentsJson, fullTranscript, confidence, durationMs, jobId, workerId],
     );
+
+    if (updateResult.rows.length === 0) {
+      // Job was already completed, or claimed by another worker
+      // Check current status for a more specific error message
+      const currentJob = await query<{ status: string }>(
+        'SELECT status FROM jobs_queue WHERE id = $1', [jobId]
+      );
+      const currentStatus = currentJob.rows[0]?.status;
+      if (currentStatus === 'completed') {
+        return NextResponse.json(
+          { error: 'Job is already completed.', code: 'ALREADY_COMPLETED' },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json(
+        { error: 'Job not found or not claimable.', code: 'NOT_FOUND' },
+        { status: 404 },
+      );
+    }
 
     // Increment worker's completed count
     await query(

@@ -26,7 +26,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     await authenticateWorker(workerId, request.headers.get('Authorization'));
 
-    // Auto-recover stuck claimed jobs (claimed > 15 min with no progress)
+    // Auto-recover stuck claimed jobs
+    // Uses worker heartbeat to determine staleness (not just a fixed timeout).
+    // A job is stale ONLY if its claiming worker hasn't sent a heartbeat in 5 min.
+    // Falls back to 30 minute absolute timeout as safety net.
     await query(
       `UPDATE jobs_queue
        SET status = 'pending',
@@ -34,7 +37,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
            claimed_at = NULL,
            updated_at = NOW()
        WHERE status = 'claimed'
-         AND claimed_at < NOW() - INTERVAL '15 minutes'`,
+         AND (
+           worker_id IN (
+             SELECT id FROM workers
+             WHERE last_heartbeat IS NULL
+                OR last_heartbeat < NOW() - INTERVAL '5 minutes'
+           )
+           OR claimed_at < NOW() - INTERVAL '30 minutes'
+         )`,
     );
 
     // Atomic claim: FOR UPDATE SKIP LOCKED ensures no conflicts

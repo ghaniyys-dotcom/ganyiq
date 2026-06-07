@@ -143,15 +143,38 @@ export async function POST(
       );
     }
 
-    // ── Mark job completed ────────────────────────────────────────────────
-    await query(
+    // ── Mark job completed (idempotent: only if still claimed) ──────────────
+    const completeResult = await query<{ id: string }>(
       `UPDATE jobs_queue
        SET status = 'completed',
            completed_at = NOW(),
            updated_at = NOW()
-       WHERE id = $1`,
-      [jobId],
+       WHERE id = $1
+         AND status = 'claimed'
+         AND worker_id = $2
+       RETURNING id`,
+      [jobId, workerId],
     );
+
+    // If job was already completed, don't double-increment stats
+    // (file write is already done — no harm in duplicative file)
+    if (completeResult.rows.length === 0) {
+      // Job was either already completed or not claimed by this worker
+      // Check if already completed
+      const checkJob = await query<{ status: string }>(
+        'SELECT status FROM jobs_queue WHERE id = $1', [jobId]
+      );
+      if (checkJob.rows[0]?.status === 'completed') {
+        return NextResponse.json({
+          status: 'ok',
+          url: `/clips/${filename}`,
+        });
+      }
+      return NextResponse.json(
+        { error: 'Not authorized to complete this job.', code: 'CROSS_WORKER_BLOCKED' },
+        { status: 403 },
+      );
+    }
 
     // ── Increment worker's completed count ────────────────────────────────
     await query(

@@ -464,8 +464,10 @@ function calculateDominance(
 interface CameraState {
   targetFaceId: number | null;    // which face ID we're currently following
   holdCounter: number;            // frames held on current target
-  lastKnownCx: number;            // last good crop position
+  lastKnownCx: number;            // true face tracking position (always updated)
   lastKnownCy: number;
+  cameraCx: number;               // camera output position (only updated on significant move)
+  cameraCy: number;
   lastKnownHasFace: boolean;
   consecutiveNoFace: number;      // frames without any face
 }
@@ -488,6 +490,8 @@ function selectCameraTarget(
     holdCounter: 0,
     lastKnownCx: defaultCropX,
     lastKnownCy: 0,
+    cameraCx: defaultCropX,
+    cameraCy: 0,
     lastKnownHasFace: false,
     consecutiveNoFace: 0,
   };
@@ -587,14 +591,22 @@ function selectCameraTarget(
     const confidence = target.score / 100;
 
     // Apply dead zone: don't move camera for tiny movements
+    // The dead zone prevents OUTPUT jitter by keeping the camera steady when
+    // face moves < DEAD_ZONE_PX. Internal tracking state always updates to the
+    // true face position so that accumulated displacement eventually exceeds
+    // the threshold and the camera corrects to the new position.
     if (state.lastKnownHasFace) {
-      const dx = target.cx - state.lastKnownCx;
-      if (Math.abs(dx) < DEAD_ZONE_PX) {
-        // Keep last position
+      const dx = target.cx - state.cameraCx;
+      const dy = target.cy - state.cameraCy;
+      if (Math.sqrt(dx * dx + dy * dy) < DEAD_ZONE_PX) {
+        // Update internal tracking state (true face position)
+        state.lastKnownCx = target.cx;
+        state.lastKnownCy = target.cy;
+        // Output the steady camera position (no jitter)
         output.push({
           time: sample.time,
-          cx: state.lastKnownCx,
-          cy: state.lastKnownCy,
+          cx: state.cameraCx,
+          cy: state.cameraCy,
           w: target.w,
           h: target.h,
           face_count: sample.faces.length,
@@ -605,9 +617,12 @@ function selectCameraTarget(
       }
     }
 
-    // Update last known position
+    // Update last known face position
     state.lastKnownCx = target.cx;
     state.lastKnownCy = target.cy;
+    // Update camera output position (face moved beyond dead zone)
+    state.cameraCx = target.cx;
+    state.cameraCy = target.cy;
     state.lastKnownHasFace = true;
 
     output.push({
@@ -695,8 +710,6 @@ function buildSegments(
 
     // Face IS present — ALWAYS update position (even with low confidence)
     // Confidence only affects target switching, not whether to use the position
-    lastGoodCx = sample.cx;
-    lastGoodCy = sample.cy;
 
     // Calculate crop X for this face position
     // cropX = faceCx - cropW/2, clamped to [0, sourceWidth - cropW]
@@ -705,6 +718,12 @@ function buildSegments(
 
     let targetCropY = sample.cy - cropH * 0.35;
     targetCropY = Math.max(0, Math.min(sourceHeight - cropH, targetCropY));
+
+    // Store CROP position (not face center) so that no-face fallback
+    // at line 670 uses the correct crop coordinate.
+    // This MUST be after targetCropX/Y calculation.
+    lastGoodCx = targetCropX;
+    lastGoodCy = targetCropY;
 
     const current = segments.length > 0 ? segments[segments.length - 1] : null;
 
