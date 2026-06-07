@@ -397,7 +397,7 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
   // Branch by job type
   if (job.jobType === 'clip') {
     try {
-      await renderClip(job, env);
+      await renderClip(job, env, () => sendHeartbeat(env));
     } catch (err) {
       const errorMsg = (err as Error).message.slice(0, 500);
       log('CLIP', `❌ Failed: ${errorMsg}`);

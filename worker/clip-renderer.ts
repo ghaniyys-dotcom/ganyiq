@@ -172,9 +172,12 @@ function enforceCacheLimit(): void {
   saveCacheManifest(manifest);
 }
 
+export type HeartbeatFn = () => Promise<void>;
+
 export async function renderClip(
   job: Job & { jobType?: string; clipParams?: ClipParams },
   env: EnvConfig,
+  heartbeatFn?: HeartbeatFn,
 ): Promise<void> {
   const params = job.clipParams;
   if (!params) throw new Error('clip_params missing from job');
@@ -194,6 +197,7 @@ export async function renderClip(
     videoPath = join(CACHE_DIR, `${videoId}.mp4`);
     log('YTDLP', `Downloading video: ${videoUrl}`);
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
+    if (heartbeatFn) await heartbeatFn();
     execSync(
       `yt-dlp ${ffmpegFlag} -f "best[height<=720]" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
       EXEC_OPTS,
@@ -241,6 +245,7 @@ export async function renderClip(
   let ffmpegCmd: string;
   if (renderMode === 'vertical') {
     // ── Vertical mode: Face-tracking crop with center-crop fallback ──
+    if (heartbeatFn) await heartbeatFn();
     const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight);
 
     if (trackResult && trackResult.segments.length > 0 && trackResult.faceRatio > 0.3) {
@@ -251,6 +256,7 @@ export async function renderClip(
         startTime, endTime,
         trackResult.segments,
         sourceWidth, sourceHeight,
+        heartbeatFn,
       );
       // Skip the single-command ffmpeg below
       ffmpegCmd = ''; // marker: already rendered
@@ -286,6 +292,7 @@ export async function renderClip(
     // Exact ffmpeg command
     log('DEBUG', `[6] ffmpegCmd=${ffmpegCmd}`);
 
+    if (heartbeatFn) await heartbeatFn();
     execSync(ffmpegCmd, { ...EXEC_OPTS, timeout: 120_000 });
   }
 
@@ -437,6 +444,7 @@ async function renderVerticalTracked(
   segments: CropSegment[],
   sourceWidth: number,
   sourceHeight: number,
+  heartbeatFn?: HeartbeatFn,
 ): Promise<void> {
   if (segments.length === 0) {
     throw new Error('No crop segments provided for face-tracked render');
@@ -476,6 +484,7 @@ async function renderVerticalTracked(
 
       log('TRACK', `Segment ${i}: crop=${Math.round(cx)},${Math.round(cy)} time=${segStart}-${segEnd}s`);
 
+      if (heartbeatFn && i % 10 === 0) await heartbeatFn();
       execSync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
 
       if (!existsSync(segFile)) {
