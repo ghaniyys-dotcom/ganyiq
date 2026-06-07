@@ -87,7 +87,7 @@ export default function Home() {
   const [clipStates, setClipStates] = useState<Record<number, ClipStatus>>({});
   const [clipUrls, setClipUrls] = useState<Record<number, string>>({});
   const [clipErrors, setClipErrors] = useState<Record<number, string>>({});
-  const [renderMode, setRenderMode] = useState<'landscape' | 'vertical' | 'vertical-split'>('vertical-split');
+  const [renderMode, setRenderMode] = useState<'landscape' | 'vertical'>('vertical');
   const pollTimers = useRef<Record<number, ReturnType<typeof setInterval>>>({});
   const pollStartTimes = useRef<Record<number, number>>({});
 
@@ -470,13 +470,7 @@ export default function Home() {
                 className={`toggle-btn ${renderMode === 'vertical' ? 'toggle-active' : ''}`}
                 onClick={() => setRenderMode('vertical')}
               >
-                Face Track
-              </button>
-              <button
-                className={`toggle-btn ${renderMode === 'vertical-split' ? 'toggle-active' : ''}`}
-                onClick={() => setRenderMode('vertical-split')}
-              >
-                Split Screen
+                Shorts 9:16
               </button>
             </div>
 

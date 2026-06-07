@@ -30,7 +30,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const validRenderModes = ['landscape', 'vertical', 'vertical-split'];
+    const validRenderModes = ['landscape', 'vertical'];
     const finalRenderMode = validRenderModes.includes(renderMode) ? renderMode : 'landscape';
 
     // 1. Look up the moment

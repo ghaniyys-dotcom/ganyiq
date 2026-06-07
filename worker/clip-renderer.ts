@@ -244,54 +244,28 @@ export async function renderClip(
 
   let ffmpegCmd: string;
   if (renderMode === 'vertical' || renderMode === 'vertical-split') {
-    // ── Vertical mode: Face-tracking crop with center-crop fallback ──
+    // ── Unified Shorts mode: dynamic split screen for any face count ──
     if (heartbeatFn) await heartbeatFn();
     const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight, startTime, endTime);
+    const multiFaces = (trackResult?.multiFaces && trackResult.multiFaces.length > 0) ? trackResult.multiFaces : [];
+    const baseSegments = (trackResult?.segments && trackResult.segments.length > 0) ? trackResult.segments : [];
 
-    if (renderMode === 'vertical-split' && trackResult && trackResult.multiFaces && trackResult.faceRatio > 0.3) {
-      // ── Dynamic Split Screen mode ──
-      log('SPLIT', `Split screen mode: ${trackResult.multiFaces.length} frames, ${trackResult.segments.length} base segments`);
-      const splitSegments = buildSplitSegments(
-        trackResult.multiFaces,
-        trackResult.segments,
-        sourceWidth, sourceHeight,
-      );
-      if (splitSegments.length > 0) {
-        await renderVerticalSplit(
-          ffmpegPath, videoPath, outputPath,
-          startTime, endTime,
-          splitSegments,
-          sourceWidth, sourceHeight,
-          heartbeatFn,
-        );
-        ffmpegCmd = ''; // marker: already rendered
-      } else {
-        log('SPLIT', 'No split segments — falling back to single-face tracking');
-        renderMode = 'vertical'; // fallback
-      }
-    } else if (renderMode === 'vertical-split') {
-      // Fallback: split screen conditions not met (no multi-face / low coverage)
-      log('SPLIT', 'Split screen unavailable — falling back to single-face tracking');
-      renderMode = 'vertical';
-    }
+    // Build split segments — handles 0, 1, 2, 3+ faces automatically
+    const splitSegments = buildSplitSegments(multiFaces, baseSegments, sourceWidth, sourceHeight);
 
-    if (renderMode === 'vertical') {
-      // Original vertical tracking (also reached via fallback from split)
-      if (trackResult && trackResult.segments.length > 0 && trackResult.faceRatio > 0.3) {
-      // Face tracking available — segmented render
-      log('FACE', `Face tracking active: ${trackResult.segments.length} segments, ${(trackResult.faceRatio * 100).toFixed(0)}% face coverage`);
-      await renderVerticalTracked(
+    if (splitSegments.length > 0) {
+      log('SHORTS', `Split screen render: ${splitSegments.length} segments`);
+      await renderVerticalSplit(
         ffmpegPath, videoPath, outputPath,
         startTime, endTime,
-        trackResult.segments,
+        splitSegments,
         sourceWidth, sourceHeight,
         heartbeatFn,
       );
-      // Skip the single-command ffmpeg below
       ffmpegCmd = ''; // marker: already rendered
     } else {
-      // Fallback: center crop (V1 behavior)
-      log('FACE', 'Face tracking unavailable — using center crop');
+      // Extreme fallback — should never happen with buildSplitSegments
+      log('SHORTS', 'No split segments — center crop fallback');
       ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -vf "scale=-1:1920,crop=1080:1920" -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${outputPath}"`;
     }
   } else {
