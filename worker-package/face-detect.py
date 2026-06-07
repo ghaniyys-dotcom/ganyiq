@@ -2,12 +2,14 @@
 """
 face-detect.py — OpenCV Haar Cascade face detector for GANYIQ worker.
 V2.4A: Returns ALL detected faces (not just the largest).
+V2.4A-opt: Accept --start-time and --end-time for clip-range-only processing.
 
 Usage:
-  python3 face-detect.py <video_path> <output_json_path> [sample_rate]
+  python3 face-detect.py <video_path> <output_json_path> [sample_rate] [--start-time SEC] [--end-time SEC]
 
 Detects faces in video at `sample_rate` fps (default: 1 fps).
-Writes JSON array to output_json_path.
+When --start-time and --end-time are given, only processes that window
+(with 5s padding before start for identity establishment).
 
 Output format (V2.4A):
   [
@@ -15,27 +17,32 @@ Output format (V2.4A):
       {"cx": 320.0, "cy": 360.0, "w": 200, "h": 200},
       {"cx": 960.0, "cy": 380.0, "w": 180, "h": 180}
     ]},
-    {"time": 1.0, "face_count": 0, "faces": []},
     ...
   ]
-
-Where cx, cy = center of each face in pixels.
-faces is empty array when no face detected.
 """
 
 import json
 import sys
 import os
+import argparse
 
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: face-detect.py <video_path> <output_json_path> [sample_rate]", file=sys.stderr)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Detect faces in video')
+    parser.add_argument('video_path', help='Path to video file')
+    parser.add_argument('output_path', help='Path to output JSON')
+    parser.add_argument('sample_rate', nargs='?', type=float, default=1.0,
+                        help='Sample rate in fps (default: 1.0)')
+    parser.add_argument('--start-time', type=float, default=None,
+                        help='Start time in seconds (clip range)')
+    parser.add_argument('--end-time', type=float, default=None,
+                        help='End time in seconds (clip range)')
 
-    video_path = sys.argv[1]
-    output_path = sys.argv[2]
-    sample_rate = float(sys.argv[3]) if len(sys.argv) > 3 else 1.0
+    args = parser.parse_args()
+
+    video_path = args.video_path
+    output_path = args.output_path
+    sample_rate = args.sample_rate
 
     if not os.path.exists(video_path):
         print(f"Error: video not found: {video_path}", file=sys.stderr)
@@ -67,16 +74,37 @@ def main():
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # Calculate frame range
+    if args.start_time is not None and args.end_time is not None:
+        # Add 10s padding before start (for identity establishment) and 5s after
+        process_start = max(0, args.start_time - 10)
+        process_end = args.end_time + 5
+        start_frame = int(process_start * fps)
+        end_frame = min(total_frames, int(process_end * fps))
+        print(f"[INFO] Clip range: {args.start_time}s-{args.end_time}s, "
+              f"processing: {process_start:.0f}s-{process_end:.0f}s "
+              f"(frames {start_frame}-{end_frame})", file=sys.stderr)
+    else:
+        start_frame = 0
+        end_frame = total_frames
+        print(f"[INFO] Full video: processing all {total_frames} frames", file=sys.stderr)
+
+    # Seek to start frame
+    if start_frame > 0:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
     frame_interval = max(1, int(fps / sample_rate))
     results = []
+    frame_idx = start_frame
+    total_to_process = end_frame - start_frame
 
-    frame_idx = 0
-    while True:
+    while frame_idx < end_frame:
         ret, frame = cap.read()
         if not ret:
             break
 
-        if frame_idx % frame_interval == 0:
+        if (frame_idx - start_frame) % frame_interval == 0:
             time_sec = frame_idx / fps
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -109,10 +137,10 @@ def main():
 
         frame_idx += 1
 
-        # Progress indicator every 500 frames
-        if frame_idx % 500 == 0:
-            pct = int(frame_idx / total_frames * 100) if total_frames > 0 else 0
-            print(f"[PROGRESS] {pct}% ({frame_idx}/{total_frames} frames)", file=sys.stderr)
+        # Progress indicator
+        if total_to_process > 0 and (frame_idx - start_frame) % 200 == 0:
+            pct = int((frame_idx - start_frame) / total_to_process * 100)
+            print(f"[PROGRESS] {pct}% ({frame_idx - start_frame}/{total_to_process} frames)", file=sys.stderr)
 
     cap.release()
 

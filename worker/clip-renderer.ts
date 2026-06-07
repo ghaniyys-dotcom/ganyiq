@@ -246,7 +246,7 @@ export async function renderClip(
   if (renderMode === 'vertical') {
     // ── Vertical mode: Face-tracking crop with center-crop fallback ──
     if (heartbeatFn) await heartbeatFn();
-    const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight);
+    const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight, startTime, endTime);
 
     if (trackResult && trackResult.segments.length > 0 && trackResult.faceRatio > 0.3) {
       // Face tracking available — segmented render
@@ -466,8 +466,6 @@ async function renderVerticalTracked(
       const segStart = Math.max(jobStartTime, seg.startTime);
       const segEnd = Math.min(jobEndTime, seg.endTime);
 
-      log('TRACK', `DEBUG seg[${i}]: seg.startTime=${seg.startTime} seg.endTime=${seg.endTime} jobStart=${jobStartTime} jobEnd=${jobEndTime} segStart=${segStart} segEnd=${segEnd} skip=${segEnd <= segStart}`);
-
       if (segEnd <= segStart) continue;
 
       const segFile = join(tempDir, `seg_${i}_${Date.now()}.mp4`);
@@ -487,7 +485,6 @@ async function renderVerticalTracked(
       log('TRACK', `Segment ${i}: crop=${Math.round(cx)},${Math.round(cy)} time=${segStart}-${segEnd}s`);
 
       if (heartbeatFn && i % 10 === 0) await heartbeatFn();
-      log('TRACK', `DEBUG Segment ${i}: seg.startTime=${seg.startTime} seg.endTime=${seg.endTime} jobStart=${jobStartTime} jobEnd=${jobEndTime} segStart=${segStart} segEnd=${segEnd}`);
       execSync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
 
       if (!existsSync(segFile)) {

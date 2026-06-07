@@ -152,6 +152,8 @@ function runFaceDetection(
   videoPath: string,
   tempDir: string,
   sampleRate: number,
+  clipStart?: number,
+  clipEnd?: number,
 ): RawMultiSample[] | null {
   const pythonBin = resolvePython();
   if (!pythonBin) {
@@ -174,7 +176,10 @@ function runFaceDetection(
   log('DETECT', `Running face detection on ${videoPath}...`);
 
   try {
-    const cmd = `${pythonBin} "${scriptPath}" "${videoPath}" "${outputPath}" ${sampleRate}`;
+    let cmd = `${pythonBin} "${scriptPath}" "${videoPath}" "${outputPath}" ${sampleRate}`;
+    if (clipStart !== undefined && clipEnd !== undefined) {
+      cmd += ` --start-time ${clipStart} --end-time ${clipEnd}`;
+    }
     const out = execSync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
     log('DETECT', `Python output: ${(out as string).trim()}`);
 
@@ -868,9 +873,11 @@ export function analyzeFaces(
   tempDir: string,
   sourceWidth: number,
   sourceHeight: number,
+  clipStart?: number,
+  clipEnd?: number,
 ): TrackResult | null {
-  // Step 1: Run face detection (all faces)
-  const rawSamples = runFaceDetection(videoPath, tempDir, SAMPLE_RATE);
+  // Step 1: Run face detection (all faces) — only process clip range if provided
+  const rawSamples = runFaceDetection(videoPath, tempDir, SAMPLE_RATE, clipStart, clipEnd);
   if (!rawSamples || rawSamples.length === 0) {
     log('RESULT', 'No face data — using center crop fallback');
     return null;
@@ -912,11 +919,6 @@ export function analyzeFaces(
   // Step 8: Fill any timeline gaps with interpolated positions
   segments = fillSegmentGaps(segments, sourceWidth, sourceHeight);
   log('SEGMENT', `After gap-fill: ${segments.length} segments`);
-
-  // DEBUG: log actual segment values
-  for (let i = 0; i < segments.length && i < 3; i++) {
-    log('SEGMENT', `DEBUG seg[${i}]: start=${segments[i].startTime.toFixed(1)} end=${segments[i].endTime.toFixed(1)} cropX=${segments[i].cropX} cropY=${segments[i].cropY} hasFace=${segments[i].hasFace}`);
-  }
 
   return {
     segments,
