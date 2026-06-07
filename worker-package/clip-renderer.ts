@@ -247,11 +247,24 @@ export async function renderClip(
     // ── Unified Shorts mode: dynamic split screen for any face count ──
     if (heartbeatFn) await heartbeatFn();
     const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight, startTime, endTime);
-    const multiFaces = (trackResult?.multiFaces && trackResult.multiFaces.length > 0) ? trackResult.multiFaces : [];
-    const baseSegments = (trackResult?.segments && trackResult.segments.length > 0) ? trackResult.segments : [];
 
-    // Build split segments — handles 0, 1, 2, 3+ faces automatically
-    const splitSegments = buildSplitSegments(multiFaces, baseSegments, sourceWidth, sourceHeight);
+    let splitSegments: MultiCropSegment[];
+
+    if (trackResult && trackResult.multiFaces && trackResult.multiFaces.length > 0) {
+      // Build split segments from face data — handles 0..3 faces per frame
+      const baseSegments = (trackResult?.segments && trackResult.segments.length > 0) ? trackResult.segments : [];
+      splitSegments = buildSplitSegments(trackResult.multiFaces, baseSegments, sourceWidth, sourceHeight);
+    } else {
+      // No face data — create single center-crop segment (still goes through renderVerticalSplit)
+      const cropH = sourceHeight;
+      const cropW = sourceHeight * (1080 / 1920);
+      const centerCropX = Math.round((sourceWidth - cropW) / 2);
+      splitSegments = [{
+        startTime,
+        endTime,
+        crops: [{ cropX: centerCropX, cropY: 0, faceId: -1, confidence: 0 }],
+      }];
+    }
 
     if (splitSegments.length > 0) {
       log('SHORTS', `Split screen render: ${splitSegments.length} segments`);
@@ -264,7 +277,7 @@ export async function renderClip(
       );
       ffmpegCmd = ''; // marker: already rendered
     } else {
-      // Extreme fallback — should never happen with buildSplitSegments
+      // Extreme fallback — should never happen
       log('SHORTS', 'No split segments — center crop fallback');
       ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -vf "scale=-1:1920,crop=1080:1920" -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${outputPath}"`;
     }
