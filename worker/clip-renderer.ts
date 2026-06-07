@@ -230,7 +230,8 @@ export async function renderClip(
   }
 
   // 2. ffmpeg cut
-  const outputFilename = `${videoId}_${Math.round(startTime)}s_${Math.round(endTime)}s.mp4`;
+  const renderMode = params.renderMode || 'landscape';
+  const outputFilename = `${videoId}_${Math.round(startTime)}s_${Math.round(endTime)}s_${renderMode}.mp4`;
   const outputPath = join(TEMP_DIR, outputFilename);
   log('FFMPEG', `Cutting ${startTime}s-${endTime}s → ${outputFilename}`);
 
@@ -239,7 +240,6 @@ export async function renderClip(
     ? `"${env.FFMPEG_LOCATION}/ffmpeg"`
     : 'ffmpeg';
 
-  const renderMode = params.renderMode || 'landscape';
   log('FFMPEG', `renderMode=${renderMode}`);
 
   let ffmpegCmd: string;
