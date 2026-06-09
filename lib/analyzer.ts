@@ -262,12 +262,14 @@ export async function analyzeTranscript(
   const numBatches = batches.length;
   console.log(`[V3] Split ${candidates.length} candidates into ${numBatches} batch(es) of max ${CANDIDATES_PER_LLM_BATCH} each`);
 
-  // Step 3: Multi-batch LLM evaluation
+  // Step 3: Multi-batch LLM evaluation — PARALLEL with concurrency control
   let allValidMoments: RawMoment[] = [];
   let allRawResponses: string[] = [];
   console.time(`[PROFILE] ${youtubeId} 2b_llm_scoring`);
 
-  for (let batchIdx = 0; batchIdx < numBatches; batchIdx++) {
+  const BATCH_CONCURRENCY = 4; // Safe parallel batches — 4 concurrent to hit 5-min target
+
+  async function processSingleBatch(batchIdx: number): Promise<void> {
     const batchCandidates = batches[batchIdx];
     console.log(`[V3] Batch ${batchIdx + 1}/${numBatches}: ${batchCandidates.length} candidates`);
 
@@ -362,7 +364,8 @@ export async function analyzeTranscript(
           console.log(`[V3] Batch ${batchIdx + 1}: Expanded ${expandedCount}/${batchMoments.length} clips`);
         }
 
-        allValidMoments = [...allValidMoments, ...batchMoments];
+        // Push is safe in concurrent JS — single-threaded event loop
+        allValidMoments.push(...batchMoments);
         logMetricCounts(isPrimary, isFallback, modelIdx);
         batchSucceeded = true;
       }
@@ -370,6 +373,26 @@ export async function analyzeTranscript(
 
     if (!batchSucceeded) {
       console.log(`[V3] Batch ${batchIdx + 1}: ALL MODELS FAILED — batch skipped`);
+    }
+  }
+
+  // Run batches in waves of BATCH_CONCURRENCY
+  for (let i = 0; i < numBatches; i += BATCH_CONCURRENCY) {
+    const waveEnd = Math.min(i + BATCH_CONCURRENCY, numBatches);
+    const wave: Promise<void>[] = [];
+    for (let j = i; j < waveEnd; j++) {
+      wave.push(processSingleBatch(j));
+    }
+    const results = await Promise.allSettled(wave);
+    // Log any batch failures
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j];
+      if (result.status === 'rejected') {
+        const batchNum = i + j + 1;
+        const reason = result.reason;
+        const msg = reason instanceof Error ? reason.message : String(reason);
+        console.log(`[V3] Batch ${batchNum}: UNHANDLED ERROR — ${msg.slice(0, 200)}`);
+      }
     }
   }
 
