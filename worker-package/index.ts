@@ -143,21 +143,37 @@ async function apiPost(path: string, body: unknown, token?: string): Promise<Res
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const url = `${loadEnv().GANYIQ_API_URL}${path}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-  return response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function apiGet(path: string, token: string): Promise<Response> {
   const url = `${loadEnv().GANYIQ_API_URL}${path}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  return response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60_000); // 1 min timeout
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -442,30 +458,44 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
       const submitData = await submitResponse.json();
       log('JOB', `✅ Completed! Job: ${job.id}, Segments: ${submitData.segments_count}`);
     } else {
-      const errBody = await submitResponse.json();
-      log('JOB', `❌ Submit failed (${submitResponse.status}): ${JSON.stringify(errBody)}`);
+      // Use text() not json() — error body may be HTML (Nginx error page)
+      const errBodyText = await submitResponse.text().catch(() => '(no body)');
+      log('JOB', `❌ Submit failed (${submitResponse.status}): ${errBodyText.slice(0, 500)}`);
     }
   } catch (err) {
-    const errorMsg = (err as Error).message.slice(0, 500);
-    log('JOB', `❌ Failed: ${errorMsg}`);
+    const error = err as Error & { cause?: unknown };
+    const causeStr = error.cause
+      ? ` | cause=${error.cause instanceof Error ? error.cause.message : String(error.cause)}`
+      : '';
+    const errorMsg = error.message.slice(0, 500);
+    log('JOB', `❌ Failed: ${errorMsg}${causeStr}`);
 
-    // Report failure
-    const failResponse = await apiPost(
-      `/api/workers/jobs/${job.id}/fail`,
-      {
-        worker_id: env.WORKER_ID,
-        error_message: errorMsg,
-      },
-      env.WORKER_API_KEY,
-    );
+    // Report failure (non-fatal — API may also be unreachable)
+    try {
+      const failResponse = await apiPost(
+        `/api/workers/jobs/${job.id}/fail`,
+        {
+          worker_id: env.WORKER_ID,
+          error_message: errorMsg,
+        },
+        env.WORKER_API_KEY,
+      );
 
-    if (failResponse.ok) {
-      const failData = await failResponse.json();
-      if (failData.will_retry) {
-        log('JOB', `  Will retry (attempt ${failData.retry_count}/${failData.max_retries})`);
+      if (failResponse.ok) {
+        const failData = await failResponse.json();
+        if (failData.will_retry) {
+          log('JOB', `  Will retry (attempt ${failData.retry_count}/${failData.max_retries})`);
+        } else {
+          log('JOB', `  Max retries reached. Job marked as failed.`);
+        }
       } else {
-        log('JOB', `  Max retries reached. Job marked as failed.`);
+        const failText = await failResponse.text().catch(() => '(no body)');
+        log('JOB', `  Fail-report returned ${failResponse.status}: ${failText.slice(0, 200)}`);
       }
+    } catch (failErr) {
+      const fe = failErr as Error & { cause?: unknown };
+      const fc = fe.cause ? ` | cause=${fe.cause instanceof Error ? fe.cause.message : String(fe.cause)}` : '';
+      log('JOB', `  Fail-report also failed: ${fe.message}${fc}`);
     }
   }
 }
