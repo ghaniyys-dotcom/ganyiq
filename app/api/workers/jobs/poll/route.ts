@@ -41,7 +41,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
            worker_id IN (
              SELECT id FROM workers
              WHERE last_heartbeat IS NULL
-                OR last_heartbeat < NOW() - INTERVAL '5 minutes'
+                OR last_heartbeat < NOW() - INTERVAL '15 minutes'
            )
            OR claimed_at < NOW() - INTERVAL '30 minutes'
          )`,

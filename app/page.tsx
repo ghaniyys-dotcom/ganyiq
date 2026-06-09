@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent, useRef, useEffect } from 'react';
+import { useState, FormEvent, useRef, useEffect, Fragment } from 'react';
 
 type Moment = {
   startTime: number;
@@ -37,30 +37,44 @@ type ClipStatus = 'idle' | 'generating' | 'ready' | 'failed';
 
 type Stage = 'idle' | 'fetching' | 'extracting' | 'analyzing' | 'ranking' | 'done' | 'error';
 
-const STAGE_LABELS: Record<Stage, string> = {
-  idle: '',
-  fetching: 'Fetching transcript',
-  extracting: 'Extracting candidates',
-  analyzing: 'AI analysis',
-  ranking: 'Ranking moments',
-  done: 'Complete!',
-  error: 'Error',
+const DNA_SYMBOLS: Record<string, string> = {
+  hookPower: '◇',
+  curiosity: '▼',
+  controversy: '▲',
+  emotion: '♥',
+  humor: '◆',
+  storytelling: '✦',
+  educational: '■',
+  authority: '◈',
+  money: '¤',
+  shock: '⚡',
+  motivation: '↑',
+  relatability: '○',
+  vulnerability: '♥',
+  inspiration: '✦',
 };
 
-const TIER_COLORS: Record<string, string> = {
-  elite: '#fbbf24',
-  secondary: '#60a5fa',
-};
+function abbreviateTag(tag: string, maxChars: number): string {
+  if (tag.length <= maxChars) return tag;
+  return tag.slice(0, maxChars);
+}
 
-const TIER_LABELS: Record<string, string> = {
-  elite: ' Elite',
-  secondary: ' Secondary',
-};
+function renderDnaTag(tag: string, maxChars: number): string {
+  const symbol = DNA_SYMBOLS[tag];
+  const name = abbreviateTag(tag, maxChars);
+  return symbol ? `${symbol} ${name}` : name;
+}
 
 function formatTimestamp(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s}s`;
 }
 
 function validateYouTubeUrl(url: string): boolean {
@@ -72,6 +86,12 @@ function validateYouTubeUrl(url: string): boolean {
   const trimmed = url.trim();
   if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) return true;
   return patterns.some((p) => p.test(trimmed));
+}
+
+function formatDuration(start: number, end: number): string {
+  const d = end - start;
+  if (d < 60) return `${Math.round(d)}s`;
+  return `${Math.floor(d / 60)}m ${Math.round(d % 60)}s`;
 }
 
 export default function Home() {
@@ -88,18 +108,28 @@ export default function Home() {
   const [clipUrls, setClipUrls] = useState<Record<number, string>>({});
   const [clipErrors, setClipErrors] = useState<Record<number, string>>({});
   const [renderMode, setRenderMode] = useState<'landscape' | 'vertical'>('vertical');
+  const [urlError, setUrlError] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+
+  // Detail modal state
+  const [selectedMoment, setSelectedMoment] = useState<Moment | null>(null);
+  const [transcriptExpanded, setTranscriptExpanded] = useState(false);
+
+  const TIMELINE_STAGES = ['Fetching', 'Extracting', 'Analyzing', 'Ranking'];
+  const FRONTEND_STAGE_ORDER: Stage[] = ['fetching', 'extracting', 'analyzing', 'ranking'];
   const pollTimers = useRef<Record<number, ReturnType<typeof setInterval>>>({});
   const pollStartTimes = useRef<Record<number, number>>({});
 
-  const MAX_POLL_DURATION = 12 * 60 * 1000; // 12 minutes (face tracking + download + render)
+  const MAX_POLL_DURATION = 12 * 60 * 1000;
 
   useEffect(() => {
     return () => {
       Object.values(pollTimers.current).forEach(clearInterval);
+      const pollInt = (window as unknown as Record<string, unknown>).__pollInterval;
+      if (pollInt) clearInterval(pollInt as ReturnType<typeof setInterval>);
     };
   }, []);
 
-  // Fetch recent analyses on mount
   useEffect(() => {
     setLoadingHistory(true);
     fetch('/api/history')
@@ -107,17 +137,13 @@ export default function Home() {
       .then((data) => {
         if (data?.analyses) setHistory(data.analyses);
       })
-      .catch(() => {
-        /* silent — history is non-critical */
-      })
+      .catch(() => {})
       .finally(() => setLoadingHistory(false));
   }, []);
 
-  // Refresh history after a new analysis completes
   const prevStageRef = useRef(stage);
   useEffect(() => {
     if (prevStageRef.current === 'analyzing' && stage === 'done') {
-      // A fresh analysis just completed — refresh history
       fetch('/api/history')
         .then((r) => r.json())
         .then((data) => {
@@ -127,6 +153,23 @@ export default function Home() {
     }
     prevStageRef.current = stage;
   }, [stage]);
+
+  useEffect(() => {
+    const isAnalyzing = stage === 'fetching' || stage === 'extracting' || stage === 'analyzing' || stage === 'ranking';
+    if (isAnalyzing) {
+      const timer = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - stageStart) / 1000));
+      }, 1000);
+      return () => clearInterval(timer);
+    } else {
+      setElapsed(0);
+    }
+  }, [stage, stageStart]);
+
+  // Reset transcript state when switching selected moment
+  useEffect(() => {
+    setTranscriptExpanded(false);
+  }, [selectedMoment]);
 
   async function openAnalysis(analysisId: string) {
     setStage('fetching');
@@ -170,12 +213,10 @@ export default function Home() {
         return;
       }
 
-      // Poll
       const clipId = data.clipId;
       pollStartTimes.current[momentIndex] = Date.now();
       const timer = setInterval(async () => {
         try {
-          // Stop if exceeded max poll duration
           const elapsed = Date.now() - (pollStartTimes.current[momentIndex] || 0);
           if (elapsed > MAX_POLL_DURATION) {
             clearInterval(timer);
@@ -211,23 +252,6 @@ export default function Home() {
     }
   }
 
-  const stageDurations: Record<Stage, number> = {
-    fetching: 3000,
-    extracting: 2000,
-    analyzing: 35000,
-    ranking: 1500,
-    idle: 0,
-    done: 0,
-    error: 0,
-  };
-
-  function simulateProgress(currentStage: Stage): number {
-    if (currentStage === 'idle' || currentStage === 'done' || currentStage === 'error') return 100;
-    const elapsed = Date.now() - stageStart;
-    const total = stageDurations[currentStage] || 5000;
-    return Math.min(95, Math.round((elapsed / total) * 100));
-  }
-
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmed = url.trim();
@@ -235,14 +259,16 @@ export default function Home() {
 
     if (!validateYouTubeUrl(trimmed)) {
       setError('Invalid YouTube URL. Please check and try again.');
-      setStage('error');
+      setUrlError(true);
       return;
     }
 
     setResult(null);
     setError('');
+    setUrlError(false);
     setClipStates({});
     setClipUrls({});
+    setSelectedMoment(null);
     setStage('fetching');
     setStageStart(Date.now());
 
@@ -265,13 +291,59 @@ export default function Home() {
         throw new Error(messages[data.error] || data.message || 'Something went wrong.');
       }
 
-      if (data.moments && data.moments.length > 0) {
-        setResult(data);
-        setStage('done');
-      } else {
-        setError('No clip-worthy moments found in this video. Try a different video.');
-        setStage('error');
-      }
+      const analysisId = data.analysisId;
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/analyze/${analysisId}/status`);
+          const statusData = await statusRes.json();
+
+          if (!statusRes.ok) {
+            clearInterval(pollInterval);
+            const detailRes = await fetch(`/api/history/${analysisId}`);
+            const detailData = await detailRes.json();
+            if (detailRes.ok) {
+              setResult(detailData);
+              setStage('done');
+            } else {
+              throw new Error(detailData.message || 'Failed to load analysis.');
+            }
+            return;
+          }
+
+          const stageMap: Record<string, Stage> = {
+            queued: 'fetching',
+            fetching_transcript: 'fetching',
+            extracting_candidates: 'extracting',
+            batch_analysis: 'analyzing',
+            multi_pass: 'analyzing',
+            ranking: 'ranking',
+            storing_results: 'ranking',
+          };
+
+          if (statusData.status === 'processing' || statusData.status === 'pending') {
+            const frontendStage = stageMap[statusData.stage] || 'fetching';
+            setStage(frontendStage);
+            setStageStart(Date.now());
+          } else if (statusData.status === 'completed') {
+            clearInterval(pollInterval);
+            if (statusData.moments && statusData.moments.length > 0) {
+              setResult({ analysisId: statusData.analysisId, videoId: statusData.videoId, moments: statusData.moments });
+              setStage('done');
+            } else {
+              setError('No clip-worthy moments found in this video. Try a different video.');
+              setStage('error');
+            }
+          } else if (statusData.status === 'failed') {
+            clearInterval(pollInterval);
+            throw new Error(statusData.error || 'Analysis failed.');
+          }
+        } catch {
+          /* keep polling */
+        }
+      }, 3000);
+
+      (window as unknown as Record<string, unknown>).__pollInterval = pollInterval;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Network error. Please try again.';
       setError(message);
@@ -279,48 +351,31 @@ export default function Home() {
     }
   }
 
-  function formatScore(score: number): string {
-    if (score >= 85) return score.toString();
-    if (score >= 70) return score.toString();
-    return score.toString();
-  }
-
-  function renderClipButton(moment: Moment) {
+  function renderClipAction(moment: Moment) {
     const state = clipStates[moment.rank] || 'idle';
-
     switch (state) {
       case 'idle':
         return (
-          <button
-            className="clip-btn"
-            onClick={() => generateClip(moment.rank)}
-          >
-            Generate Clip
+          <button className="clip-action-btn" onClick={(e) => { e.stopPropagation(); generateClip(moment.rank); }}>
+            Generate
           </button>
         );
       case 'generating':
         return (
-          <button className="clip-btn clip-btn-generating" disabled>
+          <button className="clip-action-btn generating" disabled>
             Generating...
           </button>
         );
       case 'ready':
         return (
-          <a
-            className="clip-btn clip-btn-ready"
-            href={clipUrls[moment.rank] || '#'}
-            download
-          >
+          <a className="clip-action-btn ready" href={clipUrls[moment.rank] || '#'} download onClick={(e) => e.stopPropagation()}>
             Download MP4
           </a>
         );
       case 'failed':
         return (
-          <div className="clip-error-group">
-            <button
-              className="clip-btn clip-btn-failed"
-              onClick={() => generateClip(moment.rank)}
-            >
+          <div className="clip-action-group" onClick={(e) => e.stopPropagation()}>
+            <button className="clip-action-btn failed" onClick={() => generateClip(moment.rank)}>
               Retry
             </button>
             {clipErrors[moment.rank] && (
@@ -331,57 +386,150 @@ export default function Home() {
     }
   }
 
-  const progress = simulateProgress(stage);
+  // ── Detail Modal ──
+  function renderDetailModal() {
+    if (!selectedMoment) return null;
+    const m = selectedMoment;
+    const state = clipStates[m.rank] || 'idle';
+    const duration = formatDuration(m.startTime, m.endTime);
+    const embedUrl = result?.videoId
+      ? `https://www.youtube.com/embed/${result.videoId}?start=${Math.floor(m.startTime)}&autoplay=1`
+      : null;
+
+    return (
+      <div className="modal-overlay" onClick={() => setSelectedMoment(null)}>
+        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <button className="modal-close" onClick={() => setSelectedMoment(null)}>✕</button>
+
+          {/* YouTube embed preview */}
+          {embedUrl && (
+            <div className="modal-embed">
+              <iframe
+                src={embedUrl}
+                title="YouTube video preview"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                loading="lazy"
+              />
+            </div>
+          )}
+
+          {/* Header */}
+          <div className="modal-header">
+            <span className="modal-rank">#{m.rank}</span>
+            <span className="modal-tier-dot" data-tier={m.tier} />
+            <span className="modal-tier-label">{m.tier === 'elite' ? 'Elite' : 'Notable'}</span>
+            <div className="modal-score-track">
+              <div className="modal-score-fill" style={{ '--score-pct': `${m.worthClippingScore}%` } as React.CSSProperties} />
+            </div>
+            <span className="modal-score-number">{Math.round(m.worthClippingScore)}</span>
+          </div>
+
+          {/* Metadata row */}
+          <div className="modal-meta">
+            <span>⏱ {m.startTimestamp} &mdash; {m.endTimestamp}</span>
+            <span>📐 {duration}</span>
+            <span>📊 {(m.confidence || 'N/A').toUpperCase()}</span>
+          </div>
+
+          {/* Why this clip? */}
+          <div className="modal-section">
+            <h3 className="modal-section-title">Why this clip?</h3>
+            <p className="modal-reasoning">{m.reasoning || 'No reasoning available for this clip.'}</p>
+          </div>
+
+          {/* DNA Tags */}
+          {m.dnaTags.length > 0 && (
+            <div className="modal-section">
+              <h3 className="modal-section-title">Tags</h3>
+              <div className="modal-tags">
+                {m.dnaTags.map((tag) => (
+                  <span key={tag} className="modal-tag">{renderDnaTag(tag, 20)}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Transcript — always visible toggle, expandable content */}
+          <div className="modal-section">
+            <h3 className="modal-section-title">
+              Transcript
+              {m.transcriptExcerpt && (
+                <button
+                  className="modal-transcript-toggle"
+                  onClick={() => setTranscriptExpanded(!transcriptExpanded)}
+                  aria-expanded={transcriptExpanded}
+                >
+                  {transcriptExpanded ? 'Hide' : 'Show'}
+                </button>
+              )}
+            </h3>
+            {transcriptExpanded && m.transcriptExcerpt && (
+              <p className="modal-transcript">&ldquo;{m.transcriptExcerpt}&rdquo;</p>
+            )}
+            {transcriptExpanded && !m.transcriptExcerpt && (
+              <p className="modal-transcript-empty">No transcript excerpt available for this clip.</p>
+            )}
+          </div>
+
+          {/* Generate action */}
+          <div className="modal-action">
+            {renderClipAction(m)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const heroMoment = result?.moments?.[0] || null;
+  const eliteCompactMoments = result?.moments?.filter(m => m.tier === 'elite').slice(1, 6) || [];
+  const secondaryMoments = result?.moments?.filter(m => m.tier === 'secondary').slice(0, 7) || [];
 
   return (
     <div className="container">
       <header className="header">
-        <h1 className="logo">
-          <span className="logo-accent">GANY</span>IQ
-        </h1>
-        <p className="tagline">
-          Find clip-worthy moments in any YouTube video
-        </p>
+        <div className="header-row">
+          <h1 className="logo">GANYIQ</h1>
+          <span className="version-tag">v1.0</span>
+        </div>
       </header>
+      {stage === 'idle' && (
+        <p className="subheadline">Surface the moments people actually remember.</p>
+      )}
 
       <main className="main">
         {/* Input Section */}
         <section className="input-section">
           <form onSubmit={handleSubmit} className="form">
-            <div className="input-group">
+            <div className="input-wrapper">
               <input
                 type="url"
-                className="url-input"
-                placeholder="Paste YouTube URL here..."
+                className={`url-input${urlError ? ' error' : ''}`}
+                placeholder="Paste a YouTube link"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => { setUrl(e.target.value); setUrlError(false); }}
                 disabled={stage === 'fetching' || stage === 'extracting' || stage === 'analyzing' || stage === 'ranking'}
                 autoFocus
               />
               <button
                 type="submit"
-                className="analyze-btn"
+                className="submit-btn"
                 disabled={!url.trim() || stage === 'fetching' || stage === 'extracting' || stage === 'analyzing' || stage === 'ranking'}
+                aria-label="Analyze"
               >
-                {stage === 'fetching' || stage === 'extracting' || stage === 'analyzing' || stage === 'ranking' ? (
-                  <span className="btn-loading">Analyzing...</span>
-                ) : (
-                  'Analyze'
-                )}
+                ▶
               </button>
             </div>
           </form>
         </section>
 
-        {/* History Section — show when idle or after results */}
+        {/* History Section */}
         {history && history.length > 0 && stage !== 'fetching' && stage !== 'extracting' && stage !== 'analyzing' && stage !== 'ranking' && (
           <section className="history-section">
-            <div className="history-header">
-              <h2>Recent Analyses</h2>
-            </div>
+            <p className="section-label">Recent Analyses</p>
             <div className="history-list">
-              {history.map((item) => (
-                <div key={item.analysisId} className="history-card">
+              {history.map((item, idx) => (
+                <div key={item.analysisId} className="history-card" style={{ animationDelay: `${idx * 40}ms` }}>
                   <img
                     className="history-thumbnail"
                     src={item.thumbnailUrl}
@@ -392,51 +540,74 @@ export default function Home() {
                     }}
                   />
                   <div className="history-info">
-                    <div className="history-title">{item.title}</div>
-                    <div className="history-channel">{item.channelName}</div>
-                    <div className="history-meta">
-                      <span>{item.totalMoments} moments</span>
-                      {item.avgScore !== null && (
-                        <span className="history-score">Avg {item.avgScore}</span>
-                      )}
+                    <div className="history-title-row">
+                      <div className="history-title">{item.title}</div>
+                      <button
+                        className="history-open-btn"
+                        onClick={() => openAnalysis(item.analysisId)}
+                      >
+                        Open
+                      </button>
+                    </div>
+                    <div className="history-meta-row">
+                      <span className="history-meta">
+                        {item.channelName} · {item.totalMoments} clips
+                        {item.avgScore !== null && (
+                          <> · Avg <span className="history-score">{item.avgScore}</span></>
+                        )}
+                      </span>
                       <span className="history-date">
                         {new Date(item.createdAt).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',
+                          year: 'numeric',
                         })}
                       </span>
                     </div>
                   </div>
-                  <button
-                    className="history-open-btn"
-                    onClick={() => openAnalysis(item.analysisId)}
-                  >
-                    Open Analysis
-                  </button>
                 </div>
               ))}
             </div>
           </section>
         )}
 
-        {/* Loading Section */}
-        {(stage === 'fetching' || stage === 'extracting' || stage === 'analyzing' || stage === 'ranking') && (
-          <section className="loading-section">
-            <div className="progress-bar-container">
-              <div className="progress-bar" style={{ width: `${progress}%` }} />
-            </div>
-            <div className="stage-indicator">
-              <div className="stage-dot active" />
-              <span className="stage-label">{STAGE_LABELS[stage]}</span>
-            </div>
-            <div className="stage-hint">
-              {stage === 'fetching' && 'Downloading and processing video transcript...'}
-              {stage === 'extracting' && 'Finding potential clip-worthy segments...'}
-              {stage === 'analyzing' && 'Scoring moments with AI analysis...'}
-              {stage === 'ranking' && 'Ranking and filtering best moments...'}
-            </div>
-          </section>
-        )}
+        {/* Analysis Section */}
+        {(stage === 'fetching' || stage === 'extracting' || stage === 'analyzing' || stage === 'ranking') && (() => {
+          const stageIdx = FRONTEND_STAGE_ORDER.indexOf(stage);
+          return (
+            <section className="analysis-section">
+              <p className="analyzing-label">Analyzing your video</p>
+
+              <div className="stage-timeline">
+                <div className="timeline-items">
+                  {TIMELINE_STAGES.map((label, i) => (
+                    <Fragment key={label}>
+                      {i > 0 && (
+                        <div className={`timeline-connector${i <= stageIdx ? ' completed' : ''}`} />
+                      )}
+                      <div className="timeline-item">
+                        <div className={`timeline-dot${i < stageIdx ? ' completed' : i === stageIdx ? ' active' : ' upcoming'}`} />
+                        <span className={`timeline-label${i < stageIdx ? ' completed' : i === stageIdx ? ' active' : ' upcoming'}`}>
+                          {label}
+                        </span>
+                      </div>
+                    </Fragment>
+                  ))}
+                </div>
+              </div>
+
+              <p className="elapsed-timer">Elapsed: {formatElapsed(elapsed)}</p>
+
+              <div className="skeleton-row">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="skeleton-card" />
+                ))}
+              </div>
+
+              <p className="discovery-counter">0 moments discovered</p>
+            </section>
+          );
+        })()}
 
         {/* Error Section */}
         {stage === 'error' && error && (
@@ -450,15 +621,116 @@ export default function Home() {
         )}
 
         {/* Results Section */}
-        {stage === 'done' && result && (
+        {stage === 'done' && result && result.moments.length > 0 && (
           <section className="results-section">
-            <div className="results-header">
-              <h2>Clip Recommendations</h2>
-              <span className="moment-count">{result.moments.length} moments</span>
-            </div>
+            <span className="section-title">Picks of the Analysis</span>
+
+            {/* Hero Card */}
+            {heroMoment && (
+              <div className="hero-card clickable" onClick={() => setSelectedMoment(heroMoment)}>
+                <div className="hero-top-row">
+                  <span className="hero-rank">#{heroMoment.rank}</span>
+                  <span className="hero-timestamp">{heroMoment.startTimestamp} &mdash; {heroMoment.endTimestamp}</span>
+                  <span className="hero-duration">{formatDuration(heroMoment.startTime, heroMoment.endTime)}</span>
+                  <div className="hero-tier-section">
+                    <div className="hero-tier-dot" />
+                    <span className="hero-tier-label">Elite</span>
+                  </div>
+                  <div className="hero-score-track">
+                    <div className="hero-score-fill" style={{ '--score-pct': `${heroMoment.worthClippingScore}%` } as React.CSSProperties} />
+                  </div>
+                  <span className="hero-score-number">{Math.round(heroMoment.worthClippingScore)}</span>
+                </div>
+
+                <p className="hero-reasoning">{heroMoment.reasoning}</p>
+
+                {heroMoment.dnaTags.length > 0 && (
+                  <div className="hero-tags">
+                    {heroMoment.dnaTags.slice(0, 6).map((tag, i) => (
+                      <span key={tag} className="hero-tag" style={{ animationDelay: `${i * 20}ms` }}>
+                        {renderDnaTag(tag, 10)}
+                      </span>
+                    ))}
+                    {heroMoment.dnaTags.length > 6 && (
+                      <span className="hero-tag-more">+{heroMoment.dnaTags.length - 6}</span>
+                    )}
+                  </div>
+                )}
+
+                <div className="hero-bottom-row">
+                  {renderClipAction(heroMoment)}
+                </div>
+              </div>
+            )}
+
+            {/* More Picks — Elite Compact Row */}
+            {eliteCompactMoments.length > 0 && (
+              <>
+                <span className="section-title">More Picks</span>
+                <div className="compact-row">
+                  {eliteCompactMoments.map((m, i) => (
+                    <div
+                      key={m.rank}
+                      className="compact-card clickable"
+                      style={{ animationDelay: `${i * 60}ms` }}
+                      onClick={() => setSelectedMoment(m)}
+                    >
+                      <div className="compact-header">
+                        <span className="compact-rank">#{m.rank}</span>
+                        <span className="compact-score">{Math.round(m.worthClippingScore)}</span>
+                      </div>
+                      <span className="compact-timestamp">{m.startTimestamp} &mdash; {m.endTimestamp}</span>
+                      <span className="compact-duration">{formatDuration(m.startTime, m.endTime)}</span>
+                      <span className="compact-reasoning">{m.reasoning ? m.reasoning.slice(0, 60) + (m.reasoning.length > 60 ? '...' : '') : ''}</span>
+                      {m.dnaTags.length > 0 && (
+                        <div className="compact-tags">
+                          {m.dnaTags.slice(0, 3).map((tag) => (
+                            <span key={tag} className="compact-tag-item">{renderDnaTag(tag, 8)}</span>
+                          ))}
+                        </div>
+                      )}
+                      {renderClipAction(m)}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Also Notable — Secondary Compact Row */}
+            {secondaryMoments.length > 0 && (
+              <>
+                <span className="section-title">Also Notable</span>
+                <div className="compact-row">
+                  {secondaryMoments.map((m, i) => (
+                    <div
+                      key={m.rank}
+                      className="compact-card secondary clickable"
+                      style={{ animationDelay: `${i * 60}ms` }}
+                      onClick={() => setSelectedMoment(m)}
+                    >
+                      <div className="compact-header">
+                        <span className="compact-rank">#{m.rank}</span>
+                        <span className="compact-score">{Math.round(m.worthClippingScore)}</span>
+                      </div>
+                      <span className="compact-timestamp">{m.startTimestamp} &mdash; {m.endTimestamp}</span>
+                      <span className="compact-duration">{formatDuration(m.startTime, m.endTime)}</span>
+                      <span className="compact-reasoning">{m.reasoning ? m.reasoning.slice(0, 50) + (m.reasoning.length > 50 ? '...' : '') : ''}</span>
+                      {m.dnaTags.length > 0 && (
+                        <div className="compact-tags">
+                          {m.dnaTags.slice(0, 2).map((tag) => (
+                            <span key={tag} className="compact-tag-item">{renderDnaTag(tag, 7)}</span>
+                          ))}
+                        </div>
+                      )}
+                      {renderClipAction(m)}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* Render Mode Toggle */}
-            <div className="render-mode-toggle">
+            <div className="render-mode-toggle" style={{ marginTop: 0 }}>
               <span className="toggle-label">Output Format:</span>
               <button
                 className={`toggle-btn ${renderMode === 'landscape' ? 'toggle-active' : ''}`}
@@ -474,52 +746,8 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="moments-list">
-              {result.moments.map((moment) => (
-                <div key={moment.rank} className={`moment-card ${moment.tier}`}>
-                  <div className="moment-rank">
-                    <span className="rank-number">#{moment.rank}</span>
-                    <span className="tier-badge" style={{ background: TIER_COLORS[moment.tier] || '#888' }}>
-                      {TIER_LABELS[moment.tier] || moment.tier}
-                    </span>
-                  </div>
-
-                  <div className="moment-meta">
-                    <div className="meta-item">
-                      <span className="meta-label">Score</span>
-                      <span className="meta-value score">{formatScore(moment.worthClippingScore)}</span>
-                    </div>
-                    <div className="meta-item">
-                      <span className="meta-label">Timestamp</span>
-                      <span className="meta-value">{moment.startTimestamp} &mdash; {moment.endTimestamp}</span>
-                    </div>
-                  </div>
-
-                  <div className="moment-dna">
-                    {moment.dnaTags.map((tag) => (
-                      <span key={tag} className="dna-tag">{tag}</span>
-                    ))}
-                  </div>
-
-                  <p className="moment-reasoning">{moment.reasoning}</p>
-
-                  {moment.transcriptExcerpt && (
-                    <div className="moment-excerpt">
-                      <span className="excerpt-label">Transcript</span>
-                      <p className="excerpt-text">&ldquo;{moment.transcriptExcerpt.slice(0, 200)}{moment.transcriptExcerpt.length > 200 ? '...' : ''}&rdquo;</p>
-                    </div>
-                  )}
-
-                  {/* Clip Generation Button */}
-                  <div className="clip-action">
-                    {renderClipButton(moment)}
-                  </div>
-                </div>
-              ))}
-            </div>
-
             <div className="new-analysis">
-              <button className="new-btn" onClick={() => { setStage('idle'); setResult(null); setUrl(''); }}>
+              <button className="new-btn" onClick={() => { setStage('idle'); setResult(null); setUrl(''); setSelectedMoment(null); }}>
                 Analyze Another Video
               </button>
             </div>
@@ -527,20 +755,15 @@ export default function Home() {
         )}
 
         {/* Empty state */}
-        {stage === 'idle' && !result && (
+        {stage === 'idle' && !result && (!history || history.length === 0) && (
           <section className="empty-section">
-            <div className="empty-illustration">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="23 7 16 12 23 17 23 7" />
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-              </svg>
-            </div>
-            <p className="empty-text">
-              Paste a YouTube URL above to discover the best moments worth clipping
-            </p>
+            <p className="empty-text">No analyses yet. Paste a link above to begin.</p>
           </section>
         )}
       </main>
+
+      {/* Detail Modal */}
+      {renderDetailModal()}
 
       <footer className="footer">
         <p>GANYIQ &mdash; AI-powered clip discovery</p>

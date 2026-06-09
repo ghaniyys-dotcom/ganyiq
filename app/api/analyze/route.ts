@@ -1,42 +1,35 @@
 /**
  * POST /api/analyze
  *
- * Main analysis endpoint. Accepts a YouTube URL and returns scored,
- * ranked worth-clipping moments.
+ * Main analysis endpoint. Accepts a YouTube URL and:
+ *   1. Immediately returns { analysisId, status: "processing" }
+ *   2. Runs the analysis pipeline in the background
+ *   3. Frontend polls GET /api/analyze/[id]/status for progress
  *
  * Pipeline:
  *   1. Validate URL → extract YouTube ID
  *   2. Check rate limit
- *   3. Fetch video data (metadata + transcript) with DB caching
- *   4. Run LLM analysis (DeepSeek V4 Flash) → RawMoment[]
- *   5. Deterministic ranking + tier assignment → RankedMoment[]
- *   6. Store analysis + moments in PostgreSQL
- *   7. Return structured response
+ *   3. Create analysis record (status='pending')
+ *   4. Return immediately
+ *   5. Background: fetch transcript, LLM analysis, ranking, store results
  *
- * Response (200):
+ * Response (202):
  *   {
  *     "analysisId": "uuid",
- *     "videoId": "youtube-11-char-id",
- *     "moments": [ { ...RankedMoment }, ... ]
+ *     "status": "processing"
  *   }
  *
  * Error codes:
  *   400 INVALID_URL
- *   404 TRANSCRIPT_UNAVAILABLE
  *   429 RATE_LIMITED
- *   500 ANALYSIS_FAILED
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { AppError } from '@/lib/errors';
 import { query } from '@/db/client';
 import { validateYouTubeUrl, extractVideoId } from '@/lib/validators';
-import { fetchVideoDataWithFallback } from '@/lib/transcript-service';
-import { analyzeTranscript } from '@/lib/analyzer';
-import { rankMoments } from '@/lib/ranking';
-import { PROMPT_VERSION } from '@/lib/prompt';
-import { checkRateLimit, getRateLimitPerDay } from '@/lib/rate-limit';
-import type { RankedMoment } from '@/lib/types';
+import { runAnalysisPipeline } from '@/lib/analyze-pipeline';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 // ---------------------------------------------------------------------------
 // POST /api/analyze
@@ -60,132 +53,87 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const trimmedUrl = url.trim();
 
     if (!validateYouTubeUrl(trimmedUrl)) {
-      return error(
-        400,
-        'INVALID_URL',
-        'Invalid YouTube URL. Supported formats:\n' +
-        '  • https://www.youtube.com/watch?v=VIDEO_ID\n' +
-        '  • https://youtu.be/VIDEO_ID\n' +
-        '  • https://youtube.com/embed/VIDEO_ID',
-      );
+      return error(400, 'INVALID_URL', 'Invalid YouTube URL. Supported formats:\n  • https://www.youtube.com/watch?v=VIDEO_ID\n  • https://youtu.be/VIDEO_ID\n  • https://youtube.com/embed/VIDEO_ID');
     }
 
     let youtubeId: string;
     try {
       youtubeId = extractVideoId(trimmedUrl);
     } catch (e) {
-      if (e instanceof AppError) {
-        return error(e.statusCode, e.code, e.message);
-      }
+      if (e instanceof AppError) return error(e.statusCode, e.code, e.message);
       return error(400, 'INVALID_URL', 'Could not extract video ID from the provided URL.');
     }
 
-    // ---- 2. Check rate limit (before expensive operations) ----
+    // ---- 2. Check rate limit ----
     const ipAddress = extractClientIp(request);
-
-    let rateLimitCheck: Awaited<ReturnType<typeof checkRateLimit>>;
     try {
-      rateLimitCheck = await checkRateLimit(ipAddress);
+      const rateLimitCheck = await checkRateLimit(ipAddress);
+      if (rateLimitCheck.exceeded) {
+        return NextResponse.json(
+          { error: 'RATE_LIMITED', message: `Rate limit exceeded. Maximum ${rateLimitCheck.limit} analyses per IP per day.`, remaining: 0, resetAt: rateLimitCheck.resetAt },
+          { status: 429, headers: { 'X-RateLimit-Limit': String(rateLimitCheck.limit), 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': rateLimitCheck.resetAt } },
+        );
+      }
     } catch {
-      // Rate limit check failure should not block the request.
-      // Log and proceed without rate limiting.
       console.error('Rate limit check failed — proceeding without limit');
-      rateLimitCheck = { exceeded: false, remaining: 999, limit: 999, resetAt: '' };
     }
 
-    if (rateLimitCheck.exceeded) {
-      return NextResponse.json(
-        {
-          error: 'RATE_LIMITED',
-          message: `Rate limit exceeded. Maximum ${rateLimitCheck.limit} analyses per IP per day. Resets at ${rateLimitCheck.resetAt}.`,
-          remaining: 0,
-          resetAt: rateLimitCheck.resetAt,
-        },
-        {
-          status: 429,
-          headers: {
-            'X-RateLimit-Limit': String(rateLimitCheck.limit),
-            'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': rateLimitCheck.resetAt,
-          },
-        },
+    // ---- 3. Ensure video exists in DB (creates if new) ----
+    let videoDbId: string;
+    try {
+      // We need at minimum the video_id to create the analysis.
+      // fetchVideoDataWithFallback does this, but it's expensive.
+      // Instead, upsert a minimal video record and let the background
+      // pipeline fill in the details.
+      const existing = await query<{ id: string }>(
+        'SELECT id FROM videos WHERE youtube_id = $1',
+        [youtubeId],
       );
-    }
-
-    // ---- 3. Fetch video data (with DB caching + Deepgram fallback) ----
-    let videoData: Awaited<ReturnType<typeof fetchVideoDataWithFallback>>;
-    try {
-      videoData = await fetchVideoDataWithFallback(youtubeId, trimmedUrl);
-    } catch (e) {
-      if (e instanceof AppError) {
-        return error(e.statusCode, e.code, e.message);
+      if (existing.rows.length > 0) {
+        videoDbId = existing.rows[0].id;
+      } else {
+        // Insert minimal record — background pipeline will update metadata
+        const inserted = await query<{ id: string }>(
+          `INSERT INTO videos (youtube_id, title, channel_name, duration_seconds)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id`,
+          [youtubeId, `Processing ${youtubeId}`, 'Unknown', 0],
+        );
+        videoDbId = inserted.rows[0].id;
       }
-      return error(500, 'ANALYSIS_FAILED', 'Failed to fetch video data. Please try again.');
-    }
-
-    // ---- 3. Run LLM analysis ----
-    let analysisResult: Awaited<ReturnType<typeof analyzeTranscript>>;
-    try {
-      analysisResult = await analyzeTranscript(videoData.metadata, videoData.transcript);
     } catch (e) {
-      if (e instanceof AppError) {
-        return error(e.statusCode, e.code, e.message);
-      }
-      return error(500, 'ANALYSIS_FAILED', 'AI analysis failed. Please try again.');
+      const message = e instanceof Error ? e.message : 'Database error';
+      return error(500, 'ANALYSIS_FAILED', `Failed to prepare database: ${message.slice(0, 120)}`);
     }
 
-    // ---- 4. Deterministic ranking + tier assignment ----
-    const rawMoments = analysisResult.moments;
-    const servingModel = analysisResult.model;
-    const rankedMoments: RankedMoment[] = rankMoments(rawMoments, videoData.transcript);
-    const processingTimeMs = Date.now() - startTime;
-    const totalMomentsFound = rankedMoments.length;
-
-    // ---- 5. Store analysis in database ----
+    // ---- 4. Create analysis record with status='pending' ----
     let analysisId: string;
     try {
       const result = await query<{ id: string }>(
         `INSERT INTO analyses
-           (video_id, ip_address, total_moments_found, processing_time_ms,
-            llm_model, prompt_version, status, error_message, transcript_source)
-         VALUES ($1, $2, $3, $4, $5, $6, 'completed', NULL, $7)
+           (video_id, ip_address, status, progress_stage, llm_model, prompt_version)
+         VALUES ($1, $2, 'pending', 'queued', $3, $4)
          RETURNING id`,
-        [
-          videoData.videoDbId,
-          ipAddress,
-          totalMomentsFound,
-          processingTimeMs,
-          servingModel,
-          PROMPT_VERSION,
-          videoData.transcriptSource,
-        ],
+        [videoDbId, ipAddress, 'deepseek-v4-flash', 'v2-compact'],
       );
       analysisId = result.rows[0].id;
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Database error';
-      return error(500, 'ANALYSIS_FAILED', `Failed to save analysis: ${message.slice(0, 120)}`);
+      return error(500, 'ANALYSIS_FAILED', `Failed to create analysis record: ${message.slice(0, 120)}`);
     }
 
-    // ---- 6. Store moments in database ----
-    try {
-      await storeMoments(analysisId, rankedMoments);
-    } catch (e) {
-      // Moments storage failure is non-fatal — the analysis record exists.
-      // Log and continue.
-      console.error('Failed to store moments:', e instanceof Error ? e.message : e);
-    }
+    // ---- 5. Return immediately ----
+    // The full analysis runs in the background.
+    // We intentionally don't await it — fire and forget.
+    runAnalysisPipeline(analysisId, youtubeId, trimmedUrl, ipAddress).catch((err) => {
+      console.error(`[ASYNC] Unhandled pipeline error for ${analysisId}:`, err);
+    });
 
-    // ---- 7. Return response ----
     return NextResponse.json(
-      {
-        analysisId,
-        videoId: youtubeId,
-        moments: rankedMoments,
-      },
-      { status: 200 },
+      { analysisId, status: 'processing' },
+      { status: 202 },
     );
   } catch (e) {
-    // Catch-all for unexpected errors
     const message = e instanceof Error ? e.message : 'Unknown error';
     console.error('Unexpected error in POST /api/analyze:', message);
     return error(500, 'INTERNAL_ERROR', 'An unexpected error occurred. Please try again.');
@@ -193,73 +141,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 // ---------------------------------------------------------------------------
-// Database: Batch Store Moments
-// ---------------------------------------------------------------------------
-
-/**
- * Insert all ranked moments into the database.
- *
- * Uses individual INSERT statements (not multi-row) for clarity and safety.
- * At MVP scale (max 15 moments per analysis), the overhead is negligible.
- */
-async function storeMoments(
-  analysisId: string,
-  moments: RankedMoment[],
-): Promise<void> {
-  for (const m of moments) {
-    await query(
-      `INSERT INTO moments
-         (analysis_id, start_time, end_time, worth_clipping_score,
-          confidence, dna_tags, reasoning, transcript_excerpt,
-          rank_position, tier)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)`,
-      [
-        analysisId,
-        m.startTime,
-        m.endTime,
-        m.worthClippingScore,
-        m.confidence,
-        JSON.stringify(m.dnaTags),
-        m.reasoning,
-        m.transcriptExcerpt,
-        m.rank,
-        m.tier,
-      ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Extract the client IP address from the request.
- *
- * Next.js/Vercel provides the real client IP via x-forwarded-for.
- * Falls back to 'unknown' if unavailable.
- */
 function extractClientIp(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) {
-    // x-forwarded-for can be a comma-separated list (proxy chain).
-    // The first address is the original client.
-    return forwarded.split(',')[0].trim();
-  }
-
+  if (forwarded) return forwarded.split(',')[0].trim();
   const realIp = request.headers.get('x-real-ip');
   if (realIp) return realIp.trim();
-
   return 'unknown';
 }
 
-/**
- * Return a structured error response with the given HTTP status and error code.
- */
-function error(
-  status: number,
-  code: string,
-  message: string,
-): NextResponse {
+function error(status: number, code: string, message: string): NextResponse {
   return NextResponse.json({ error: code, message }, { status });
 }
