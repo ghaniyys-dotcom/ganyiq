@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent, useRef, useEffect, Fragment } from 'react';
+import { useState, FormEvent, useRef, useEffect, Fragment, Component, ReactNode, ErrorInfo } from 'react';
 
 type Moment = {
   startTime: number;
@@ -533,6 +533,37 @@ function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}m ${s}s`;
+}
+
+// ── Error Boundary (prevents one crash from collapsing the whole page) ──
+class ErrorBoundary extends Component<
+  { children: ReactNode; fallback?: ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: ReactNode; fallback?: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('[ErrorBoundary] Caught:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <section className="error-section">
+          <div className="error-icon">⚠️</div>
+          <p className="error-text">Something went wrong rendering this section.</p>
+          <button className="retry-btn" onClick={() => this.setState({ hasError: false, error: null })}>
+            Try Again
+          </button>
+        </section>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function formatMinutes(seconds: number): string {
@@ -1402,9 +1433,6 @@ export default function Home() {
   function renderFeaturedWorkspace() {
     if (!activeMoment || !result) return null;
     const m = activeMoment;
-    const embedUrl = result.videoId
-      ? `https://www.youtube.com/embed/${result.videoId}?start=${Math.floor(m.startTime)}&controls=1&autoplay=0`
-      : null;
     const duration = formatDuration(m.startTime, m.endTime);
 
     return (
@@ -1419,17 +1447,29 @@ export default function Home() {
         </div>
         <div className="workspace-section-label">Featured Pick</div>
 
-        {/* YouTube embed */}
+        {/* YouTube thumbnail — click to open in new tab (prevents iframe crash in Telegram WebView) */}
         <div className="ws-video">
-          {embedUrl ? (
-            <iframe
-              src={embedUrl}
-              title="Clip preview"
-              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              loading="lazy"
-              sandbox="allow-scripts allow-same-origin allow-presentation"
-            />
+          {result.videoId ? (
+            <a
+              href={`https://www.youtube.com/watch?v=${result.videoId}&t=${Math.floor(m.startTime)}s`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ws-video-link"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={`https://img.youtube.com/vi/${result.videoId}/hqdefault.jpg`}
+                alt="Video thumbnail"
+                className="ws-video-thumb"
+                loading="lazy"
+              />
+              <div className="ws-video-play">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+              <div className="ws-video-timestamp">{m.startTimestamp}</div>
+            </a>
           ) : (
             <div className="ws-video-placeholder">Video preview unavailable</div>
           )}
@@ -1728,7 +1768,8 @@ export default function Home() {
         )}
 
         {/* Analysis Section (Feature 8: Live Intelligence) */}
-        {(stage === 'fetching' || stage === 'extracting' || stage === 'batched' || stage === 'multipass' || stage === 'ranking' || stage === 'storing') && (() => {
+        {(stage === 'fetching' || stage === 'extracting' || stage === 'batched' || stage === 'multipass' || stage === 'ranking' || stage === 'storing') && (
+          <ErrorBoundary>{(() => {
           const stageIdx = FRONTEND_STAGE_ORDER.indexOf(stage);
           return (
             <section className="analysis-section">
@@ -1781,8 +1822,8 @@ export default function Home() {
               <p className="discovery-counter">{liveCandidates > 0 ? `${liveTotalMomentsFound || liveCandidates} moments identified across ${liveTranscriptWords > 0 ? formatNumber(liveTranscriptWords) : ''} transcript words` : 'Analyzing content...'}</p>
             </section>
           );
-        })()}
-
+          })()}</ErrorBoundary>
+        )}
         {/* Error Section */}
         {stage === 'error' && error && (
           <section className="error-section">
@@ -1796,7 +1837,8 @@ export default function Home() {
 
         {/* ── RESULTS EXPERIENCE V4 — Premium SaaS Layout ── */}
         {stage === 'done' && result && result.moments.length > 0 && (
-          <>
+          <ErrorBoundary>
+            <>
 
             {/* Video & Hero Pick — Featured Workspace */}
             {renderFeaturedWorkspace()}
@@ -1911,6 +1953,7 @@ export default function Home() {
               </button>
             </div>
           </>
+          </ErrorBoundary>
         )}
       </main>
 
