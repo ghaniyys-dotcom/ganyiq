@@ -1428,6 +1428,7 @@ export default function Home() {
               allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
               loading="lazy"
+              sandbox="allow-scripts allow-same-origin allow-presentation"
             />
           ) : (
             <div className="ws-video-placeholder">Video preview unavailable</div>
