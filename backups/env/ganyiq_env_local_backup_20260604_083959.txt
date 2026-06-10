@@ -1,0 +1,20 @@
+# Database (PostgreSQL local)
+DATABASE_URL=postgresql://ganyiq@localhost:5432/ganyiq
+
+# OpenCode Go API (primary LLM provider)
+OPENCODE_GO_API_KEY=sk-ydVlwYWQQCfdbta2KSHNa6bIIHpYaysgMOV3rwG7dhUKobQGeDljEb807phZOiDW
+
+# Gemini API key (kept as fallback for backward compatibility)
+GEMINI_API_KEY=***
+
+# Rate Limiting
+RATE_LIMIT_PER_DAY=100
+
+# Application
+NEXT_PUBLIC_APP_URL=https://ganyiq.ganys.me
+
+# Deepgram STT API key (fallback transcript source)
+DEEPGRAM_API_KEY=19d7914b483d313da348b7e8ea461e82053cd
+
+# Debug
+DEBUG_TRANSCRIPT=true

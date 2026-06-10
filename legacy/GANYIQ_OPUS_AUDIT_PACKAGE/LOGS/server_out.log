@@ -1,0 +1,600 @@
+[TAILING] Tailing last 500 lines for [ganyiq] process (change the value with --lines option)
+/root/.pm2/logs/ganyiq-error.log last 500 lines:
+0|ganyiq   |   date: 2026-06-07T07:53:47.583Z,
+0|ganyiq   |   version: '17.0.1',
+0|ganyiq   |   info: undefined
+0|ganyiq   | }
+0|ganyiq   | [YOUTUBEJS][Parser]: Error: Something went wrong at ShoppingTimelyShelfView!
+0|ganyiq   | This is a bug, please report it at https://github.com/LuanRT/YouTube.js/issues
+0|ganyiq   |     at py (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:16630)
+0|ganyiq   |     at pA (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:1973)
+0|ganyiq   |     at Module.pP (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:2117)
+0|ganyiq   |     at new uH (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:13:236025)
+0|ganyiq   |     at pA (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:1853)
+0|ganyiq   |     at Module.pP (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:2117)
+0|ganyiq   |     at new uw (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:13:227285)
+0|ganyiq   |     at pA (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:1853)
+0|ganyiq   |     at pM (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:2434)
+0|ganyiq   |     at Module.e (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:1:10264) {
+0|ganyiq   |   date: 2026-06-07T07:53:47.603Z,
+0|ganyiq   |   version: '17.0.1',
+0|ganyiq   |   info: {
+0|ganyiq   |     stack: 'Error: Module not found: ShoppingTimelyShelfContentView\n' +
+0|ganyiq   |       '    at pS (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:459)\n' +
+0|ganyiq   |       '    at /var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1620\n' +
+0|ganyiq   |       '    at Array.map (<anonymous>)\n' +
+0|ganyiq   |       '    at u8 (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1613)\n' +
+0|ganyiq   |       '    at u6 (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1438)\n' +
+0|ganyiq   |       '    at u8 (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1998)\n' +
+0|ganyiq   |       '    at u6 (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1438)\n' +
+0|ganyiq   |       '    at /var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1809\n' +
+0|ganyiq   |       '    at Array.map (<anonymous>)\n' +
+0|ganyiq   |       '    at u8 (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1798)',
+0|ganyiq   |     classdata: '{\n' +
+0|ganyiq   |       '  "offerIdToVariants": [\n' +
+0|ganyiq   |       '    {\n' +
+0|ganyiq   |       '      "key": "O8248548792920157090",\n' +
+0|ganyiq   |       '      "value": {\n' +
+0|ganyiq   |       '        "shelf": {\n' +
+0|ganyiq   |       '          "shoppingTimelyShelfContentViewModel": {\n' +
+0|ganyiq   |       '            "image": {\n' +
+0|ganyiq   |       '              "image": {\n' +
+0|ganyiq   |       '                "sources": [\n' +
+0|ganyiq   |       '                  {\n' +
+0|ganyiq   |       '                    "url": "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcTUwRwl8JZTZR__8z6bYVmsxdUHNPm5a92LTWDgWL0mcoNFiCS5T7tgnhRoAQ",\n' +
+0|ganyiq   |       '                    "width": 128,\n' +
+0|ganyiq   |       '                    "height": 128\n' +
+0|ganyiq   |       '                  }\n' +
+0|ganyiq   |       '                ],\n' +
+0|ganyiq   |       '                "contentMode": "CONTENT_MODE_SCALE_ASPECT_FIT"\n' +
+0|ganyiq   |       '              },\n' +
+0|ganyiq   |       '              "height": 36,\n' +
+0|ganyiq   |       '              "width": 36,\n' +
+0|ganyiq   |       '              "backgroundColor": 4294967295,\n' +
+0|ganyiq   |       '              "cornerRadius": 4\n' +
+0|ganyiq   |       '            },\n' +
+0|ganyiq   |       '            "line1": {\n' +
+0|ganyiq   |       '              "shoppingContentLineViewModel": {\n' +
+0|ganyiq   |       '                "items": [\n' +
+0|ganyiq   |       '                  {\n' +
+0|ganyiq   |       '                    "shoppingContentLineItemViewModel": {\n' +
+0|ganyiq   |       '                      "text": {\n' +
+0|ganyiq   |       '                        "attributedString": {\n' +
+0|ganyiq   |       '                          "content": "[6.6 | Diskon s/d 560RB*] HUAWEI WATCH FIT 5 Series | Titanium* | Studi Risiko Diabetes & ECG* | Olahraga Outdoor Tingkat Lanjut*",\n' +
+0|ganyiq   |       '                          "styleRuns": [\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "startIndex": 0,\n' +
+0|ganyiq   |       '                              "length": 129,\n' +
+0|ganyiq   |       '                              "fontColor": 4279440147,\n' +
+0|ganyiq   |       '                              "weightLabel": "FONT_WEIGHT_NORMAL",\n' +
+0|ganyiq   |       '                              "fontFamilyName": "Roboto"\n' +
+0|ganyiq   |       '                            },\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "fontSize": 14,\n' +
+0|ganyiq   |       '                              "weight": 500\n' +
+0|ganyiq   |       '                            }\n' +
+0|ganyiq   |       '                          ]\n' +
+0|ganyiq   |       '                        },\n' +
+0|ganyiq   |       '                        "fontAttributes": {\n' +
+0|ganyiq   |       '                          "fontRole": "SHOPPING_FONT_ROLE_BODY",\n' +
+0|ganyiq   |       '                          "fontSize": "SHOPPING_FONT_SIZE_M",\n' +
+0|ganyiq   |       '                          "fontWeight": "SHOPPING_FONT_WEIGHT_HEAVY"\n' +
+0|ganyiq   |       '                        }\n' +
+0|ganyiq   |       '                      },\n' +
+0|ganyiq   |       '                      "canShrink": true\n' +
+0|ganyiq   |       '                    }\n' +
+0|ganyiq   |       '                  }\n' +
+0|ganyiq   |       '                ],\n' +
+0|ganyiq   |       '                "lineHeight": 18,\n' +
+0|ganyiq   |       '                "itemGap": 6\n' +
+0|ganyiq   |       '              }\n' +
+0|ganyiq   |       '            },\n' +
+0|ganyiq   |       '            "line2": {\n' +
+0|ganyiq   |       '              "shoppingContentLineViewModel": {\n' +
+0|ganyiq   |       '                "items": [\n' +
+0|ganyiq   |       '                  {\n' +
+0|ganyiq   |       '                    "shoppingContentLineItemViewModel": {\n' +
+0|ganyiq   |       '                      "text": {\n' +
+0|ganyiq   |       '                        "attributedString": {\n' +
+0|ganyiq   |       '                          "content": "Shopee",\n' +
+0|ganyiq   |       '                          "styleRuns": [\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "startIndex": 0,\n' +
+0|ganyiq   |       '                              "length": 6,\n' +
+0|ganyiq   |       '                              "fontColor": 4284506208,\n' +
+0|ganyiq   |       '                              "weightLabel": "FONT_WEIGHT_NORMAL",\n' +
+0|ganyiq   |       '                              "fontFamilyName": "Roboto"\n' +
+0|ganyiq   |       '                            },\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "fontSize": 12\n' +
+0|ganyiq   |       '                            }\n' +
+0|ganyiq   |       '                          ]\n' +
+0|ganyiq   |       '                        },\n' +
+0|ganyiq   |       '                        "fontAttributes": {\n' +
+0|ganyiq   |       '                          "fontRole": "SHOPPING_FONT_ROLE_BODY",\n' +
+0|ganyiq   |       '                          "fontSize": "SHOPPING_FONT_SIZE_S"\n' +
+0|ganyiq   |       '                        }\n' +
+0|ganyiq   |       '                      }\n' +
+0|ganyiq   |       '                    }\n' +
+0|ganyiq   |       '                  },\n' +
+0|ganyiq   |       '                  {\n' +
+0|ganyiq   |       '                    "shoppingContentLineItemViewModel": {\n' +
+0|ganyiq   |       '                      "text": {\n' +
+0|ganyiq   |       '                        "attributedString": {\n' +
+0|ganyiq   |       '                          "content": "·",\n' +
+0|ganyiq   |       '                          "styleRuns": [\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "startIndex": 0,\n' +
+0|ganyiq   |       '                              "length": 1,\n' +
+0|ganyiq   |       '                              "fontColor": 4284506208,\n' +
+0|ganyiq   |       '                              "weightLabel": "FONT_WEIGHT_NORMAL",\n' +
+0|ganyiq   |       '                              "fontFamilyName": "Roboto"\n' +
+0|ganyiq   |       '                            },\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "fontSize": 12,\n' +
+0|ganyiq   |       '                              "weight": 500\n' +
+0|ganyiq   |       '                            }\n' +
+0|ganyiq   |       '                          ]\n' +
+0|ganyiq   |       '                        },\n' +
+0|ganyiq   |       '                        "fontAttributes": {\n' +
+0|ganyiq   |       '                          "fontRole": "SHOPPING_FONT_ROLE_BODY",\n' +
+0|ganyiq   |       '                          "fontSize": "SHOPPING_FONT_SIZE_S",\n' +
+0|ganyiq   |       '                          "fontWeight": "SHOPPING_FONT_WEIGHT_HEAVY"\n' +
+0|ganyiq   |       '                        }\n' +
+0|ganyiq   |       '                      }\n' +
+0|ganyiq   |       '                    }\n' +
+0|ganyiq   |       '                  },\n' +
+0|ganyiq   |       '                  {\n' +
+0|ganyiq   |       '                    "shoppingContentLineItemViewModel": {\n' +
+0|ganyiq   |       '                      "text": {\n' +
+0|ganyiq   |       '                        "attributedString": {\n' +
+0|ganyiq   |       '                          "content": "Limited shipping areas",\n' +
+0|ganyiq   |       '                          "styleRuns": [\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "startIndex": 0,\n' +
+0|ganyiq   |       '                              "length": 22,\n' +
+0|ganyiq   |       '                              "fontColor": 4284506208,\n' +
+0|ganyiq   |       '                              "weightLabel": "FONT_WEIGHT_NORMAL",\n' +
+0|ganyiq   |       '                              "fontFamilyName": "Roboto"\n' +
+0|ganyiq   |       '                            },\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "fontSize": 12\n' +
+0|ganyiq   |       '                            }\n' +
+0|ganyiq   |       '                          ]\n' +
+0|ganyiq   |       '                        },\n' +
+0|ganyiq   |       '                        "fontAttributes": {\n' +
+0|ganyiq   |       '                          "fontRole": "SHOPPING_FONT_ROLE_BODY",\n' +
+0|ganyiq   |       '                          "fontSize": "SHOPPING_FONT_SIZE_S"\n' +
+0|ganyiq   |       '                        }\n' +
+0|ganyiq   |       '                      },\n' +
+0|ganyiq   |       '                      "canShrink": true\n' +
+0|ganyiq   |       '                    }\n' +
+0|ganyiq   |       '                  }\n' +
+0|ganyiq   |       '                ],\n' +
+0|ganyiq   |       '                "lineHeight": 16,\n' +
+0|ganyiq   |       '                "wrapContent": true,\n' +
+0|ganyiq   |       '                "itemGap": 6\n' +
+0|ganyiq   |       '              }\n' +
+0|ganyiq   |       '            },\n' +
+0|ganyiq   |       '            "button": [\n' +
+0|ganyiq   |       '              {\n' +
+0|ganyiq   |       '                "buttonViewModel": {\n' +
+0|ganyiq   |       '                  "title": "View",\n' +
+0|ganyiq   |       '                  "accessibilityText": "View",\n' +
+0|ganyiq   |       '                  "style": "BUTTON_VIEW_MODEL_STYLE_MONO",\n' +
+0|ganyiq   |       '                  "trackingParams": "CJoCEPBbGAAiEwinjdSM0_SUAxWtzTwCHdwgHPQ=",\n' +
+0|ganyiq   |       '                  "type": "BUTTON_VIEW_MODEL_TYPE_TONAL",\n' +
+0|ganyiq   |       '                  "buttonSize": "BUTTON_VIEW_MODEL_SIZE_COMPACT",\n' +
+0|ganyiq   |       '                  "state": "BUTTON_VIEW_MODEL_STATE_ACTIVE",\n' +
+0|ganyiq   |       '                  "accessibilityId": "id.shopping_timely_shelf_content.cta_button"\n' +
+0|ganyiq   |       '                }\n' +
+0|ganyiq   |       '              },\n' +
+0|ganyiq   |       '              {\n' +
+0|ganyiq   |       '                "buttonViewModel": {\n' +
+0|ganyiq   |       '                  "iconName": "MORE_VERT",\n' +
+0|ganyiq   |       '                  "onTap": {\n' +
+0|ganyiq   |       '                    "innertubeCommand": {\n' +
+0|ganyiq   |       '                      "clickTrackingParams": "CJYCEISVERgBIhMIp43UjNP0lAMVrc08Ah3cIBz0ygEEq8IMow==",\n' +
+0|ganyiq   |       '                      "openPopupAction": {\n' +
+0|ganyiq   |       '                        "popup": {\n' +
+0|ganyiq   |       '                          "menuPopupRenderer": {\n' +
+0|ganyiq   |       '                            "items": [\n' +
+0|ganyiq   |       '                              {\n' +
+0|ganyiq   |       '                                "menuServiceItemRenderer": {\n' +
+0|ganyiq   |       '                                  "text": {\n' +
+0|ganyiq   |       '                                    "accessibility": {\n' +
+0|ganyiq   |       '                                      "accessibilityData": {\n' +
+0|ganyiq   |       '                                        "label": "About products and commissions"\n' +
+0|ganyiq   |       '                                      }\n' +
+0|ganyiq   |       '                                    },\n' +
+0|ganyiq   |       '                                    "simpleText": "About products and commissions"\n' +
+0|ganyiq   |       '                                  },\n' +
+0|ganyiq   |       '                                  "icon": {\n' +
+0|ganyiq   |       '                                    "iconType": "HELP"\n' +
+0|ganyiq   |       '                                  },\n' +
+0|ganyiq   |       '                                  "serviceEndpoint": {\n' +
+0|ganyiq   |       '                                    "clickTrackingParams": "CJYCEISVERgBIhMIp43UjNP0lAMVrc08Ah3cIBz0ygEEq8IMow==",\n' +
+0|ganyiq   |       '                                    "openPopupAction": {\n' +
+0|ganyiq   |       '                                      "popup": {\n' +
+0|ganyiq   |       '                                        "fancyDismissibleDialogRenderer": {\n' +
+0|ganyiq   |       '                                          "dialogMessage": {\n' +
+0|ganyiq   |       '                                            "runs": [\n' +
+0|ganyiq   |       '                                              {\n' +
+0|ganyiq   |       '                                                "text": "Product(s) listed here are based on products mentioned in the video you are watching or Shopping Collections or from your past activity while signed in to YouTube, including product(s) you search for, products mentioned in video(s) or related product(s). ",\n' +
+0|ganyiq   |       '                                                "textColor": 4279440147\n' +
+0|ganyiq   |       '                                              },\n' +
+0|ganyiq   |       '                                              {\n' +
+0|ganyiq   |       '                                                "text": "Learn more",\n' +
+0|ganyiq   |       '                                                "navigationEndpoint": {\n' +
+0|ganyiq   |       '                                                  "clickTrackingParams": "CJkCEMdVIhMIp43UjNP0lAMVrc08Ah3cIBz0ygEEq8IMow==",\n' +
+0|ganyiq   |       '                                                  "commandMetadata": {\n' +
+0|ganyiq   |       '                                                    "webCommandMetadata": {\n' +
+0|ganyiq   |       '                                                      "url": "https://support.google.com/youtube/answer/12257682?nohelpkit=1",\n' +
+0|ganyiq   |       '                                                      "webPageType": "WEB_PAGE_TYPE_UNKNOWN",\n' +
+0|ganyiq   |       '                                                      "rootVe": 83769\n' +
+0|ganyiq   |       '                                                    }\n' +
+0|ganyiq   |       '                                                  },\n' +
+0|ganyiq   |       '                                                  "urlEndpoint": {\n' +
+0|ganyiq   |       '                                                    "url": "https://support.google.com/youtube/answer/12257682?nohelpkit=1",\n' +
+0|ganyiq   |       '                                                    "target": "TARGET_NEW_WINDOW"\n' +
+0|ganyiq   |       '                                                  }\n' +
+0|ganyiq   |       '                                                }\n' +
+0|ganyiq   |       '                                              },\n' +
+0|ganyiq   |       '                                              {\n' +
+0|ganyiq   |       '                                                "text": "\\n\\nProduct information and final pricing are determined by merchants and may change. You may be charged additional fees, such as shipping and handling fees, which may vary. Click on the products below or visit the merchant’s store for more information, including product availability, the final price that you will be charge'... 41891 more characters
+0|ganyiq   |   }
+0|ganyiq   | }
+0|ganyiq   | [YOUTUBEJS][Parser]: Error: Something went wrong at ShoppingTimelyShelfView!
+0|ganyiq   | This is a bug, please report it at https://github.com/LuanRT/YouTube.js/issues
+0|ganyiq   |     at py (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:16630)
+0|ganyiq   |     at pA (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:1973)
+0|ganyiq   |     at Module.pP (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:2117)
+0|ganyiq   |     at new uH (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:13:236025)
+0|ganyiq   |     at pA (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:1853)
+0|ganyiq   |     at Module.pP (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:2117)
+0|ganyiq   |     at new uw (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:13:227285)
+0|ganyiq   |     at pA (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:1853)
+0|ganyiq   |     at pM (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:2434)
+0|ganyiq   |     at Module.e (.next/server/chunks/[root-of-the-server]__09t1cjg._.js:1:10264) {
+0|ganyiq   |   date: 2026-06-07T07:54:51.757Z,
+0|ganyiq   |   version: '17.0.1',
+0|ganyiq   |   info: {
+0|ganyiq   |     stack: 'Error: Module not found: ShoppingTimelyShelfContentView\n' +
+0|ganyiq   |       '    at pS (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:35:459)\n' +
+0|ganyiq   |       '    at /var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1620\n' +
+0|ganyiq   |       '    at Array.map (<anonymous>)\n' +
+0|ganyiq   |       '    at u8 (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1613)\n' +
+0|ganyiq   |       '    at u6 (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1438)\n' +
+0|ganyiq   |       '    at u8 (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1998)\n' +
+0|ganyiq   |       '    at u6 (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1438)\n' +
+0|ganyiq   |       '    at /var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1809\n' +
+0|ganyiq   |       '    at Array.map (<anonymous>)\n' +
+0|ganyiq   |       '    at u8 (/var/www/ganyiq/.next/server/chunks/[root-of-the-server]__09t1cjg._.js:26:1798)',
+0|ganyiq   |     classdata: '{\n' +
+0|ganyiq   |       '  "offerIdToVariants": [\n' +
+0|ganyiq   |       '    {\n' +
+0|ganyiq   |       '      "key": "O1927911140363220540",\n' +
+0|ganyiq   |       '      "value": {\n' +
+0|ganyiq   |       '        "shelf": {\n' +
+0|ganyiq   |       '          "shoppingTimelyShelfContentViewModel": {\n' +
+0|ganyiq   |       '            "image": {\n' +
+0|ganyiq   |       '              "image": {\n' +
+0|ganyiq   |       '                "sources": [\n' +
+0|ganyiq   |       '                  {\n' +
+0|ganyiq   |       '                    "url": "https://encrypted-tbn1.gstatic.com/shopping?q=tbn:ANd9GcRVNNwJqsY1G_WONbv1ZKV4x5IcOHXdR0Y83qT6vijEyvNMOz7FAhjA3M2v5Q",\n' +
+0|ganyiq   |       '                    "width": 128,\n' +
+0|ganyiq   |       '                    "height": 128\n' +
+0|ganyiq   |       '                  }\n' +
+0|ganyiq   |       '                ],\n' +
+0|ganyiq   |       '                "contentMode": "CONTENT_MODE_SCALE_ASPECT_FIT"\n' +
+0|ganyiq   |       '              },\n' +
+0|ganyiq   |       '              "height": 36,\n' +
+0|ganyiq   |       '              "width": 36,\n' +
+0|ganyiq   |       '              "backgroundColor": 4294967295,\n' +
+0|ganyiq   |       '              "cornerRadius": 4\n' +
+0|ganyiq   |       '            },\n' +
+0|ganyiq   |       '            "line1": {\n' +
+0|ganyiq   |       '              "shoppingContentLineViewModel": {\n' +
+0|ganyiq   |       '                "items": [\n' +
+0|ganyiq   |       '                  {\n' +
+0|ganyiq   |       '                    "shoppingContentLineItemViewModel": {\n' +
+0|ganyiq   |       '                      "text": {\n' +
+0|ganyiq   |       '                        "attributedString": {\n' +
+0|ganyiq   |       '                          "content": "HUAWEI WATCH FIT 5 Series | Titanium* | Studi Risiko Diabetes & ECG* | Olahraga Outdoor Tingkat Lanjut*",\n' +
+0|ganyiq   |       '                          "styleRuns": [\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "startIndex": 0,\n' +
+0|ganyiq   |       '                              "length": 103,\n' +
+0|ganyiq   |       '                              "fontColor": 4279440147,\n' +
+0|ganyiq   |       '                              "weightLabel": "FONT_WEIGHT_NORMAL",\n' +
+0|ganyiq   |       '                              "fontFamilyName": "Roboto"\n' +
+0|ganyiq   |       '                            },\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "fontSize": 14,\n' +
+0|ganyiq   |       '                              "weight": 500\n' +
+0|ganyiq   |       '                            }\n' +
+0|ganyiq   |       '                          ]\n' +
+0|ganyiq   |       '                        },\n' +
+0|ganyiq   |       '                        "fontAttributes": {\n' +
+0|ganyiq   |       '                          "fontRole": "SHOPPING_FONT_ROLE_BODY",\n' +
+0|ganyiq   |       '                          "fontSize": "SHOPPING_FONT_SIZE_M",\n' +
+0|ganyiq   |       '                          "fontWeight": "SHOPPING_FONT_WEIGHT_HEAVY"\n' +
+0|ganyiq   |       '                        }\n' +
+0|ganyiq   |       '                      },\n' +
+0|ganyiq   |       '                      "canShrink": true\n' +
+0|ganyiq   |       '                    }\n' +
+0|ganyiq   |       '                  }\n' +
+0|ganyiq   |       '                ],\n' +
+0|ganyiq   |       '                "lineHeight": 18,\n' +
+0|ganyiq   |       '                "itemGap": 6\n' +
+0|ganyiq   |       '              }\n' +
+0|ganyiq   |       '            },\n' +
+0|ganyiq   |       '            "line2": {\n' +
+0|ganyiq   |       '              "shoppingContentLineViewModel": {\n' +
+0|ganyiq   |       '                "items": [\n' +
+0|ganyiq   |       '                  {\n' +
+0|ganyiq   |       '                    "shoppingContentLineItemViewModel": {\n' +
+0|ganyiq   |       '                      "text": {\n' +
+0|ganyiq   |       '                        "attributedString": {\n' +
+0|ganyiq   |       '                          "content": "Blibli",\n' +
+0|ganyiq   |       '                          "styleRuns": [\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "startIndex": 0,\n' +
+0|ganyiq   |       '                              "length": 6,\n' +
+0|ganyiq   |       '                              "fontColor": 4284506208,\n' +
+0|ganyiq   |       '                              "weightLabel": "FONT_WEIGHT_NORMAL",\n' +
+0|ganyiq   |       '                              "fontFamilyName": "Roboto"\n' +
+0|ganyiq   |       '                            },\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "fontSize": 12\n' +
+0|ganyiq   |       '                            }\n' +
+0|ganyiq   |       '                          ]\n' +
+0|ganyiq   |       '                        },\n' +
+0|ganyiq   |       '                        "fontAttributes": {\n' +
+0|ganyiq   |       '                          "fontRole": "SHOPPING_FONT_ROLE_BODY",\n' +
+0|ganyiq   |       '                          "fontSize": "SHOPPING_FONT_SIZE_S"\n' +
+0|ganyiq   |       '                        }\n' +
+0|ganyiq   |       '                      }\n' +
+0|ganyiq   |       '                    }\n' +
+0|ganyiq   |       '                  },\n' +
+0|ganyiq   |       '                  {\n' +
+0|ganyiq   |       '                    "shoppingContentLineItemViewModel": {\n' +
+0|ganyiq   |       '                      "text": {\n' +
+0|ganyiq   |       '                        "attributedString": {\n' +
+0|ganyiq   |       '                          "content": "·",\n' +
+0|ganyiq   |       '                          "styleRuns": [\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "startIndex": 0,\n' +
+0|ganyiq   |       '                              "length": 1,\n' +
+0|ganyiq   |       '                              "fontColor": 4284506208,\n' +
+0|ganyiq   |       '                              "weightLabel": "FONT_WEIGHT_NORMAL",\n' +
+0|ganyiq   |       '                              "fontFamilyName": "Roboto"\n' +
+0|ganyiq   |       '                            },\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "fontSize": 12,\n' +
+0|ganyiq   |       '                              "weight": 500\n' +
+0|ganyiq   |       '                            }\n' +
+0|ganyiq   |       '                          ]\n' +
+0|ganyiq   |       '                        },\n' +
+0|ganyiq   |       '                        "fontAttributes": {\n' +
+0|ganyiq   |       '                          "fontRole": "SHOPPING_FONT_ROLE_BODY",\n' +
+0|ganyiq   |       '                          "fontSize": "SHOPPING_FONT_SIZE_S",\n' +
+0|ganyiq   |       '                          "fontWeight": "SHOPPING_FONT_WEIGHT_HEAVY"\n' +
+0|ganyiq   |       '                        }\n' +
+0|ganyiq   |       '                      }\n' +
+0|ganyiq   |       '                    }\n' +
+0|ganyiq   |       '                  },\n' +
+0|ganyiq   |       '                  {\n' +
+0|ganyiq   |       '                    "shoppingContentLineItemViewModel": {\n' +
+0|ganyiq   |       '                      "text": {\n' +
+0|ganyiq   |       '                        "attributedString": {\n' +
+0|ganyiq   |       '                          "content": "Limited shipping areas",\n' +
+0|ganyiq   |       '                          "styleRuns": [\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "startIndex": 0,\n' +
+0|ganyiq   |       '                              "length": 22,\n' +
+0|ganyiq   |       '                              "fontColor": 4284506208,\n' +
+0|ganyiq   |       '                              "weightLabel": "FONT_WEIGHT_NORMAL",\n' +
+0|ganyiq   |       '                              "fontFamilyName": "Roboto"\n' +
+0|ganyiq   |       '                            },\n' +
+0|ganyiq   |       '                            {\n' +
+0|ganyiq   |       '                              "fontSize": 12\n' +
+0|ganyiq   |       '                            }\n' +
+0|ganyiq   |       '                          ]\n' +
+0|ganyiq   |       '                        },\n' +
+0|ganyiq   |       '                        "fontAttributes": {\n' +
+0|ganyiq   |       '                          "fontRole": "SHOPPING_FONT_ROLE_BODY",\n' +
+0|ganyiq   |       '                          "fontSize": "SHOPPING_FONT_SIZE_S"\n' +
+0|ganyiq   |       '                        }\n' +
+0|ganyiq   |       '                      },\n' +
+0|ganyiq   |       '                      "canShrink": true\n' +
+0|ganyiq   |       '                    }\n' +
+0|ganyiq   |       '                  }\n' +
+0|ganyiq   |       '                ],\n' +
+0|ganyiq   |       '                "lineHeight": 16,\n' +
+0|ganyiq   |       '                "wrapContent": true,\n' +
+0|ganyiq   |       '                "itemGap": 6\n' +
+0|ganyiq   |       '              }\n' +
+0|ganyiq   |       '            },\n' +
+0|ganyiq   |       '            "button": [\n' +
+0|ganyiq   |       '              {\n' +
+0|ganyiq   |       '                "buttonViewModel": {\n' +
+0|ganyiq   |       '                  "title": "View",\n' +
+0|ganyiq   |       '                  "accessibilityText": "View",\n' +
+0|ganyiq   |       '                  "style": "BUTTON_VIEW_MODEL_STYLE_MONO",\n' +
+0|ganyiq   |       '                  "trackingParams": "CKACEPBbGAAiEwjEq6Sr0_SUAxVASp0JHVmFBbI=",\n' +
+0|ganyiq   |       '                  "type": "BUTTON_VIEW_MODEL_TYPE_TONAL",\n' +
+0|ganyiq   |       '                  "buttonSize": "BUTTON_VIEW_MODEL_SIZE_COMPACT",\n' +
+0|ganyiq   |       '                  "state": "BUTTON_VIEW_MODEL_STATE_ACTIVE",\n' +
+0|ganyiq   |       '                  "accessibilityId": "id.shopping_timely_shelf_content.cta_button"\n' +
+0|ganyiq   |       '                }\n' +
+0|ganyiq   |       '              },\n' +
+0|ganyiq   |       '              {\n' +
+0|ganyiq   |       '                "buttonViewModel": {\n' +
+0|ganyiq   |       '                  "iconName": "MORE_VERT",\n' +
+0|ganyiq   |       '                  "onTap": {\n' +
+0|ganyiq   |       '                    "innertubeCommand": {\n' +
+0|ganyiq   |       '                      "clickTrackingParams": "CJwCEISVERgBIhMIxKukq9P0lAMVQEqdCR1ZhQWyygEEq8IMow==",\n' +
+0|ganyiq   |       '                      "openPopupAction": {\n' +
+0|ganyiq   |       '                        "popup": {\n' +
+0|ganyiq   |       '                          "menuPopupRenderer": {\n' +
+0|ganyiq   |       '                            "items": [\n' +
+0|ganyiq   |       '                              {\n' +
+0|ganyiq   |       '                                "menuServiceItemRenderer": {\n' +
+0|ganyiq   |       '                                  "text": {\n' +
+0|ganyiq   |       '                                    "accessibility": {\n' +
+0|ganyiq   |       '                                      "accessibilityData": {\n' +
+0|ganyiq   |       '                                        "label": "About products and commissions"\n' +
+0|ganyiq   |       '                                      }\n' +
+0|ganyiq   |       '                                    },\n' +
+0|ganyiq   |       '                                    "simpleText": "About products and commissions"\n' +
+0|ganyiq   |       '                                  },\n' +
+0|ganyiq   |       '                                  "icon": {\n' +
+0|ganyiq   |       '                                    "iconType": "HELP"\n' +
+0|ganyiq   |       '                                  },\n' +
+0|ganyiq   |       '                                  "serviceEndpoint": {\n' +
+0|ganyiq   |       '                                    "clickTrackingParams": "CJwCEISVERgBIhMIxKukq9P0lAMVQEqdCR1ZhQWyygEEq8IMow==",\n' +
+0|ganyiq   |       '                                    "openPopupAction": {\n' +
+0|ganyiq   |       '                                      "popup": {\n' +
+0|ganyiq   |       '                                        "fancyDismissibleDialogRenderer": {\n' +
+0|ganyiq   |       '                                          "dialogMessage": {\n' +
+0|ganyiq   |       '                                            "runs": [\n' +
+0|ganyiq   |       '                                              {\n' +
+0|ganyiq   |       '                                                "text": "Product(s) listed here are based on products mentioned in the video you are watching or Shopping Collections or from your past activity while signed in to YouTube, including product(s) you search for, products mentioned in video(s) or related product(s). ",\n' +
+0|ganyiq   |       '                                                "textColor": 4279440147\n' +
+0|ganyiq   |       '                                              },\n' +
+0|ganyiq   |       '                                              {\n' +
+0|ganyiq   |       '                                                "text": "Learn more",\n' +
+0|ganyiq   |       '                                                "navigationEndpoint": {\n' +
+0|ganyiq   |       '                                                  "clickTrackingParams": "CJ8CEMdVIhMIxKukq9P0lAMVQEqdCR1ZhQWyygEEq8IMow==",\n' +
+0|ganyiq   |       '                                                  "commandMetadata": {\n' +
+0|ganyiq   |       '                                                    "webCommandMetadata": {\n' +
+0|ganyiq   |       '                                                      "url": "https://support.google.com/youtube/answer/12257682?nohelpkit=1",\n' +
+0|ganyiq   |       '                                                      "webPageType": "WEB_PAGE_TYPE_UNKNOWN",\n' +
+0|ganyiq   |       '                                                      "rootVe": 83769\n' +
+0|ganyiq   |       '                                                    }\n' +
+0|ganyiq   |       '                                                  },\n' +
+0|ganyiq   |       '                                                  "urlEndpoint": {\n' +
+0|ganyiq   |       '                                                    "url": "https://support.google.com/youtube/answer/12257682?nohelpkit=1",\n' +
+0|ganyiq   |       '                                                    "target": "TARGET_NEW_WINDOW"\n' +
+0|ganyiq   |       '                                                  }\n' +
+0|ganyiq   |       '                                                }\n' +
+0|ganyiq   |       '                                              },\n' +
+0|ganyiq   |       '                                              {\n' +
+0|ganyiq   |       '                                                "text": "\\n\\nProduct information and final pricing are determined by merchants and may change. You may be charged additional fees, such as shipping and handling fees, which may vary. Click on the products below or visit the merchant’s store for more information, including product availability, the final price that you will be charged by the merchant, and to '... 41891 more characters
+0|ganyiq   |   }
+0|ganyiq   | }
+0|ganyiq   | Error: Failed to find Server Action "x". This request might be from an older or newer deployment.
+0|ganyiq   | Read more: https://nextjs.org/docs/messages/failed-to-find-server-action
+0|ganyiq   |     at ignore-listed frames
+0|ganyiq   | [YOUTUBEJS][Text]: Unable to find matching run for attachment run. Skipping... {
+0|ganyiq   |   attachment_run: {
+0|ganyiq   |     startIndex: 10,
+0|ganyiq   |     element: { type: [Object], properties: [Object] },
+0|ganyiq   |     alignment: 'ALIGNMENT_VERTICAL_CENTER'
+0|ganyiq   |   },
+0|ganyiq   |   input_data: {
+0|ganyiq   |     content: 'Jeda Nulis and HAQIQI',
+0|ganyiq   |     styleRuns: [ [Object], [Object] ],
+0|ganyiq   |     attachmentRuns: [ [Object] ]
+0|ganyiq   |   },
+0|ganyiq   |   parsed_runs: [ { text: 'Jeda Nulis and HAQIQI', startIndex: 0 } ]
+0|ganyiq   | }
+
+/root/.pm2/logs/ganyiq-out.log last 500 lines:
+0|ganyiq   | [SBR] Candidate unchanged: start=31:19 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=31:29 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=32:04 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=32:19 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=32:57 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=33:32 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=33:55 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate shifted: original=34:09 recovered=34:04 reason="startsWith("jadi")"
+0|ganyiq   | [SBR] Candidate unchanged: start=34:25 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=34:40 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=35:10 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=35:38 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=39:24 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=39:34 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate shifted: original=41:51 recovered=41:36 reason="startsWith("dulu")"
+0|ganyiq   | [SBR] Candidate shifted: original=42:43 recovered=42:32 reason="startsWith("terus")"
+0|ganyiq   | [SBR] Candidate unchanged: start=42:59 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=43:10 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=43:46 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=44:19 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=44:30 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate shifted: original=44:51 recovered=44:41 reason="contains("awalnya")"
+0|ganyiq   | [SBR] Candidate unchanged: start=46:07 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=46:59 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=47:15 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=47:41 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=47:51 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=48:28 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate shifted: original=48:56 recovered=48:40 reason="startsWith("jadi")"
+0|ganyiq   | [SBR] Candidate unchanged: start=49:50 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=50:05 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate FOUND but DROPPED (exceeds 90s): original=51:14 boundary_at=50:59 reason="startsWith("jadi")"
+0|ganyiq   | [SBR] Candidate unchanged: start=51:14 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=53:08 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=54:26 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate shifted: original=54:47 recovered=54:36 reason="startsWith("kalau")"
+0|ganyiq   | [SBR] Candidate unchanged: start=55:01 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=55:41 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=56:15 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=57:04 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=57:23 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=58:35 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=59:31 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=60:00 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=61:16 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=62:12 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=63:01 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate shifted: original=63:11 recovered=63:01 reason="startsWith("terus")"
+0|ganyiq   | [SBR] Candidate unchanged: start=63:31 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=63:50 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=64:07 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=64:26 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=64:41 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=65:15 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=66:32 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=67:16 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=68:26 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=68:50 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=69:11 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=69:26 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=70:21 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=72:00 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=73:07 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=73:23 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=74:06 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=74:21 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=74:56 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=75:21 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=75:46 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate shifted: original=75:57 recovered=75:52 reason="startsWith("nah")"
+0|ganyiq   | [SBR] Candidate FOUND but DROPPED (exceeds 90s): original=76:07 boundary_at=75:52 reason="startsWith("nah")"
+0|ganyiq   | [SBR] Candidate unchanged: start=76:07 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=77:23 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=77:41 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=78:01 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=78:15 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=79:33 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=80:02 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=80:22 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate shifted: original=81:27 recovered=81:22 reason="startsWith("pernah")"
+0|ganyiq   | [SBR] Candidate unchanged: start=81:52 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate shifted: original=83:43 recovered=83:26 reason="startsWith("sebenernya")"
+0|ganyiq   | [SBR] Candidate shifted: original=83:53 recovered=83:48 reason="contains("ceritanya")"
+0|ganyiq   | [SBR] Candidate unchanged: start=84:47 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=85:26 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=85:58 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate shifted: original=86:32 recovered=86:17 reason="contains("ceritanya")"
+0|ganyiq   | [SBR] Candidate unchanged: start=87:06 reason="no_boundary_found"
+0|ganyiq   | [SBR] Candidate unchanged: start=87:39 reason="no_boundary_found"
+0|ganyiq   | [V2] Found 15 candidates
+0|ganyiq   | [V2] Metadata duration was 0s, using transcript duration: 5301s
+0|ganyiq   | [V2] Batch prompt built. Prompt length: 15426 chars. Video duration: 0s
+0|ganyiq   | [LLM] model=deepseek-v4-flash attempt=1
+0|ganyiq   | [LLM] response received | model=deepseek-v4-flash status=200
+0|ganyiq   | [LLM] choices length: 1 | model=deepseek-v4-flash
+0|ganyiq   | [LLM] finish_reason: length | model=deepseek-v4-flash

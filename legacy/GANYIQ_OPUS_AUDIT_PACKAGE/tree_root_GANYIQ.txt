@@ -1,0 +1,175 @@
+# GANYIQ — Source of Truth Directory Tree
+# /root/GANYIQ/
+# Depth: 6, Excluded: .git, node_modules, .next, cache, temp
+# Generated: 2026-06-07
+
+.
+├── .env.example
+├── .env.local
+├── .gitignore
+├── DEPLOYMENT_AUDIT.md
+├── MASTER_PLAN_v1.md
+├── MVP_LOCK_v1.md
+├── PRODUCTION_HARDENING_REPORT.md
+├── TECHNICAL_BLUEPRINT_v1.md
+├── cookies.txt
+├── deploy.sh
+├── next-env.d.ts
+├── next.config.ts
+├── package-lock.json
+├── package.json
+├── tsconfig.json
+├── tsconfig.tsbuildinfo
+├── vercel-simple.json
+├── vercel.json
+│
+├── app/                              # Next.js App Router
+│   ├── globals.css                   # (655 lines) Dark theme, responsive
+│   ├── layout.tsx                    # Root layout, Geist fonts
+│   ├── page.tsx                      # SPA: input, analysis, history, clips
+│   │
+│   └── api/
+│       ├── analyze/
+│       │   └── route.ts              # POST: main analysis pipeline
+│       ├── clips/
+│       │   ├── route.ts              # POST: create clip generation job
+│       │   └── [id]/
+│       │       ├── download/
+│       │       │   └── route.ts      # GET: serve clip MP4
+│       │       └── status/
+│       │           └── route.ts      # GET: poll clip render status
+│       ├── cron/
+│       │   └── cleanup-jobs/
+│       │       └── route.ts          # GET: release stale jobs, mark offline
+│       ├── health/
+│       │   └── route.ts              # GET: DB connectivity check
+│       ├── history/
+│       │   ├── route.ts              # GET: recent analyses (IP-based)
+│       │   └── [id]/
+│       │       └── route.ts          # GET: re-open past analysis
+│       ├── version/
+│       │   └── route.ts              # GET: git SHA, build timestamp
+│       └── workers/
+│           ├── register/
+│           │   └── route.ts          # POST: register new worker
+│           ├── [id]/
+│           │   └── heartbeat/
+│           │       └── route.ts      # POST: worker keepalive
+│           └── jobs/
+│               ├── poll/
+│               │   └── route.ts      # GET: claim next pending job
+│               └── [id]/
+│                   ├── complete/
+│                   │   └── route.ts  # POST: submit transcript result
+│                   ├── fail/
+│                   │   └── route.ts  # POST: report job failure
+│                   └── upload/
+│                       └── route.ts  # POST: upload rendered clip MP4
+│
+├── db/                               # Database layer
+│   ├── client.ts                     # Singleton Neon PostgreSQL pool
+│   ├── migrate.ts                    # Migration runner
+│   └── migrations/                   # SQL migrations (applied in order)
+│       ├── 001_create_videos.sql
+│       ├── 002_create_analyses.sql
+│       ├── 003_create_moments.sql
+│       ├── 004_create_events.sql
+│       ├── 005_add_transcript_source.sql
+│       ├── 006_create_jobs_queue.sql
+│       ├── 007_create_clips_cache.sql
+│       └── 008_add_render_mode.sql
+│
+├── docs/                             # Validation reports, design docs
+│   ├── COOKIE_AUTH_VALIDATION_RESULTS.md
+│   ├── COOKIE_INTEGRATION_FORENSIC_AUDIT.md
+│   ├── DATA_COLLECTION_WORKFLOW.md
+│   ├── DEEPGRAM_PIPELINE_VALIDATION.md
+│   ├── DEEPGRAM_POC_RESULTS.md
+│   ├── FIRST_100_ANALYSES_PLAN.md
+│   ├── FIRST_BATCH_VALIDATION_REPORT.md
+│   ├── GOLDEN_DATASET_SPEC.md
+│   ├── KNOWN_LIMITATIONS.md
+│   ├── LLM_503_FORENSIC_AUDIT.md
+│   ├── PC_GANY_SETUP_GUIDE.md
+│   ├── PRODUCTION_DEEPGRAM_INTEGRATION_PLAN.md
+│   ├── QUALITY_VALIDATION_PLAN.md
+│   ├── REVIEW_ASSIGNMENT_GUIDE.md
+│   ├── TRANSCRIPT_STRATEGY_DECISION.md
+│   ├── VALIDATION_BATCH_002_REPORT.md
+│   ├── VALIDATION_BATCH_002_RERUN.md
+│   ├── VALIDATION_REPORT_v1.md
+│   ├── VERCEL_TRANSCRIPT_VALIDATION_PLAN.md
+│   └── WHISPER_FALLBACK_FEASIBILITY.md
+│
+├── eval/                             # Quality evaluation artifacts
+│   ├── README.md
+│   ├── review-template.md
+│   ├── url-tracker-template.csv
+│   └── url-tracker.csv
+│
+├── lib/                              # Core business logic
+│   ├── analyzer.ts                   # V2 LLM analysis pipeline (525 lines)
+│   ├── candidate-extraction.ts       # 15-signal deterministic pre-filter
+│   ├── cookies.ts                    # YouTube cookie parser
+│   ├── deepgram.ts                   # Deepgram STT module
+│   ├── errors.ts                     # Custom error classes + pre-built
+│   ├── format.ts                     # Timestamp/duration formatting
+│   ├── prompt.ts                     # LLM prompt templates (V2 compact)
+│   ├── ranking.ts                    # Deterministic ranking + dedup + tier
+│   ├── rate-limit.ts                 # IP-based rate limiting
+│   ├── transcript-service.ts         # 3-path transcript acquisition
+│   ├── types.ts                      # All shared TypeScript types
+│   ├── user-identity.ts              # IP-based identity
+│   ├── validators.ts                 # URL validation, video ID extraction
+│   ├── worker-auth.ts                # Bearer token auth for workers
+│   └── youtube.ts                    # InnerTube API transcript extraction
+│
+├── proof/                            # Phase 0.5 proof-of-concept
+│   ├── .env
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── src/
+│       ├── index.ts
+│       ├── test-run.ts
+│       ├── test-videos.ts
+│       └── types.ts
+│
+├── public/                           # Static assets
+│   ├── clips/                        # Rendered MP4 files (production only)
+│   ├── file.svg
+│   ├── globe.svg
+│   ├── next.svg
+│   ├── vercel.svg
+│   ├── window.svg
+│   └── worker-package.zip            # Worker distribution package
+│
+├── scripts/
+│   ├── .gitkeep
+│   ├── batch-analyze.ts
+│   ├── batch-rerun.sh
+│   ├── cookie-auth-validation.ts
+│   ├── deepgram-analysis-test.ts
+│   ├── deepgram-poc.ts
+│   ├── e2e-worker-test.ts
+│   └── export-results.ts
+│
+├── worker/                           # Residential worker source
+│   ├── clip-renderer.ts              # FFmpeg rendering engine (~532 lines)
+│   ├── env-template.txt              # Required env vars template
+│   ├── face-detect.py                # OpenCV Haar Cascade detector (~155 lines)
+│   ├── face-tracker.ts               # Identity tracking + smoothing + crop (~934 lines)
+│   ├── index.ts                      # Main worker agent loop
+│   ├── package.json
+│   └── tsconfig.json
+│
+├── worker-package/                   # Duplicate of worker/ for distribution
+│   ├── clip-renderer.ts              # Identical to worker/ (minor signature diff)
+│   ├── env-template.txt
+│   ├── face-detect.py                # Identical
+│   ├── face-tracker.ts               # Identical
+│   ├── index.ts                      # Identical (signature diff in renderClip call)
+│   ├── package.json
+│   ├── README.md
+│   └── tsconfig.json
+│
+└── worker-package.zip                # Legacy archive (13KB, older version)

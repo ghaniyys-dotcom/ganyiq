@@ -1,0 +1,79 @@
+# GANYIQ — Production Directory Tree
+# /var/www/ganyiq/
+# Depth: 6, Excluded: .git, node_modules, .next, cache
+# Generated: 2026-06-07
+
+NOTE: This is a mirror of /root/GANYIQ/ deployed via rsync.
+Only differences are noted with [PROD-ONLY] markers.
+
+.
+├── .env.example
+├── .env.local
+├── .gitignore
+├── DEPLOYMENT_AUDIT.md
+├── MASTER_PLAN_v1.md
+├── MVP_LOCK_v1.md
+├── PRODUCTION_HARDENING_REPORT.md
+├── TECHNICAL_BLUEPRINT_v1.md
+├── cookies.txt                        # YouTube auth cookies (different tokens than source)
+├── deploy.sh                          # Same deploy script
+├── next-env.d.ts
+├── next.config.ts
+├── package-lock.json
+├── package.json
+├── tsconfig.json
+├── tsconfig.tsbuildinfo               # Build artifact (differs from source)
+├── vercel-simple.json
+├── vercel.json
+│
+├── app/                               # Identical to source
+│   └── ... (mirrors /root/GANYIQ/app)
+│
+├── db/                                # Identical to source
+│   └── ... (mirrors /root/GANYIQ/db)
+│
+├── docs/                              # Identical to source
+│   └── ... (mirrors /root/GANYIQ/docs)
+│
+├── eval/
+│   └── ... (mirrors /root/GANYIQ/eval)
+│
+├── lib/                               # Identical to source
+│   └── ... (mirrors /root/GANYIQ/lib)
+│
+├── proof/                             # Identical to source
+│   └── ... (mirrors /root/GANYIQ/proof)
+│
+├── public/
+│   ├── clips/      [PROD-ONLY]        # 8 rendered MP4 files (~164 MB)
+│   │   ├── 44522c10..._522s_597s.mp4
+│   │   ├── 674cd0de..._1790s_1868s_landscape.mp4
+│   │   ├── 674cd0de..._1790s_1868s_vertical.mp4
+│   │   ├── 674cd0de..._1953s_2031s_vertical.mp4
+│   │   ├── c3a6d4a2..._2921s_2995s_vertical.mp4
+│   │   ├── d602eb94..._102s_187s_vertical.mp4
+│   │   ├── d602eb94..._2615s_2683s.mp4
+│   │   ├── dd764739..._1477s_1533s_landscape.mp4
+│   │   ├── file.svg
+│   │   ├── globe.svg
+│   │   ├── next.svg
+│   │   ├── vercel.svg
+│   │   ├── window.svg
+│   │   └── worker-package.zip         # 20KB distribution package
+│
+├── scripts/
+│   └── ... (mirrors /root/GANYIQ/scripts)
+│
+├── worker/                            # [CODE DRIFT] face-tracker differs
+│   ├── clip-renderer.ts              # Identical
+│   ├── env-template.txt
+│   ├── face-detect.py                # Identical
+│   ├── face-tracker.ts               # ⚠ CONFIDENCE_LOCK_THRESHOLD=0.6 (source has 0.25)
+│   ├── index.ts                      # Identical
+│   ├── package.json
+│   └── tsconfig.json
+│
+├── worker-package/                    # Same drift as worker/
+│   └── ... (same face-tracker.ts difference)
+│
+└── worker-package.zip                 # Legacy archive (13KB)
