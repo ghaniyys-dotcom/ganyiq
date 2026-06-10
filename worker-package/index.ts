@@ -14,6 +14,7 @@
  *   POLL_INTERVAL_MS     = 30000 (default)
  *   WORKER_ID            = (set after first registration)
  *   WORKER_API_KEY       = (set after first registration)
+ *   HF_TOKEN             = (optional) HuggingFace token for PyAnnote speaker diarization
  */
 
 import { readFileSync, writeFileSync, existsSync } from 'fs';
@@ -36,6 +37,7 @@ interface EnvConfig {
   FFMPEG_LOCATION?: string;
   WORKER_ID?: string;
   WORKER_API_KEY?: string;
+  HF_TOKEN?: string;
 }
 
 interface Job {
@@ -105,6 +107,7 @@ function loadEnv(): EnvConfig {
     FFMPEG_LOCATION: process.env.FFMPEG_LOCATION || config.FFMPEG_LOCATION || undefined,
     WORKER_ID: process.env.WORKER_ID || config.WORKER_ID,
     WORKER_API_KEY: process.env.WORKER_API_KEY || config.WORKER_API_KEY,
+    HF_TOKEN: process.env.HF_TOKEN || config.HF_TOKEN || undefined,
   };
 }
 
@@ -413,9 +416,9 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
   // Branch by job type
   if (job.jobType === 'clip') {
     try {
-      await renderClip(job, env);
+      await renderClip(job, env, () => sendHeartbeat(env));
     } catch (err) {
-      const errorMsg = (err as Error).message.slice(0, 500);
+      const errorMsg = (err as Error).message.slice(0, 2000);
       log('CLIP', `❌ Failed: ${errorMsg}`);
 
       // Report failure
@@ -467,7 +470,7 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
     const causeStr = error.cause
       ? ` | cause=${error.cause instanceof Error ? error.cause.message : String(error.cause)}`
       : '';
-    const errorMsg = error.message.slice(0, 500);
+    const errorMsg = error.message.slice(0, 2000);
     log('JOB', `❌ Failed: ${errorMsg}${causeStr}`);
 
     // Report failure (non-fatal — API may also be unreachable)

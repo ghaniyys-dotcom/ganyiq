@@ -10,11 +10,13 @@
  *   TTL: 7 days | Max cache: 50GB
  */
 
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from 'fs';
 import { join, resolve } from 'path';
 import { execSync } from 'child_process';
 import { platform } from 'os';
 import { analyzeFaces, type CropSegment, type MultiCropSegment, type MultiFaceSample } from './face-tracker';
+import type { DecisionSegment } from './decision-engine';
+import { renderSubtitles, type SubtitleRenderResult, buildSubtitleFilter } from './subtitle-renderer';
 
 // ---------------------------------------------------------------------------
 // Interfaces (mirrors the types in worker/index.ts)
@@ -27,6 +29,7 @@ interface EnvConfig {
   FFMPEG_LOCATION?: string;
   WORKER_ID?: string;
   WORKER_API_KEY?: string;
+  HF_TOKEN?: string;
 }
 
 interface Job {
@@ -198,8 +201,10 @@ export async function renderClip(
     log('YTDLP', `Downloading video: ${videoUrl}`);
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     if (heartbeatFn) await heartbeatFn();
+    // P0.5: Download up to 1080p source for better quality
+    const formatStr = 'bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=1080]';
     execSync(
-      `yt-dlp ${ffmpegFlag} -f "best[height<=720]" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
+      `yt-dlp ${ffmpegFlag} -f "${formatStr}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
       EXEC_OPTS,
     );
     addToCache(videoId, videoPath);
@@ -222,8 +227,10 @@ export async function renderClip(
     log('SOURCE', `video=${vStream.width}x${vStream.height} codec=${vStream.codec_name} video_bitrate=${vStream.bit_rate || 'N/A'} audio_bitrate=${aStream.bit_rate || 'N/A'} duration=${probe?.format?.duration}s size=${probe?.format?.size} bytes`);
     sourceWidth = vStream.width || 1280;
     sourceHeight = vStream.height || 720;
-    if (vStream.width < 1280 || vStream.height < 720) {
-      log('WARN', `Source quality below 720p (${vStream.width}x${vStream.height})`);
+    if (vStream.width >= 1920 && vStream.height >= 1080) {
+      log('SOURCE', 'Full HD source — excellent quality');
+    } else if (vStream.width < 1280 || vStream.height < 720) {
+      log('WARN', `Source quality below 720p (${vStream.width}x${vStream.height}) — will need upscaling`);
     }
   } catch (e) {
     log('SOURCE', `ffprobe error: ${(e as Error).message.slice(0, 120)}`);
@@ -242,16 +249,66 @@ export async function renderClip(
 
   log('FFMPEG', `renderMode=${renderMode}`);
 
+  // Run analysis pipeline (V2 with V1 fallback)
+  // HF Token for PyAnnote speaker diarization (optional — set HF_TOKEN in .env.local)
+  const hfToken = env.HF_TOKEN || process.env.HF_TOKEN || '';
+  const deepgramKey = env.DEEPGRAM_API_KEY || process.env.DEEPGRAM_API_KEY || '';
+  if (heartbeatFn) await heartbeatFn();
+  const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight, startTime, endTime, hfToken, deepgramKey);
+
+  // Generate subtitles if we have word timestamps
+  let subtitleFilter = '';
+  let subtitleResult: SubtitleRenderResult | null = null;
+  if (trackResult?.speakerData?.wordTimestamps && trackResult.speakerData.wordTimestamps.length > 0) {
+    log('SUBTITLE', 'Generating ASS subtitles...');
+    const tempSubtitlesDir = join(TEMP_DIR, 'subs');
+    if (!existsSync(tempSubtitlesDir)) mkdirSync(tempSubtitlesDir, { recursive: true });
+
+    subtitleResult = renderSubtitles(
+      trackResult.speakerData.wordTimestamps,
+      trackResult.speakerData.speakerSegments,
+      startTime,
+      endTime,
+      tempSubtitlesDir,
+      `${videoId}_${Math.round(startTime)}s`,
+    );
+    subtitleFilter = `,${buildSubtitleFilter(subtitleResult.assFilePath)}`;
+    log('SUBTITLE', `✅ Subtitles generated: ${subtitleResult.lineCount} lines, ${subtitleResult.wordCount} words`);
+  } else {
+    log('SUBTITLE', 'No word-level timestamps available — skipping subtitles');
+  }
+
+  const hasSubtitles = subtitleResult !== null ? '1' : '0';
+
   let ffmpegCmd: string;
   if (renderMode === 'vertical' || renderMode === 'vertical-split') {
     // ── Unified Shorts mode: dynamic split screen for any face count ──
     if (heartbeatFn) await heartbeatFn();
-    const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight, startTime, endTime);
 
     let splitSegments: MultiCropSegment[];
 
-    if (trackResult && trackResult.multiFaces && trackResult.multiFaces.length > 0) {
-      // Build split segments from face data — handles 0..3 faces per frame
+    if (trackResult && trackResult.decisionSegments && trackResult.decisionSegments.length > 0) {
+      // P1.1: Use Decision Engine output (reaction cuts, EMA smoothing, smart layout)
+      splitSegments = trackResult.decisionSegments.map(ds => ({
+        startTime: ds.startTime,
+        endTime: ds.endTime,
+        crops: ds.crops.map(c => ({
+          cropX: c.cropX,
+          cropY: c.cropY,
+          faceId: c.faceId,
+          confidence: c.confidence,
+          isReaction: c.isReaction ?? false,
+        })),
+        transitionIn: ds.transitionOut
+          ? { type: ds.transitionOut.type as 'crossfade' | 'none', duration: ds.transitionOut.duration }
+          : undefined,
+        mode: ds.mode,
+      }));
+      if (splitSegments.length > 0 && trackResult.totalReactionCuts && trackResult.totalReactionCuts > 0) {
+        log('SHORTS', `P1.1 Decision Engine: ${trackResult.totalReactionCuts} reaction cuts, ${trackResult.totalLayoutSwitches} layout switches`);
+      }
+    } else if (trackResult && trackResult.multiFaces && trackResult.multiFaces.length > 0) {
+      // Legacy: Build split segments from face data (V2.5 fallback)
       const baseSegments = (trackResult?.segments && trackResult.segments.length > 0) ? trackResult.segments : [];
       splitSegments = buildSplitSegments(trackResult.multiFaces, baseSegments, sourceWidth, sourceHeight);
     } else {
@@ -267,19 +324,20 @@ export async function renderClip(
     }
 
     if (splitSegments.length > 0) {
-      log('SHORTS', `Split screen render: ${splitSegments.length} segments`);
+      log('SHORTS', `Split screen render: ${splitSegments.length} segments${subtitleResult ? ` + subtitles (${subtitleResult.lineCount} lines)` : ''}`);
       await renderVerticalSplit(
         ffmpegPath, videoPath, outputPath,
         startTime, endTime,
         splitSegments,
         sourceWidth, sourceHeight,
+        subtitleFilter,
         heartbeatFn,
       );
       ffmpegCmd = ''; // marker: already rendered
     } else {
       // Extreme fallback — should never happen
       log('SHORTS', 'No split segments — center crop fallback');
-      ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -vf "scale=-1:1920,crop=1080:1920" -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${outputPath}"`;
+      ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -vf "scale=-1:1920,crop=1080:1920${subtitleFilter}" -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${outputPath}"`;
     }
   } else {
     // ── Landscape mode (existing): stream copy ──
@@ -378,6 +436,8 @@ export async function renderClip(
   body += `Content-Disposition: form-data; name="end_time"${crlf}${crlf}${endTime}${crlf}`;
   body += `--${boundary}${crlf}`;
   body += `Content-Disposition: form-data; name="duration_seconds"${crlf}${crlf}${durationSec}${crlf}`;
+  body += `--${boundary}${crlf}`;
+  body += `Content-Disposition: form-data; name="has_subtitles"${crlf}${crlf}${hasSubtitles}${crlf}`;
   body += `--${boundary}${crlf}`;
   body += `Content-Disposition: form-data; name="file"; filename="${outputFilename}"${crlf}`;
   body += `Content-Type: video/mp4${crlf}${crlf}`;
@@ -719,6 +779,11 @@ function buildSplitSegments(
  *   crops=2 → each crop to 1080x960, vstack
  *   crops=3 → each crop to 1080x640, vstack
  *
+ * P1.1 enhancements:
+ *   - Reaction cuts (crops=1 segments inserted at audio events)
+ *   - Crossfade transitions between segments for smooth layout switches
+ *   - REACTION_CUT treated as single-face segment
+ *
  * Concat all segments at the end.
  */
 async function renderVerticalSplit(
@@ -730,25 +795,30 @@ async function renderVerticalSplit(
   segments: MultiCropSegment[],
   sourceWidth: number,
   sourceHeight: number,
+  subtitleFilter: string = '',
   heartbeatFn?: HeartbeatFn,
 ): Promise<void> {
   if (segments.length === 0) {
     throw new Error('No split segments provided');
   }
 
-  const tempDir = join(resolve(__dirname || '.'), 'temp');
   const FULL_H = sourceHeight;
-  const OLD_CROP_W = FULL_H * (1080 / 1920); // 405 for 720p — width used by buildSplitSegments
+  const OLD_CROP_W = FULL_H * (1080 / 1920);
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-  // ── Build a single filter_complex for ALL segments ──
-  // Each segment produces one video + one audio stream.
-  // Multi-face segments use split + vstack; single-face uses crop+scale.
-  // Final concat filter stitches everything seamlessly.
-
   const filterParts: string[] = [];
-  const concatInputs: string[] = [];
-  const ENC = '-c:v libx264 -preset fast -crf 20 -c:a aac -b:a 128k -movflags +faststart';
+  // Track per-valid-segment metadata for xfade chain
+  const segDurations: number[] = [];
+  const segTransitions: Array<{ type: 'crossfade' | 'none'; duration: number } | undefined> = [];
+
+  // V2: Use NVENC GPU encoding when available, fall back to libx264
+  const hasNvenc = hasNvidiaEncoder();
+  const ENC = hasNvenc
+    ? '-c:v h264_nvenc -preset p7 -cq 22 -b:v 0 -c:a aac -b:a 128k -movflags +faststart'
+    : '-c:v libx264 -preset fast -crf 20 -c:a aac -b:a 128k -movflags +faststart';
+
+  log('SPLIT', `Using ${hasNvenc ? 'NVENC GPU' : 'libx264 CPU'} encoder`);
+
   let segIdx = 0;
 
   try {
@@ -757,13 +827,80 @@ async function renderVerticalSplit(
       const segStart = Math.max(jobStartTime, seg.startTime);
       const segEnd = Math.min(jobEndTime, seg.endTime);
       if (segEnd <= segStart) continue;
+      const thisDuration = segEnd - segStart;
+      segDurations.push(thisDuration);
+      segTransitions.push(seg.transitionIn);
 
       const numFaces = seg.crops.length;
       const vLabel = `sv${segIdx}`;
       const aLabel = `sa${segIdx}`;
 
-      if (numFaces <= 1) {
-        // ── Single-face: trim → crop → scale ──
+      // P1.1: Handle crossfade transitions between segments
+      const hasTransition = seg.transitionIn && seg.transitionIn.type === 'crossfade';
+
+      // Detect PiP mode: 2 crops with mode === 'listener_pip'
+      const isPiP = numFaces >= 2 && seg.mode === 'listener_pip';
+
+      if (isPiP) {
+        // ── Picture-in-Picture: speaker full-frame + listener inset ──
+        // crops[0] = primary speaker (full 1080x1920)
+        // crops[1] = listener (PiP inset, ~25% frame, bottom-right)
+        const mainFace = seg.crops[0];
+        const pipFace = seg.crops[1];
+
+        const mainCx = mainFace.cropX + OLD_CROP_W / 2;
+        const mainCw = OLD_CROP_W;
+        const mainCropX = clamp(Math.round(mainCx - mainCw / 2), 0, sourceWidth - mainCw);
+
+        // PiP inset dimensions: 25% of 1080x1920 = 270x480
+        const PIP_OUT_W = 270;
+        const PIP_OUT_H = 480;
+        // Crop a slightly wider area from source for the PiP to avoid being too tight
+        const pipCx = pipFace.cropX !== undefined
+          ? pipFace.cropX + OLD_CROP_W / 2
+          : sourceWidth / 2;
+        const pipScaleFactor = (FULL_H / PIP_OUT_H) * 0.85; // 85% → crop wider frame
+        const pipCropW = Math.min(Math.round(PIP_OUT_W * pipScaleFactor), sourceWidth);
+        const pipCropH = FULL_H;
+        const pipCropX = clamp(Math.round(pipCx - pipCropW / 2), 0, sourceWidth - pipCropW);
+
+        filterParts.push(
+          `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+          + `crop=${mainCw}:${FULL_H}:${mainCropX}:0,`
+          + `scale=1080:1920:flags=lanczos,`
+          + `unsharp=5:5:0.8:3:3:0.4,`
+          + `setsar=1[main${segIdx}]`
+        );
+        filterParts.push(
+          `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+          + `crop=${pipCropW}:${pipCropH}:${pipCropX}:0,`
+          + `scale=${PIP_OUT_W - 4}:${PIP_OUT_H - 4}:flags=lanczos,`
+          + `setsar=1,`
+          + // Add thin gold border via pad
+          `pad=${PIP_OUT_W}:${PIP_OUT_H}:2:2:color=0xE2C266,`
+          + // Split for shadow creation
+          `split[pip_img${segIdx}][pip_shadow${segIdx}]`
+        );
+        // Create soft drop shadow: fill with semi-transparent black, blur
+        filterParts.push(
+          `[pip_shadow${segIdx}]format=rgba,drawbox=x=0:y=0:w=iw:h=ih:color=black@0.35:t=fill,`
+          + `boxblur=6:3[shadow${segIdx}]`
+        );
+        // Overlay shadow first (4px bottom-right offset from PiP position)
+        filterParts.push(
+          `[main${segIdx}][shadow${segIdx}]overlay=W-w-20:H-h-20[main_shadowed${segIdx}]`
+        );
+        // Then overlay PiP on top
+        filterParts.push(
+          `[main_shadowed${segIdx}][pip_img${segIdx}]overlay=W-w-24:H-h-24,`
+          + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+        );
+        filterParts.push(
+          `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
+        );
+        log('SPLIT', `Seg ${segIdx}: PiP main=(${mainCropX},0) pip=(${pipCropX},0) [${segStart}s-${segEnd}s]`);
+      } else if (numFaces <= 1) {
+        // ── Single-face (includes REACTION_CUT): trim → crop → scale → sharpen → subtitle ──
         const faceCx = seg.crops[0]?.cropX !== undefined
           ? seg.crops[0].cropX + OLD_CROP_W / 2
           : sourceWidth / 2;
@@ -771,16 +908,33 @@ async function renderVerticalSplit(
         const cx = clamp(Math.round(faceCx - cw / 2), 0, sourceWidth - cw);
         const cy = 0;
 
-        filterParts.push(
-          `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
-          + `crop=${Math.round(cw)}:${FULL_H}:${cx}:${cy},scale=1080:1920,setsar=1,setpts=PTS-STARTPTS[${vLabel}]`
-        );
+        const reactionLabel = seg.crops[0]?.isReaction ? 'reaction' : 'single';
+
+        if (seg.crops[0]?.isReaction) {
+          const reactionZoom = 1.05;
+          filterParts.push(
+            `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+            + `crop=${Math.round(cw / reactionZoom)}:${FULL_H}:${Math.round(cx + cw * (1 - 1/reactionZoom) / 2)}:${cy},`
+            + `scale=1080:1920:flags=lanczos,`
+            + `unsharp=5:5:0.8:3:3:0.4,`
+            + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+          );
+        } else {
+          filterParts.push(
+            `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+            + `crop=${Math.round(cw)}:${FULL_H}:${cx}:${cy},`
+            + `scale=1080:1920:flags=lanczos,`
+            + `unsharp=5:5:0.8:3:3:0.4,`
+            + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+          );
+        }
+
         filterParts.push(
           `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
         );
-        log('SPLIT', `Seg ${segIdx}: single-face crop=${cx},${cy} [${segStart}s-${segEnd}s]`);
+        log('SPLIT', `Seg ${segIdx}: ${reactionLabel} crop=${cx},${cy} [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
       } else {
-        // ── Multi-face: trim → split → crop each → vstack ──
+        // ── Multi-face: trim → split → crop each → vstack → sharpen → subtitle ──
         const faceCount = Math.min(numFaces, SPLIT_MAX_FACES);
         const segHeight = Math.floor(1920 / faceCount);
         let panelCropW = Math.round(FULL_H * (1080 / segHeight));
@@ -801,21 +955,21 @@ async function renderVerticalSplit(
           const cx = clamp(Math.round(faceCx - panelCropW / 2), 0, sourceWidth - panelCropW);
           const subLabel = `sf${segIdx}_${fi}`;
           filterParts.push(
-            `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,scale=1080:${segHeight},setsar=1,setpts=PTS-STARTPTS[${subLabel}]`
+            `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,scale=1080:${segHeight}:flags=lanczos,setsar=1,setpts=PTS-STARTPTS[${subLabel}]`
           );
           vstackInputs.push(`[${subLabel}]`);
         }
 
         filterParts.push(
-          `${vstackInputs.join('')}vstack=inputs=${faceCount},setsar=1,setpts=PTS-STARTPTS[${vLabel}]`
+          `${vstackInputs.join('')}vstack=inputs=${faceCount},setsar=1,`
+          + `unsharp=5:5:0.8:3:3:0.4,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
         );
         filterParts.push(
           `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
         );
-        log('SPLIT', `Seg ${segIdx}: ${faceCount}-way split cw=${panelCropW} [${segStart}s-${segEnd}s]`);
+        log('SPLIT', `Seg ${segIdx}: ${faceCount}-way split cw=${panelCropW} [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
       }
 
-      concatInputs.push(`[${vLabel}][${aLabel}]`);
       segIdx++;
     }
 
@@ -823,17 +977,58 @@ async function renderVerticalSplit(
       throw new Error('No valid split segments produced');
     }
 
-    // ── Final concat filter ──
-    filterParts.push(
-      `${concatInputs.join('')}concat=n=${segIdx}:v=1:a=1[outv][outa]`
-    );
+    // ── Build output chain: xfade or concat ──
+    const anyXFade = segIdx > 1 && segTransitions.some(t => t?.type === 'crossfade');
+
+    if (anyXFade) {
+      // P1.1: xfade/acrossfade chain for smooth transitions between segments
+      // Each xfade blends the last fadeDuration seconds of the previous segment
+      // with the first fadeDuration seconds of the next segment.
+      let currentVLabel = 'sv0';
+      let currentALabel = 'sa0';
+      let accumDuration = segDurations[0];
+
+      for (let i = 1; i < segIdx; i++) {
+        const transition = segTransitions[i];
+        const fadeDuration = transition?.type === 'crossfade'
+          ? Math.max(0.001, Math.min(transition.duration, segDurations[i] * 0.5, segDurations[i - 1] * 0.5))
+          : 0.001;
+        const offset = Math.max(0, accumDuration - fadeDuration);
+        const isLast = i === segIdx - 1;
+        const vOut = isLast ? 'outv' : `xf${i - 1}`;
+        const aOut = isLast ? 'outa' : `axf${i - 1}`;
+
+        filterParts.push(
+          `[${currentVLabel}][sv${i}]xfade=transition=fade:duration=${fadeDuration.toFixed(3)}:offset=${offset.toFixed(3)}[${vOut}]`
+        );
+        filterParts.push(
+          `[${currentALabel}][sa${i}]acrossfade=d=${fadeDuration.toFixed(3)}[${aOut}]`
+        );
+
+        currentVLabel = vOut;
+        currentALabel = aOut;
+        accumDuration += segDurations[i] - fadeDuration;
+      }
+
+      const totalOverlap = segDurations.reduce((s, d) => s + d, 0) - accumDuration;
+      log('XFADE', `${segIdx} segments chained via xfade, total=${accumDuration.toFixed(2)}s, overlap=${totalOverlap.toFixed(2)}s`);
+    } else {
+      // Standard concat (no transitions)
+      let concatInputStr = '';
+      for (let i = 0; i < segIdx; i++) {
+        concatInputStr += `[sv${i}][sa${i}]`;
+      }
+      filterParts.push(
+        `${concatInputStr}concat=n=${segIdx}:v=1:a=1[outv][outa]`
+      );
+    }
 
     const filterComplex = filterParts.join(';');
     const cmd = `${ffmpegPath} -y -i "${sourceVideo}"`
       + ` -filter_complex "${filterComplex}"`
       + ` -map "[outv]" -map "[outa]" ${ENC} "${outputPath}"`;
 
-    log('SPLIT', `Single-pass render: ${segIdx} segments, filter_complex length=${filterComplex.length}`);
+    log('SPLIT', `Single-pass render: ${segIdx} segments${anyXFade ? ' (xfade)' : ''} (${segments.filter(s => s.crops.some(c => c.isReaction)).length} reaction cuts), ${hasNvenc ? 'NVENC' : 'libx264'}, filter=${filterComplex.length} chars`);
     execSync(cmd, { ...EXEC_OPTS, timeout: 300_000 });
 
     if (!existsSync(outputPath)) {
@@ -841,6 +1036,39 @@ async function renderVerticalSplit(
     }
     log('SPLIT', `✅ Single-pass complete: ${outputPath}`);
   } finally {
-    // Cleanup temp files (if any — this path no longer creates them per-segment)
+    // Cleanup temp files
+  }
+}
+
+// =============================================================================
+// NVENC Detection
+// =============================================================================
+
+let _hasNvenc: boolean | null = null;
+
+function hasNvidiaEncoder(): boolean {
+  if (_hasNvenc !== null) return _hasNvenc;
+
+  try {
+    const out = execSync('ffmpeg -encoders 2>/dev/null | grep -i nvenc', {
+      ...EXEC_OPTS, timeout: 5000, shell: '/bin/sh'
+    });
+    _hasNvenc = (out as string).includes('nvenc');
+    if (_hasNvenc) log('ENCODER', 'NVIDIA NVENC detected — using GPU encoding');
+    return _hasNvenc;
+  } catch {
+    try {
+      // Windows fallback
+      const out = execSync('ffmpeg -encoders 2>&1 | findstr nvenc', {
+        ...EXEC_OPTS, timeout: 5000, shell: process.env.COMSPEC || 'cmd.exe'
+      });
+      _hasNvenc = (out as string).includes('nvenc');
+      if (_hasNvenc) log('ENCODER', 'NVIDIA NVENC detected — using GPU encoding');
+      return _hasNvenc;
+    } catch {
+      _hasNvenc = false;
+      log('ENCODER', 'NVENC not available — using libx264 CPU encoding');
+      return false;
+    }
   }
 }

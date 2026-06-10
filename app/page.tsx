@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent, useRef, useEffect, Fragment, Component, ReactNode, ErrorInfo } from 'react';
+import React, { useState, FormEvent, useRef, useEffect, Fragment, Component, ReactNode, ErrorInfo } from 'react';
 
 type Moment = {
   startTime: number;
@@ -324,8 +324,8 @@ function renderRankingSignals(
 // ── Best Hook — extract strongest opening sentence from transcript ──
 
 function extractHookSentence(text: string): string {
-  // Natural pause markers for Indonesian conversational text
-  const pauseMarkers = ['. ', '! ', '? ', ',\\s*', ' tapi ', ' karena ', ' kalau ', ' jadi ', ' cuman ', ' makanya ', ' terus ', ' nah ', ' iya ', ' ya ', ' gitu ', ' pas ', ' waktu ', ' ketika ', ' tiba-tiba '];
+  // Natural pause markers for Indonesian conversational text (escaped for RegExp)
+  const pauseMarkers = ['\\. ', '! ', '\\? ', ',\\s*', ' tapi ', ' karena ', ' kalau ', ' jadi ', ' cuman ', ' makanya ', ' terus ', ' nah ', ' iya ', ' ya ', ' gitu ', ' pas ', ' waktu ', ' ketika ', ' tiba-tiba '];
   
   // Try to find first natural pause within first 15 words
   const words = text.trim().split(/\s+/);
@@ -334,9 +334,7 @@ function extractHookSentence(text: string): string {
   for (const marker of pauseMarkers) {
     const idx = first15.search(new RegExp(marker, 'i'));
     if (idx > 5 && idx < first15.length - 3) {
-      // End the hook at the marker
-      let end = first15.indexOf(marker[0], idx);
-      if (end > 5) return first15.slice(0, end).trim();
+      return first15.slice(0, idx).trim();
     }
   }
   
@@ -629,6 +627,9 @@ export default function Home() {
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const [secondaryExpanded, setSecondaryExpanded] = useState(false);
   const [analyticsExpanded, setAnalyticsExpanded] = useState(false);
+  const [activeTab, setActiveTab] = useState<'analysis' | 'titles' | 'export'>('analysis');
+  const [isPlayingVideo, setIsPlayingVideo] = useState(false);
+  const [copiedTimestamp, setCopiedTimestamp] = useState(false);
 
   // Title suggestions copy state
   const [copiedTitleIndex, setCopiedTitleIndex] = useState<number | null>(null);
@@ -696,6 +697,9 @@ export default function Home() {
 
   useEffect(() => {
     setTranscriptExpanded(false);
+    setActiveTab('analysis');
+    setIsPlayingVideo(false);
+    setCopiedTimestamp(false);
   }, [activeMoment]);
 
   // Scoring progress counter: increments during AI scoring stage
@@ -1434,155 +1438,358 @@ export default function Home() {
     if (!activeMoment || !result) return null;
     const m = activeMoment;
     const duration = formatDuration(m.startTime, m.endTime);
+    const totalDuration = result.video?.durationSeconds || 
+      (result.moments && result.moments.length > 0 
+        ? Math.max(...result.moments.map((x: Moment) => x.endTime)) 
+        : 1);
 
     return (
       <section className="workspace">
-        {/* Editorial banner (Priority 4) */}
-        <div className="ws-banner">
-          <span className="ws-banner-tag">TOP RANKED MOMENT</span>
-          <span className="ws-banner-sep">·</span>
-          <span className="ws-banner-sub">
-            Selected from {liveTotalMomentsFound || result?.totalMomentsFound || result.moments.length} candidate moments
-          </span>
-        </div>
-        <div className="workspace-section-label">Featured Pick</div>
+        <div className="workspace-grid">
+          
+          {/* LEFT COLUMN: Player, Timeline, Waveform, Metadata, Actions */}
+          <div className="workspace-left">
+            {/* Editorial banner (Priority 4) */}
+            <div className="ws-banner">
+              <span className="ws-banner-tag">TOP RANKED MOMENT</span>
+              <span className="ws-banner-sep">·</span>
+              <span className="ws-banner-sub">
+                Selected from {liveTotalMomentsFound || result?.totalMomentsFound || result.moments.length} candidate moments
+              </span>
+            </div>
+            <div className="workspace-section-label">Featured Pick</div>
 
-        {/* YouTube thumbnail — click to open in new tab (prevents iframe crash in Telegram WebView) */}
-        <div className="ws-video">
-          {result.videoId ? (
-            <a
-              href={`https://www.youtube.com/watch?v=${result.videoId}&t=${Math.floor(m.startTime)}s`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ws-video-link"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <img
-                src={`https://img.youtube.com/vi/${result.videoId}/hqdefault.jpg`}
-                alt="Video thumbnail"
-                className="ws-video-thumb"
-                loading="lazy"
-              />
-              <div className="ws-video-play">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </div>
-              <div className="ws-video-timestamp">{m.startTimestamp}</div>
-            </a>
-          ) : (
-            <div className="ws-video-placeholder">Video preview unavailable</div>
-          )}
-        </div>
-
-        {/* Clip metadata bar */}
-        <div className="ws-meta">
-          <span className="ws-rank">#{m.rank}</span>
-          <span className="ws-tier-dot" data-tier={m.tier} />
-          <span className="ws-tier-label">{m.tier === 'elite' ? 'Elite' : 'Notable'}</span>
-          <div className="ws-score-track">
-            <div className="ws-score-fill" style={{ '--score-pct': `${displayScore(m)}%` } as React.CSSProperties} />
-          </div>
-          {scoreWithLabel(displayScore(m))}
-          <span className="ws-meta-sep">·</span>
-          <span className="ws-timestamp">{m.startTimestamp} — {m.endTimestamp}</span>
-          <span className="ws-meta-sep">·</span>
-          <span className="ws-duration">{duration}</span>
-        </div>
-
-        {/* Why Ranked #X — deterministic ranking signals */}
-        {renderRankingSignals(m.rank, displayScore(m), m.confidence, m.dnaTags, m.endTime - m.startTime, liveTotalMomentsFound)}
-
-        {/* Suggested Titles (AI Title Suggestions) — published immediately below rank context */}
-        {m.suggestedTitles && m.suggestedTitles.length > 0 && (
-          <div className="ws-section">
-            <h3 className="ws-section-title">5 Publish-Ready Titles</h3>
-            <div className="title-suggestions">
-              {m.suggestedTitles.map((st, i) => (
-                <div key={i} className="title-suggestion-row">
-                  <span className="title-suggestion-style">{STYLE_LABELS[st.style] || st.style}</span>
-                  <span className="title-suggestion-text">{st.title}</span>
-                  <button
-                    className="title-copy-btn"
-                    onClick={() => {
-                      navigator.clipboard.writeText(st.title);
-                      setCopiedTitleIndex(i);
-                      setTimeout(() => setCopiedTitleIndex(null), 2000);
-                    }}
-                    title="Copy title"
-                  >
-                    {copiedTitleIndex === i ? '✓' : 'Copy'}
-                  </button>
+            {/* YouTube thumbnail/embed inline player with Format Frame Preview */}
+            {result.videoId ? (
+              renderMode === 'vertical' ? (
+                <div className="phone-mockup-frame">
+                  <div className="phone-notch">
+                    <div className="phone-speaker" />
+                    <div className="phone-camera" />
+                  </div>
+                  {isPlayingVideo ? (
+                    <div className="ws-iframe-container">
+                      <iframe
+                        src={`https://www.youtube.com/embed/${result.videoId}?start=${Math.floor(m.startTime)}&autoplay=1&rel=0`}
+                        title="YouTube video player"
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                        className="ws-iframe"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ws-video-link-btn"
+                      onClick={() => setIsPlayingVideo(true)}
+                    >
+                      <img
+                        src={`https://img.youtube.com/vi/${result.videoId}/hqdefault.jpg`}
+                        alt="Video thumbnail"
+                        className="ws-video-thumb"
+                        loading="lazy"
+                      />
+                      <div className="ws-video-play">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                      <div className="ws-video-timestamp">{m.startTimestamp}</div>
+                    </button>
+                  )}
                 </div>
-              ))}
+              ) : (
+                <div className="ws-video">
+                  {isPlayingVideo ? (
+                    <div className="ws-iframe-container">
+                      <iframe
+                        src={`https://www.youtube.com/embed/${result.videoId}?start=${Math.floor(m.startTime)}&autoplay=1&rel=0`}
+                        title="YouTube video player"
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                        className="ws-iframe"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ws-video-link-btn"
+                      onClick={() => setIsPlayingVideo(true)}
+                    >
+                      <img
+                        src={`https://img.youtube.com/vi/${result.videoId}/hqdefault.jpg`}
+                        alt="Video thumbnail"
+                        className="ws-video-thumb"
+                        loading="lazy"
+                      />
+                      <div className="ws-video-play">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                      <div className="ws-video-timestamp">{m.startTimestamp}</div>
+                    </button>
+                  )}
+                </div>
+              )
+            ) : (
+              <div className="ws-video-placeholder">Video preview unavailable</div>
+            )}
+
+            {/* Waveform Studio visualizer (CSS-only skeleton) */}
+            <div className={`ws-waveform ${isPlayingVideo ? 'playing' : ''}`}>
+              {[...Array(24)].map((_, i) => {
+                const heights = [15, 25, 40, 18, 30, 48, 22, 10, 35, 42, 28, 50, 38, 20, 45, 30, 15, 25, 40, 18, 30, 48, 22, 10];
+                return (
+                  <div
+                    key={i}
+                    className="waveform-bar"
+                    style={{
+                      height: `${heights[i % heights.length]}%`,
+                      animationDelay: `${i * 35}ms`
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Moment Distribution Heatmap/Timeline */}
+            <div className="timeline-heatmap-container">
+              <div className="timeline-heatmap-label">
+                <span>Timeline Moment Terbaik</span>
+                <span>{formatDuration(0, totalDuration)}</span>
+              </div>
+              <div className="timeline-heatmap-track">
+                {result.moments.map((moment: Moment, idx: number) => {
+                  const leftPercent = (moment.startTime / totalDuration) * 100;
+                  const widthPercent = ((moment.endTime - moment.startTime) / totalDuration) * 100;
+                  const isActive = moment.rank === m.rank;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`timeline-pin ${isActive ? 'active' : ''} ${moment.tier}`}
+                      style={{
+                        left: `${leftPercent}%`,
+                        width: `${Math.max(widthPercent, 1.8)}%`
+                      }}
+                      onClick={() => {
+                        setActiveMoment(moment);
+                        setIsPlayingVideo(true);
+                      }}
+                    >
+                      <span className="timeline-tooltip">
+                        #{moment.rank} ({moment.startTimestamp}) - Skor: {Math.round(displayScore(moment))}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Format Ratio Selector */}
+            <div className="ws-ratio-selector">
+              <span className="ratio-label">Format Pratinjau:</span>
+              <div className="ratio-toggle-group">
+                <button
+                  type="button"
+                  className={`ratio-btn ${renderMode === 'landscape' ? 'active' : ''}`}
+                  onClick={() => setRenderMode('landscape')}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="2" y="5" width="20" height="14" rx="2" />
+                  </svg>
+                  Landscape 16:9
+                </button>
+                <button
+                  type="button"
+                  className={`ratio-btn ${renderMode === 'vertical' ? 'active' : ''}`}
+                  onClick={() => setRenderMode('vertical')}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="6" y="2" width="12" height="20" rx="3" />
+                  </svg>
+                  Shorts 9:16
+                </button>
+              </div>
+            </div>
+
+            {/* Clip metadata bar */}
+            <div className="ws-meta">
+              <span className="ws-rank">#{m.rank}</span>
+              <span className="ws-tier-dot" data-tier={m.tier} />
+              <span className="ws-tier-label">{m.tier === 'elite' ? 'Elite' : 'Notable'}</span>
+              <div className="ws-score-track">
+                <div className="ws-score-fill" style={{ '--score-pct': `${displayScore(m)}%` } as React.CSSProperties} />
+              </div>
+              {scoreWithLabel(displayScore(m))}
+              <span className="ws-meta-sep">·</span>
+              <span className="ws-timestamp">{m.startTimestamp} — {m.endTimestamp}</span>
+              <span className="ws-meta-sep">·</span>
+              <span className="ws-duration">{duration}</span>
+
+              {/* Quick Copy Timestamp (Ide 3) */}
+              <span className="ws-meta-sep">·</span>
+              <button
+                type="button"
+                className="ws-copy-time-btn"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${m.startTimestamp} - ${m.endTimestamp}`);
+                  setCopiedTimestamp(true);
+                  setTimeout(() => setCopiedTimestamp(false), 2000);
+                }}
+              >
+                {copiedTimestamp ? '✓ Copied' : 'Copy Time'}
+              </button>
+            </div>
+
+            {/* Generate Button */}
+            <div className="ws-action">
+              {renderClipAction(m)}
             </div>
           </div>
-        )}
 
-        {/* Best Hook — strongest opening sentence from transcript */}
-        {m.transcriptExcerpt && (
-          <div className="ws-section">
-            <h3 className="ws-section-title">Best Hook</h3>
-            {renderBestHook(m.transcriptExcerpt, m.dnaTags, m.confidence, displayScore(m), m.reasoning)}
+          {/* RIGHT COLUMN: Tabs and active tab detailed content */}
+          <div className="workspace-right">
+            {/* ── Tabs Navigation ── */}
+            <div className="ws-tabs-nav">
+              <button
+                type="button"
+                className={`ws-tab-btn${activeTab === 'analysis' ? ' active' : ''}`}
+                onClick={() => setActiveTab('analysis')}
+              >
+                AI Analysis
+              </button>
+              <button
+                type="button"
+                className={`ws-tab-btn${activeTab === 'titles' ? ' active' : ''}`}
+                onClick={() => setActiveTab('titles')}
+              >
+                Suggested Titles
+              </button>
+              <button
+                type="button"
+                className={`ws-tab-btn${activeTab === 'export' ? ' active' : ''}`}
+                onClick={() => setActiveTab('export')}
+              >
+                Trim & Transcript
+              </button>
+            </div>
+
+            {/* ── Tab Content Areas ── */}
+            <div className="ws-tab-content">
+              {activeTab === 'analysis' && (
+                <div className="tab-pane fade-in">
+                  {/* WHY GANYIQ PICKED THIS (Feature 4 inside workspace) */}
+                  <div className="ws-section">
+                    <h3 className="ws-section-title">WHY GANYIQ PICKED THIS</h3>
+                    <p className="ws-reasoning">{m.reasoning || 'No reasoning available for this clip.'}</p>
+                  </div>
+
+                  {/* Why Ranked #X — deterministic ranking signals */}
+                  {renderRankingSignals(m.rank, displayScore(m), m.confidence, m.dnaTags, m.endTime - m.startTime, liveTotalMomentsFound)}
+
+                  {/* CLIP DNA PROFILE */}
+                  {renderDnaProfile(displayScore(m), m.confidence, m.dnaTags)}
+
+                  {/* DNA Tags */}
+                  {m.dnaTags.length > 0 && (
+                    <div className="ws-tags">
+                      {m.dnaTags.map((tag: string, i: number) => (
+                        <span key={tag} className="ws-tag" style={{ animationDelay: `${i * 20}ms` }}>
+                          {renderDnaTag(tag, 20)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Content Profile (Feature 4) */}
+                  {m.rank === 1 && renderContentProfile()}
+
+                  {/* DNA Distribution (Feature 5) */}
+                  {m.rank === 1 && renderDnaDistribution()}
+                </div>
+              )}
+
+              {activeTab === 'titles' && (
+                <div className="tab-pane fade-in">
+                  {/* Suggested Titles (AI Title Suggestions) ── */}
+                  {m.suggestedTitles && m.suggestedTitles.length > 0 && (
+                    <div className="ws-section">
+                      <h3 className="ws-section-title">5 Publish-Ready Titles</h3>
+                      <div className="title-suggestions">
+                        {m.suggestedTitles.map((st: any, i: number) => (
+                          <div key={i} className="title-suggestion-row">
+                            <span className="title-suggestion-style">{STYLE_LABELS[st.style] || st.style}</span>
+                            <span className="title-suggestion-text">{st.title}</span>
+                            <button
+                              className="title-copy-btn"
+                              onClick={() => {
+                                navigator.clipboard.writeText(st.title);
+                                setCopiedTitleIndex(i);
+                                setTimeout(() => setCopiedTitleIndex(null), 2000);
+                              }}
+                              title="Copy title"
+                            >
+                              {copiedTitleIndex === i ? '✓' : 'Copy'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Best Hook ── */}
+                  {m.transcriptExcerpt && (
+                    <div className="ws-section">
+                      <h3 className="ws-section-title">Best Hook</h3>
+                      {renderBestHook(m.transcriptExcerpt, m.dnaTags, m.confidence, displayScore(m), m.reasoning)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'export' && (
+                <div className="tab-pane fade-in">
+                  {/* Export Strategy — above Generate */}
+                  {renderExportStrategy(m)}
+
+                  {/* Transcript toggle (Ide 1: Click-to-Seek click listener) */}
+                  {m.transcriptExcerpt && (
+                    <div className="ws-section">
+                      <button
+                        className="ws-transcript-toggle"
+                        onClick={() => setTranscriptExpanded(!transcriptExpanded)}
+                        aria-expanded={transcriptExpanded}
+                      >
+                        {transcriptExpanded ? 'Hide transcript' : 'Show transcript'}
+                      </button>
+                      {transcriptExpanded && (
+                        <p 
+                          className="ws-transcript interactive-transcript"
+                          onClick={() => setIsPlayingVideo(true)}
+                          title="Klik untuk putar video dari awal klip"
+                        >
+                          &ldquo;{m.transcriptExcerpt}&rdquo;
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        )}
 
-        {/* WHY GANYIQ PICKED THIS (Feature 4 inside workspace) */}
-        <div className="ws-section">
-          <h3 className="ws-section-title">WHY GANYIQ PICKED THIS</h3>
-          <p className="ws-reasoning">{m.reasoning || 'No reasoning available for this clip.'}</p>
-        </div>
-
-        {/* CLIP DNA PROFILE */}
-        {renderDnaProfile(displayScore(m), m.confidence, m.dnaTags)}
-
-        {/* DNA Tags */}
-        {m.dnaTags.length > 0 && (
-          <div className="ws-tags">
-            {m.dnaTags.map((tag, i) => (
-              <span key={tag} className="ws-tag" style={{ animationDelay: `${i * 20}ms` }}>
-                {renderDnaTag(tag, 20)}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Content Profile (Feature 4) */}
-        {m.rank === 1 && renderContentProfile()}
-
-        {/* DNA Distribution (Feature 5) */}
-        {m.rank === 1 && renderDnaDistribution()}
-
-        {/* Transcript toggle */}
-        {m.transcriptExcerpt && (
-          <div className="ws-section">
-            <button
-              className="ws-transcript-toggle"
-              onClick={() => setTranscriptExpanded(!transcriptExpanded)}
-              aria-expanded={transcriptExpanded}
-            >
-              {transcriptExpanded ? 'Hide transcript' : 'Show transcript'}
-            </button>
-            {transcriptExpanded && (
-              <p className="ws-transcript">&ldquo;{m.transcriptExcerpt}&rdquo;</p>
-            )}
-          </div>
-        )}
-
-        {/* Export Strategy — above Generate */}
-        {renderExportStrategy(m)}
-
-        {/* Generate */}
-        <div className="ws-action">
-          {renderClipAction(m)}
         </div>
       </section>
     );
   }
 
   const heroMoment = result?.moments?.[0] || null;
-  const eliteCompactMoments = result?.moments?.filter(m => m.tier === 'elite').slice(1, 6) || [];
-  const secondaryMoments = result?.moments?.filter(m => m.tier === 'secondary').slice(0, 7) || [];
+  const eliteCompactMoments = result?.moments?.filter((m: Moment) => m.tier === 'elite').slice(1, 6) || [];
+  const secondaryMoments = result?.moments?.filter((m: Moment) => m.tier === 'secondary').slice(0, 7) || [];
 
   return (
     <div className="container">
@@ -1669,6 +1876,33 @@ export default function Home() {
           </section>
         )}
 
+        {/* ── HOW IT WORKS ── */}
+        {stage === 'idle' && !result && (
+          <section className="how-section">
+            <h3 className="section-label" style={{ marginBottom: 16 }}>How It Works</h3>
+            <div className="how-grid">
+              <div className="how-card">
+                <span className="how-step">01</span>
+                <span className="how-icon">📋</span>
+                <h4 className="how-title">Paste YouTube Link</h4>
+                <p className="how-desc">Drop any podcast, interview, or talk URL. We fetch the transcript automatically.</p>
+              </div>
+              <div className="how-card">
+                <span className="how-step">02</span>
+                <span className="how-icon">🧠</span>
+                <h4 className="how-title">AI Analyzes & Scores</h4>
+                <p className="how-desc">Our engine extracts 15+ candidate moments, scores them across 5 dimensions, and ranks by clip-worthiness.</p>
+              </div>
+              <div className="how-card">
+                <span className="how-step">03</span>
+                <span className="how-icon">✂️</span>
+                <h4 className="how-title">Get Ready-to-Post Clips</h4>
+                <p className="how-desc">Top 15 moments with AI titles, trim suggestions, and one-click MP4 export for Shorts/Reels.</p>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* ── TRY AN EXAMPLE — Visual Card Style ── */}
         {stage === 'idle' && !result && (
           <section className="examples-section">
@@ -1720,7 +1954,7 @@ export default function Home() {
               <span className="history-count">{history.length} videos</span>
             </div>
             <div className="history-modern-grid">
-              {history.map((item, idx) => (
+              {history.map((item: HistoryItem, idx: number) => (
                 <button
                   key={item.analysisId}
                   className="history-modern-card"
@@ -1835,64 +2069,67 @@ export default function Home() {
           </section>
         )}
 
-        {/* ── RESULTS EXPERIENCE V4 — Premium SaaS Layout ── */}
+        {/* ── RESULTS EXPERIENCE V4 — Premium Dashboard Layout ── */}
         {stage === 'done' && result && result.moments.length > 0 && (
           <ErrorBoundary>
-            <>
+            <div className="results-dashboard">
+              {/* Left Pane: Sidebar navigation list */}
+              <aside className="dashboard-sidebar">
+                <div className="sidebar-header">
+                  <h2 className="section-label">
+                    All Picks
+                    <span className="section-label-count">{result.moments.length} moments</span>
+                  </h2>
+                </div>
 
-            {/* Video & Hero Pick — Featured Workspace */}
-            {renderFeaturedWorkspace()}
-
-            {/* Elite Picks — Responsive Grid (ranks 2-6) */}
-            {eliteCompactMoments.length > 0 && (
-              <section className="picks-section">
-                <h2 className="section-label" style={{ marginBottom: 16 }}>
-                  All Picks
-                  <span className="section-label-count">{result.moments.length} moments</span>
-                </h2>
-                <div className="picks-grid">
-                  {result.moments.map((m, i) => {
+                <div className="sidebar-list">
+                  {result.moments.map((m: Moment, i: number) => {
                     const isActive = activeMoment?.rank === m.rank;
                     const isHero = m.rank === 1;
                     const isSecondary = m.tier === 'secondary';
                     // Only show secondary if expanded, hide beyond rank 6 initial
                     if (isSecondary && !secondaryExpanded && m.rank > 6) return null;
+
+                    // Use suggested title or reasoning
+                    const cardTitle = m.suggestedTitles?.[0]?.title || m.reasoning || '';
+                    const displayTitle = cardTitle.length > 55 ? cardTitle.slice(0, 52) + '...' : cardTitle;
+
                     return (
                       <div
                         key={m.rank}
-                        className={`pick-card${isActive ? ' active' : ''}${isHero ? ' hero' : ''}${isSecondary ? ' secondary' : ''}`}
-                        style={{ animationDelay: `${(i > 5 ? i - 6 : i) * 50}ms` }}
-                        onClick={() => setActiveMoment(m)}
+                        className={`sidebar-card${isActive ? ' active' : ''}${isHero ? ' hero' : ''}${isSecondary ? ' secondary' : ''}`}
+                        onClick={() => {
+                          setActiveMoment(m);
+                          if (window.innerWidth <= 1024) {
+                            const wsEl = document.getElementById('active-workspace');
+                            if (wsEl) {
+                              wsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }
+                        }}
                       >
-                        {result.videoId && (
-                          <div className="pick-thumb">
-                            <img src={getThumbnail(result.videoId, 'default')} alt="" loading="lazy" />
+                        <div className="card-top">
+                          <div className="card-rank-wrap">
+                            <span className="card-rank">
+                              {isHero ? '★ ' : m.tier === 'elite' ? '◇ ' : ''}
+                              #{String(m.rank).padStart(2, '0')}
+                            </span>
+                            {isHero && <span className="card-hero-dot" title="Top Rated Moment" />}
                           </div>
-                        )}
-                        <div className="pick-card-top">
-                          <div className="pick-header">
-                            <span className="pick-rank">#{m.rank}</span>
-                            {isHero && <span className="pick-elite-badge">◇ Top</span>}
-                          </div>
-                          <span className="pick-score">{Math.round(displayScore(m))}</span>
+                          <span className="card-score">{Math.round(displayScore(m))}</span>
                         </div>
-                        <div className="pick-card-mid">
-                          <span className="pick-time">{m.startTimestamp}</span>
-                          <span className="pick-dur">
-                            {Math.round((m.endTime - m.startTime) / 5) * 5}s
+                        <div className="card-body">
+                          <p className="card-title">{displayTitle}</p>
+                        </div>
+                        <div className="card-bottom">
+                          {m.dnaTags.length > 0 && (
+                            <span className="card-tag">{renderDnaTag(m.dnaTags[0], 12)}</span>
+                          )}
+                          <span className="card-time">{m.startTimestamp}</span>
+                          <span className="card-dur">
+                            {formatDuration(m.startTime, m.endTime)}
                           </span>
                         </div>
-                        <div className="pick-card-bottom">
-                          {m.dnaTags.length > 0 && (
-                            <span className="pick-tag">{renderDnaTag(m.dnaTags[0], isHero ? 8 : 6)}</span>
-                          )}
-                          {m.reasoning && !isHero && (
-                            <span className="pick-reason">{m.reasoning.slice(0, 40)}</span>
-                          )}
-                        </div>
-                        {isHero && m.reasoning && (
-                          <div className="pick-hero-reason">{m.reasoning}</div>
-                        )}
                       </div>
                     );
                   })}
@@ -1911,8 +2148,13 @@ export default function Home() {
                     <span className={`secondary-arrow${secondaryExpanded ? ' expanded' : ''}`}>▸</span>
                   </button>
                 )}
-              </section>
-            )}
+              </aside>
+
+              {/* Right Pane: Sticky Active Workspace */}
+              <div id="active-workspace" className="dashboard-workspace">
+                {renderFeaturedWorkspace()}
+              </div>
+            </div>
 
             {/* Analytics & Technical Details — Collapsible */}
             <section className="analytics-section">
@@ -1920,7 +2162,7 @@ export default function Home() {
                 className="analytics-toggle"
                 onClick={() => setAnalyticsExpanded(!analyticsExpanded)}
               >
-                <span className="analytics-toggle-label">Analysis Details</span>
+                <span className="analytics-toggle-label">Technical Analysis Details</span>
                 <span className={`analytics-arrow${analyticsExpanded ? ' expanded' : ''}`}>▸</span>
               </button>
               {analyticsExpanded && (
@@ -1928,21 +2170,6 @@ export default function Home() {
                   {renderAnalysisOverview()}
                   {renderAnalysisFunnel()}
                   {renderAnalysisSummary()}
-                  <div className="render-mode-toggle">
-                    <span className="toggle-label">Output Format:</span>
-                    <button
-                      className={`toggle-btn ${renderMode === 'landscape' ? 'toggle-active' : ''}`}
-                      onClick={() => setRenderMode('landscape')}
-                    >
-                      Landscape 16:9
-                    </button>
-                    <button
-                      className={`toggle-btn ${renderMode === 'vertical' ? 'toggle-active' : ''}`}
-                      onClick={() => setRenderMode('vertical')}
-                    >
-                      Shorts 9:16
-                    </button>
-                  </div>
                 </div>
               )}
             </section>
@@ -1952,7 +2179,6 @@ export default function Home() {
                 Analyze Another Video
               </button>
             </div>
-          </>
           </ErrorBoundary>
         )}
       </main>
@@ -1967,12 +2193,12 @@ export default function Home() {
             </div>
             <span className="footer-stat-sep">·</span>
             <div className="footer-stat">
-              <span className="footer-stat-value">{result.moments.filter(m => m.tier === 'elite').length}</span>
+              <span className="footer-stat-value">{result.moments.filter((m: Moment) => m.tier === 'elite').length}</span>
               <span className="footer-stat-label">elite</span>
             </div>
             <span className="footer-stat-sep">·</span>
             <div className="footer-stat">
-              <span className="footer-stat-value">{result.moments.filter(m => m.tier === 'secondary').length}</span>
+              <span className="footer-stat-value">{result.moments.filter((m: Moment) => m.tier === 'secondary').length}</span>
               <span className="footer-stat-label">secondary</span>
             </div>
           </div>

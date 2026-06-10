@@ -46,3 +46,10 @@ cookies.txt
 public/clips/
 public/clips/
 backups/*.tar.gz
+
+# Python
+__pycache__/
+*.pyc
+
+# Scripts/test artifacts
+scripts/

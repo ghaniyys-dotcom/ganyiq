@@ -1,34 +1,23 @@
 /**
- * worker/face-tracker.ts — Multi-face tracking module for GANYIQ Worker V2.4A
+ * worker/face-tracker.ts — Multi-face tracking module for GANYIQ Worker V2
  *
- * V2.4A Changes:
- *   - Detects ALL faces (not just the largest)
- *   - Tracks face identity across frames (ID persists)
- *   - Smooths per-face identity (no cross-face contamination)
- *   - Selects DOMINANT face to follow (not bouncing between faces)
- *   - Dead zone: ignores small movements (<30px)
- *   - Minimum hold: 1 second before switching target
- *   - Lock last known good position (not center crop) on no-face
- *   - Confidence scoring to prevent erratic camera behavior
+ * V2 Architecture:
+ *   Orchestrates the full V2 pipeline:
+ *     1. face-detect-v2.py (YOLOv8-face ONNX) → detections with landmarks
+ *     2. tracker.py (ByteTrack + Kalman) → stable face IDs
+ *     3. speaker-detector.ts (AV-ASD) → active speaker detection
+ *     4. Rendering Decision Engine → multi-crop segments with smart layouts
  *
- * Flow:
- *   1. Extract frames at 1fps
- *   2. Detect ALL faces via bundled Python OpenCV script
- *   3. Track identity (assign stable ID per face across frames)
- *   4. Smooth per-face (moving average WITHIN each identity)
- *   5. Interpolate gaps per-face
- *   6. Select dominant face for camera target
- *   7. Apply dead zone + minimum hold
- *   8. Group into segments
- *   9. Return segment crop coordinates
- *
- * If Python/OpenCV is not available → returns null (fallback to center crop).
+ * Falls back to V1 pipeline (Haar Cascade + greedy tracking) gracefully.
  */
 
 import { execSync, ExecSyncOptions } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, resolve } from 'path';
 import { platform } from 'os';
+import { runTracker, type TrackerResult } from './tracker';
+import { detectSpeakers, type SpeakerDetectionResult, type SpeakerFrame } from './speaker-detector';
+import { processDecisionEngine, type DecisionSegment } from './decision-engine';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,6 +30,8 @@ export interface FaceInfo {
   cy: number;         // center Y
   w: number;          // face width
   h: number;          // face height
+  confidence?: number; // detection confidence (V2)
+  landmarks?: { le: [number,number]; re: [number,number]; n: [number,number]; lm: [number,number]; rm: [number,number] };
 }
 
 /** Raw sample from face-detect.py V2.4A format. */
@@ -80,9 +71,15 @@ export interface CropSegment {
   cropX: number;
   cropY: number;
   hasFace: boolean;
+  /** Active speaker face ID at this segment (V2) */
+  activeSpeakerId?: number | null;
+  /** Audio event during this segment (V2) */
+  audioEvent?: 'normal' | 'laughter' | 'gasp' | 'silence' | 'emotion_peak' | 'applause';
+  /** Speaker turn detected at segment boundary */
+  turnDetected?: boolean;
 }
 
-/** Multi-crop segment for Dynamic Split Screen (V2.5). */
+/** Multi-crop segment for Dynamic Split Screen (V2.5 / P1.1). */
 export interface MultiCropSegment {
   startTime: number;
   endTime: number;
@@ -91,7 +88,16 @@ export interface MultiCropSegment {
     cropY: number;
     faceId: number;
     confidence: number;
+    /** True if this crop is a listener reaction cut (P1.1). */
+    isReaction?: boolean;
   }>;
+  /** Transition smoothing into this segment (P1.1). */
+  transitionIn?: {
+    type: 'crossfade' | 'none';
+    duration: number;
+  };
+  /** Layout mode for this segment (P1.1 PiP). */
+  mode?: 'single' | 'split_2' | 'reaction_cut' | 'listener_pip';
 }
 
 export interface TrackResult {
@@ -100,6 +106,16 @@ export interface TrackResult {
   faceSamples: number;
   faceRatio: number;
   multiFaces?: MultiFaceSample[];  // all faces data for split screen
+  /** V2 speaker detection result (optional) */
+  speakerData?: SpeakerDetectionResult;
+  /** Whether V2 pipeline was used */
+  usedV2?: boolean;
+  /** P1.1 Decision Engine output — enhanced segments with reaction cuts, EMA, layout switching */
+  decisionSegments?: DecisionSegment[];
+  /** How many reaction cuts were inserted */
+  totalReactionCuts?: number;
+  /** How many layout switches occurred */
+  totalLayoutSwitches?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +147,79 @@ function log(tag: string, message: string): void {
   console.log(`[${ts}] [FACE${tag.padEnd(7)}] ${message}`);
 }
 
+// ============================================================================
+// V2 PIPELINE ORCHESTRATOR
+// ============================================================================
+
+/**
+ * Run V2 face detection (YOLOv8-face ONNX) with ByteTrack tracking.
+ * Returns detected + tracked frames, or null if V2 pipeline unavailable.
+ */
+function runV2Detection(
+  videoPath: string,
+  tempDir: string,
+  sampleRate: number,
+  clipStart?: number,
+  clipEnd?: number,
+): TrackerResult | null {
+  const pythonBin = resolvePython();
+  if (!pythonBin) {
+    log('V2', 'Python not found — skipping V2 pipeline');
+    return null;
+  }
+
+  if (!checkOpenCV(pythonBin)) {
+    log('V2', 'OpenCV not found — skipping V2 pipeline');
+    return null;
+  }
+
+  // Try V2 detector first (YOLOv8-face), fall back to V1 (Haar)
+  const v2ScriptPath = join(resolve(__dirname || '.'), 'face-detect-v2.py');
+  const v1ScriptPath = join(resolve(__dirname || '.'), 'face-detect.py');
+  const scriptPath = existsSync(v2ScriptPath) ? v2ScriptPath : v1ScriptPath;
+
+  if (!existsSync(scriptPath)) {
+    log('V2', 'No face detection script found');
+    return null;
+  }
+
+  const isV2 = scriptPath === v2ScriptPath;
+  const outputPath = join(tempDir, 'face_data.json');
+  log('V2', `Running ${isV2 ? 'YOLOv8-face (V2)' : 'Haar Cascade (V1)'} detection`);
+
+  try {
+    let cmd = `${pythonBin} "${scriptPath}" "${videoPath}" "${outputPath}" ${sampleRate}`;
+    if (clipStart !== undefined && clipEnd !== undefined) {
+      cmd += ` --start-time ${clipStart} --end-time ${clipEnd}`;
+    }
+    const out = execSync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
+    log('V2', `Python output: ${(out as string).trim()}`);
+
+    if (!existsSync(outputPath)) {
+      throw new Error('face_data.json not produced');
+    }
+
+    // Run ByteTrack tracker
+    log('V2', 'Running ByteTrack tracker...');
+    const trackResult = runTracker(outputPath, tempDir);
+
+    if (trackResult && trackResult.trackedFrames.length > 0) {
+      log('V2', `Tracker: ${trackResult.trackedFrames.length} frames, ${trackResult.uniqueIds} unique IDs (${trackResult.usedPython ? 'Python' : 'JS fallback'})`);
+      return trackResult;
+    }
+
+    return null;
+  } catch (err) {
+    const msg = (err as Error).message?.slice(0, 200);
+    log('V2_WARN', `V2 detection failed: ${msg}`);
+    return null;
+  }
+}
+
+// ============================================================================
+// V1 PIPELINE (legacy) — Keep existing code below
+// ============================================================================
+
 // ---------------------------------------------------------------------------
 // Step 1: Run face detection via Python OpenCV (V2.4A — all faces)
 // ---------------------------------------------------------------------------
@@ -161,7 +250,7 @@ function checkOpenCV(pythonBin: string): boolean {
   }
 }
 
-function runFaceDetection(
+function runV1FaceDetection(
   videoPath: string,
   tempDir: string,
   sampleRate: number,
@@ -185,8 +274,8 @@ function runFaceDetection(
     return null;
   }
 
-  const outputPath = join(tempDir, 'face_data.json');
-  log('DETECT', `Running face detection on ${videoPath}...`);
+  const outputPath = join(tempDir, 'face_data_v1.json');
+  log('DETECT', `Running V1 face detection on ${videoPath}...`);
 
   try {
     let cmd = `${pythonBin} "${scriptPath}" "${videoPath}" "${outputPath}" ${sampleRate}`;
@@ -194,21 +283,18 @@ function runFaceDetection(
       cmd += ` --start-time ${clipStart} --end-time ${clipEnd}`;
     }
     const out = execSync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
-    log('DETECT', `Python output: ${(out as string).trim()}`);
 
     if (!existsSync(outputPath)) {
-      throw new Error('face_data.json not produced');
+      throw new Error('face_data_v1.json not produced');
     }
 
     const data: RawMultiSample[] = JSON.parse(readFileSync(outputPath, 'utf-8'));
     const faceCount = data.filter((s) => s.face_count > 0).length;
-    const rawFaces = data.reduce((sum, s) => sum + s.face_count, 0);
-    log('DETECT', `Got ${data.length} samples, ${faceCount} with faces (avg ${(rawFaces / Math.max(1, faceCount)).toFixed(1)} faces/frame)`);
-
+    log('DETECT', `V1: ${data.length} samples, ${faceCount} with faces`);
     return data;
   } catch (err) {
     const msg = (err as Error).message?.slice(0, 200);
-    log('ERROR', `Face detection failed: ${msg}`);
+    log('ERROR', `V1 detection failed: ${msg}`);
     return null;
   }
 }
@@ -892,17 +978,227 @@ function fillSegmentGaps(
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// V2 Pipeline Orchestrator
+// ---------------------------------------------------------------------------
+
+/**
+ * Run V2 speaker detection pipeline (AV-ASD) and merge with tracking data.
+ */
+function runV2SpeakerDetection(
+  videoPath: string,
+  verifiedFrames: MultiFaceSample[],
+  tempDir: string,
+  envHfToken?: string,
+  envDeepgramKey?: string,
+): SpeakerDetectionResult | null {
+  try {
+    // Convert MultiFaceSample[] to TrackedFrame[] (the format speaker-detector expects)
+    const trackedFrames = verifiedFrames.map(mf => ({
+      time: mf.time,
+      faces: mf.faces.map(f => ({
+        id: f.id,
+        cx: f.cx,
+        cy: f.cy,
+        w: f.w,
+        h: f.h,
+        confidence: f.confidence || 0.5,
+        landmarks: f.landmarks as any,
+      })),
+      faceCount: mf.face_count,
+    }));
+
+    const result = detectSpeakers(
+      videoPath,
+      trackedFrames,
+      tempDir,
+      envHfToken,
+      envDeepgramKey,
+    );
+
+    log('V2_ASD', `Speaker detection: ${result.totalSpeakers} speakers, ${result.frames.length} frames`);
+    return result;
+  } catch (err) {
+    log('V2_WARN', `Speaker detection failed: ${(err as Error).message?.slice(0, 120)}`);
+    return null;
+  }
+}
+
+/**
+ * Convert V2 tracked frames (from ByteTrack) to the internal MultiFaceSample format.
+ */
+function trackedFramesToMultiFaceSamples(trackerResult: TrackerResult): MultiFaceSample[] {
+  return trackerResult.trackedFrames.map(tf => ({
+    time: tf.time,
+    face_count: tf.faceCount,
+    faces: tf.faces.map(f => ({
+      id: f.id,
+      cx: f.cx,
+      cy: f.cy,
+      w: f.w,
+      h: f.h,
+      confidence: f.confidence,
+      landmarks: f.landmarks,
+    })),
+  }));
+}
+
+/**
+ * Convert V2 speaker frames into CropSegments enriched with speaker/event data.
+ * Uses the Rendering Decision Engine (P1.1) for:
+ *   - EMA-smooth camera transitions
+ *   - Reaction cut scheduling
+ *   - Smart layout switching (SINGLE ↔ SPLIT_2)
+ *
+ * Backward compatible: returns both the legacy CropSegment[] (dominant face path)
+ * and the new DecisionSegment[] (for the full-featured renderer).
+ */
+function buildV2Segments(
+  speakerFrames: SpeakerFrame[],
+  sourceWidth: number,
+  sourceHeight: number,
+): { segments: CropSegment[]; multiFaces: MultiFaceSample[]; decisionSegments: DecisionSegment[] } {
+  // ── Decision Engine (P1.1) ──
+  const decisionResult = processDecisionEngine(speakerFrames, sourceWidth, sourceHeight);
+  const decisionSegments = decisionResult.segments;
+
+  // ── Legacy backward-compatible segments (dominant face path) ──
+  const cropH = sourceHeight;
+  const cropW = sourceHeight * (VERTICAL_WIDTH / VERTICAL_HEIGHT);
+
+  interface V2SegmentAccum {
+    startTime: number;
+    endTime: number;
+    cropX: number;
+    cropY: number;
+    hasFace: boolean;
+    activeSpeakerId: number | null;
+    audioEvent: string;
+    turnDetected: boolean;
+    faceCount: number;
+    count: number;
+    lastCx: number | null;
+    lastCy: number | null;
+  }
+
+  const segmentsAccum: V2SegmentAccum[] = [];
+  let lastActiveSpeakerId: number | null = null;
+
+  for (const frame of speakerFrames) {
+    const t = frame.time;
+
+    let targetCropX: number;
+    let targetCropY: number;
+
+    if (frame.activeSpeakerId !== null) {
+      const activeFace = frame.faces.find(f => f.id === frame.activeSpeakerId);
+      if (activeFace) {
+        targetCropX = Math.max(0, Math.min(sourceWidth - cropW, activeFace.cx - cropW / 2));
+        targetCropY = Math.max(0, Math.min(sourceHeight - cropH, activeFace.cy - cropH * 0.35));
+      } else {
+        targetCropX = frame.faces[0]?.cx ?? sourceWidth / 2;
+        targetCropY = (frame.faces[0]?.cy ?? sourceHeight / 2) - cropH * 0.35;
+      }
+    } else if (frame.faces.length > 0) {
+      targetCropX = Math.max(0, Math.min(sourceWidth - cropW, frame.faces[0].cx - cropW / 2));
+      targetCropY = Math.max(0, Math.min(sourceHeight - cropH, frame.faces[0].cy - cropH * 0.35));
+    } else {
+      continue;
+    }
+
+    targetCropX = Math.round(targetCropX);
+    targetCropY = Math.round(targetCropY);
+
+    const current = segmentsAccum.length > 0 ? segmentsAccum[segmentsAccum.length - 1] : null;
+    lastActiveSpeakerId = frame.activeSpeakerId ?? lastActiveSpeakerId;
+
+    if (current && current.lastCx !== null && current.lastCy !== null) {
+      const movement = Math.sqrt(
+        (targetCropX - current.lastCx) ** 2 + (targetCropY - current.lastCy) ** 2
+      );
+
+      if (movement <= 40 && !frame.turnDetected) {
+        current.endTime = t;
+        current.cropX += targetCropX;
+        current.cropY += targetCropY;
+        current.count++;
+        current.lastCx = targetCropX;
+        current.lastCy = targetCropY;
+        if (frame.audioEvent !== 'normal') current.audioEvent = frame.audioEvent;
+        current.turnDetected = current.turnDetected || frame.turnDetected;
+        continue;
+      }
+    }
+
+    segmentsAccum.push({
+      startTime: t,
+      endTime: t,
+      cropX: targetCropX,
+      cropY: targetCropY,
+      hasFace: frame.faces.length > 0,
+      activeSpeakerId: frame.activeSpeakerId,
+      audioEvent: frame.audioEvent,
+      turnDetected: frame.turnDetected,
+      faceCount: frame.faceCount,
+      count: 1,
+      lastCx: targetCropX,
+      lastCy: targetCropY,
+    });
+  }
+
+  const segments: CropSegment[] = segmentsAccum
+    .filter(seg => seg.endTime - seg.startTime >= 0.5)
+    .map(seg => ({
+      startTime: seg.startTime,
+      endTime: seg.endTime,
+      cropX: Math.round(seg.cropX / seg.count),
+      cropY: Math.round(seg.cropY / seg.count),
+      hasFace: seg.hasFace,
+      activeSpeakerId: seg.activeSpeakerId,
+      audioEvent: seg.audioEvent as any,
+      turnDetected: seg.turnDetected,
+    }));
+
+  const merged = mergeTinySegments(segments, 2.0);
+  const filled = fillSegmentGaps(merged, sourceWidth, sourceHeight);
+
+  // Build multiFaces for backward compat
+  const multiFaces: MultiFaceSample[] = speakerFrames.map(sf => ({
+    time: sf.time,
+    face_count: sf.faceCount,
+    faces: sf.faces.map(f => ({
+      id: f.id,
+      cx: f.cx,
+      cy: f.cy,
+      w: f.w,
+      h: f.h,
+      confidence: f.confidence,
+      landmarks: f.landmarks,
+    })),
+  }));
+
+  return { segments: filled, multiFaces, decisionSegments };
+}
+
+// ---------------------------------------------------------------------------
+// Public API (V2 with fallback)
 // ---------------------------------------------------------------------------
 
 /**
  * Analyze video and generate multi-face tracking crop segments.
- * V2.4A: All faces detected, identity tracked, dominant face selected.
+ *
+ * V2 Pipeline (tried first):
+ *   face-detect-v2.py → tracker.py → speaker-detector.ts → segments
+ *
+ * V1 Fallback (if V2 unavailable):
+ *   face-detect.py → identity tracking → dominant face → segments
  *
  * @param videoPath - Path to the source video file
  * @param tempDir - Temporary directory
  * @param sourceWidth - Width of source video in pixels
  * @param sourceHeight - Height of source video
+ * @param clipStart - Clip start time in seconds
+ * @param clipEnd - Clip end time in seconds
+ * @param hfToken - HuggingFace token for speaker diarization (optional)
  * @returns TrackResult with segments, or null on failure/fallback
  */
 export function analyzeFaces(
@@ -912,9 +1208,82 @@ export function analyzeFaces(
   sourceHeight: number,
   clipStart?: number,
   clipEnd?: number,
+  hfToken?: string,
+  deepgramKey?: string,
 ): TrackResult | null {
-  // Step 1: Run face detection (all faces) — only process clip range if provided
-  const rawSamples = runFaceDetection(videoPath, tempDir, SAMPLE_RATE, clipStart, clipEnd);
+  // ── TRY V2 PIPELINE FIRST ──
+  log('V2', 'Attempting V2 pipeline (YOLOv8-face + ByteTrack + AV-ASD)...');
+  const trackerResult = runV2Detection(videoPath, tempDir, SAMPLE_RATE, clipStart, clipEnd);
+
+  if (trackerResult && trackerResult.trackedFrames.length > 0) {
+    log('V2', 'V2 detection + tracking succeeded. Running AV-ASD...');
+
+    // Convert to MultiFaceSample format
+    const verifiedFrames = trackedFramesToMultiFaceSamples(trackerResult);
+
+    // Run V2 speaker detection
+    const speakerData = runV2SpeakerDetection(
+      videoPath,
+      verifiedFrames,
+      tempDir,
+      hfToken,
+      deepgramKey,
+    );
+
+    // Build segments from speaker data using Decision Engine (P1.1)
+    if (speakerData && speakerData.frames.length > 0) {
+      const { segments, multiFaces, decisionSegments } = buildV2Segments(
+        speakerData.frames,
+        sourceWidth,
+        sourceHeight,
+      );
+
+      // Count reaction cuts and layout switches from decision segments
+      const reactionCuts = decisionSegments.filter(s => s.mode === 'reaction_cut').length;
+      const layoutSwitches = decisionSegments.length > 1 ? decisionSegments.length - 1 : 0;
+
+      log('V2', `V2 pipeline complete: ${segments.length} legacy segments, ${speakerData.totalSpeakers} speakers, ` +
+        `${reactionCuts} reaction cuts, ${layoutSwitches} layout switches`);
+      return {
+        segments,
+        multiFaces,
+        decisionSegments,
+        totalReactionCuts: reactionCuts,
+        totalLayoutSwitches: layoutSwitches,
+        totalSamples: speakerData.frames.length,
+        faceSamples: speakerData.frames.filter(f => f.faceCount > 0).length,
+        faceRatio: speakerData.frames.length > 0
+          ? speakerData.frames.filter(f => f.faceCount > 0).length / speakerData.frames.length
+          : 0,
+        speakerData,
+        usedV2: true,
+      };
+    }
+
+    // Speaker detection failed — use V1-style dominant face approach with V2 tracking data
+    log('V2', 'AV-ASD unavailable, using dominant face fallback with V2 tracking');
+    const interpolated = interpolatePerFace(verifiedFrames);
+    const dominantSamples = selectCameraTarget(interpolated, sourceWidth, sourceHeight);
+    let segments = buildSegments(dominantSamples, sourceWidth, sourceHeight, SEGMENT_THRESHOLD_PX);
+    segments = mergeTinySegments(segments, 2.0);
+    segments = fillSegmentGaps(segments, sourceWidth, sourceHeight);
+
+    return {
+      segments,
+      multiFaces: interpolated,
+      totalSamples: trackerResult.totalFrames,
+      faceSamples: dominantSamples.filter(s => s.hasFace).length,
+      faceRatio: dominantSamples.length > 0
+        ? dominantSamples.filter(s => s.hasFace).length / dominantSamples.length
+        : 0,
+      usedV2: true,
+    };
+  }
+
+  // ── V1 FALLBACK ──
+  log('V2', 'V2 pipeline unavailable — falling back to V1 (Haar Cascade + greedy tracking)');
+
+  const rawSamples = runV1FaceDetection(videoPath, tempDir, SAMPLE_RATE, clipStart, clipEnd);
   if (!rawSamples || rawSamples.length === 0) {
     log('RESULT', 'No face data — using center crop fallback');
     return null;
@@ -922,46 +1291,26 @@ export function analyzeFaces(
 
   const totalFrames = rawSamples.length;
   const framesWithFaces = rawSamples.filter((s) => s.face_count > 0).length;
-  const totalFaces = rawSamples.reduce((sum, s) => sum + s.face_count, 0);
-  const avgFacesPerFrame = totalFrames > 0 ? (totalFaces / totalFrames).toFixed(2) : '0';
 
-  log('MULTI', `Raw: ${totalFrames} frames, ${framesWithFaces} with faces, avg ${avgFacesPerFrame} faces/frame`);
-
-  // Step 2: Track face identity
+  // Run V1 identity tracking pipeline
   const withIdentity = trackFaceIdentity(rawSamples);
-  log('IDENTITY', `Identity tracking: ${withIdentity.filter((s) => s.faces.length > 0).length} frames with identified faces`);
-
-  // Step 3: Smooth per-face
   const smoothed = smoothPerFace(withIdentity, SMOOTHING_WINDOW);
-  log('SMOOTH', `Per-face smoothing applied (window=${SMOOTHING_WINDOW})`);
-
-  // Step 4: Interpolate gaps per-face
   const interpolated = interpolatePerFace(smoothed);
-  const interpFaces = interpolated.filter((s) => s.faces.length > 0).length;
-  log('SMOOTH', `After interpolation: ${interpFaces}/${interpolated.length} frames have faces`);
-
-  // Step 5: Select camera target (dominant face)
   const dominantSamples = selectCameraTarget(interpolated, sourceWidth, sourceHeight);
-  const faceSamples = dominantSamples.filter((s) => s.hasFace).length;
-  log('TARGET', `Camera target selected: ${faceSamples}/${dominantSamples.length} frames with confident face`);
 
-  // Step 6: Build segments
   let segments = buildSegments(dominantSamples, sourceWidth, sourceHeight, SEGMENT_THRESHOLD_PX);
-  log('SEGMENT', `Initial segments: ${segments.length}`);
-
-  // Step 7: Merge tiny segments (< 2s)
   segments = mergeTinySegments(segments, 2.0);
-  log('SEGMENT', `After merge: ${segments.length} segments`);
-
-  // Step 8: Fill any timeline gaps with interpolated positions
   segments = fillSegmentGaps(segments, sourceWidth, sourceHeight);
-  log('SEGMENT', `After gap-fill: ${segments.length} segments`);
+
+  const faceSamples = dominantSamples.filter((s) => s.hasFace).length;
+  log('V1', `V1 fallback complete: ${segments.length} segments, ${framesWithFaces}/${totalFrames} face frames`);
 
   return {
     segments,
-    multiFaces: interpolated,  // expose all faces for split screen
+    multiFaces: interpolated,
     totalSamples: totalFrames,
     faceSamples,
     faceRatio: totalFrames > 0 ? faceSamples / totalFrames : 0,
+    usedV2: false,
   };
 }

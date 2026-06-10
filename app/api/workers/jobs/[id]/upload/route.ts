@@ -85,6 +85,7 @@ export async function POST(
     const startTime = parseFloat(formData.get('start_time')?.toString() || '0');
     const endTime = parseFloat(formData.get('end_time')?.toString() || '0');
     const durationSeconds = parseFloat(formData.get('duration_seconds')?.toString() || '0');
+    const hasSubtitles = formData.get('has_subtitles')?.toString() === '1';
     const file = formData.get('file') as File | null;
 
     if (!file) {
@@ -121,10 +122,11 @@ export async function POST(
       `UPDATE clips_cache
        SET filename = $1,
            file_size_bytes = $2,
-           duration_seconds = $3
-       WHERE job_id = $4
+           duration_seconds = $3,
+           has_subtitles = $4
+       WHERE job_id = $5
        RETURNING id`,
-      [filename, fileSizeBytes, durationSeconds, jobId],
+      [filename, fileSizeBytes, durationSeconds, hasSubtitles, jobId],
     );
 
     if (cacheUpdate.rows.length === 0) {
@@ -136,16 +138,16 @@ export async function POST(
       );
       const jobRenderMode = renderModeResult.rows[0]?.render_mode || 'landscape';
       await query(
-        `INSERT INTO clips_cache (video_id, start_time, end_time, filename, file_size_bytes, duration_seconds, job_id, render_mode)
+        `INSERT INTO clips_cache (video_id, start_time, end_time, filename, file_size_bytes, duration_seconds, has_subtitles, job_id, render_mode)
          VALUES (
            (SELECT video_id FROM moments m
             JOIN analyses a ON a.id = m.analysis_id
             JOIN videos v ON v.id = a.video_id
             WHERE v.youtube_id = $1
             LIMIT 1),
-           $2, $3, $4, $5, $6, $7, $8
+           $2, $3, $4, $5, $6, $7, $8, $9
          )`,
-        [job.youtube_id, startTime, endTime, filename, fileSizeBytes, durationSeconds, jobId, jobRenderMode],
+        [job.youtube_id, startTime, endTime, filename, fileSizeBytes, durationSeconds, hasSubtitles, jobId, jobRenderMode],
       );
     }
 
