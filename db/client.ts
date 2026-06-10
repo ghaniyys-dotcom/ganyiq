@@ -6,6 +6,7 @@ import { Pool, type QueryResult, type QueryResultRow } from 'pg';
  * Falls back to a fresh pool if the cached one was somehow drained.
  */
 let pool: Pool | null = null;
+let poolErrorHandlerAttached = false;
 
 function getPool(): Pool {
   if (!pool) {
@@ -13,10 +14,24 @@ function getPool(): Pool {
     if (!connectionString) {
       throw new Error(
         'DATABASE_URL environment variable is not set. ' +
-        'Create a .env.local file with: DATABASE_URL=postgresql://user:pass@host/db?sslmode=require'
+        'Create a .env.local file with: DATABASE_URL=postgresql://user:***@host/db?sslmode=require'
       );
     }
     pool = new Pool({ connectionString });
+
+    // ATTACH POOL ERROR HANDLER — prevents uncaughtException crash
+    // Without this, PostgreSQL idle-killed connections emit 'error' on the pool
+    // and Node.js throws an uncaughtException, crashing the process (PM2 restart).
+    if (!poolErrorHandlerAttached) {
+      poolErrorHandlerAttached = true;
+      pool.on('error', (err: Error) => {
+        // Log with full context but DO NOT crash the process
+        console.error('[DB POOL] Connection error (non-fatal):', err.message);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[DB POOL] Stack:', err.stack?.slice(0, 500));
+        }
+      });
+    }
   }
   return pool;
 }

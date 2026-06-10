@@ -75,9 +75,11 @@ export async function GET(
       transcript_excerpt: string;
       rank_position: number;
       tier: string;
+      suggested_titles: unknown;
     }>(
       `SELECT start_time, end_time, worth_clipping_score, confidence,
-              dna_tags, reasoning, transcript_excerpt, rank_position, tier
+              dna_tags, reasoning, transcript_excerpt, rank_position, tier,
+              suggested_titles
        FROM moments
        WHERE analysis_id = $1
        ORDER BY rank_position`,
@@ -100,6 +102,7 @@ export async function GET(
         startTimestamp: secondsToTimestamp(startTime),
         endTimestamp: secondsToTimestamp(endTime),
         transcriptExcerpt: row.transcript_excerpt || '',
+        suggestedTitles: row.suggested_titles as Array<{ style: string; title: string }> || null,
       };
     });
 

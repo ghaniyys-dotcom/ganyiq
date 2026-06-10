@@ -12,6 +12,7 @@ export interface TranscriptSegment {
   start: number;      // seconds
   duration: number;    // seconds
   text: string;
+  speaker?: string;    // optional speaker label (from Deepgram diarization)
 }
 
 export interface VideoData {

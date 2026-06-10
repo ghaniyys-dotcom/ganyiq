@@ -32,6 +32,11 @@ export interface CandidateWindow {
   signalCount: number;      // total raw signal matches
   diversity: number;        // unique signal types
   text: string;             // joined text of all segments
+  // Speaker-aware fields (enriched post-extraction)
+  speakers?: string[];      // Unique speakers in this window
+  speakerChangeCount?: number; // Number of speaker transitions
+  exchangeRate?: number;    // Transitions per minute
+  primarySpeaker?: string;  // Speaker with most text
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +292,203 @@ const SIGNALS: Record<string, SignalDef> = {
       'inspiring', 'motivational', 'uplifting',
     ],
   },
+
+  // ── 16. EDUCATIONAL STRUCTURE (weight 3 — NEW) ─────────────────────
+  educational_structure: {
+    weight: 3,
+    keywords: [
+      'cara', 'langkah', 'tips', 'trik', 'tutorial', 'panduan',
+      'pertama', 'kedua', 'ketiga', 'keempat', 'kelima',
+      'step', 'caranya', 'begini', 'gini caranya',
+      'rahasia', 'kunci', 'penting', 'wajib tahu', 'harus tahu',
+      'satu hal', 'ingat', 'catat', 'note',
+      'how to', 'step by step', 'guide', 'tutorial',
+      'tip', 'trick', 'hack', 'secret', 'key',
+      'important', 'must know', 'need to know', 'remember',
+      'first', 'second', 'third', 'finally', 'in conclusion',
+      'intinya', 'kesimpulannya', 'pelajarannya',
+      'simple', 'mudah', 'gampang', 'praktis',
+    ],
+  },
+
+  // ── 17. HOT TAKE / CONTRARIAN OPINION (weight 4 — NEW) ─────────────
+  hot_take: {
+    weight: 4,
+    keywords: [
+      'menurut gue', 'menurut gua', 'menurut saya', 'pendapat gue',
+      'gue rasa', 'gua rasa', 'saya rasa', 'kalau gue bilang',
+      'menurutku', 'menurut gw', 'kalau menurut',
+      'gue berani bilang', 'saya berani bilang',
+      'orang gak mau denger', 'jarang ada yang',
+      'sebenarnya', 'justru', 'malah sebaliknya',
+      'hot take', 'unpopular opinion', 'controversial opinion',
+      'no one talks about', 'hear me out', 'i think',
+      "people don't realize", 'the truth is',
+      'sejujurnya', 'jujur aja', 'honestly',
+      'beda', 'berbeda', 'lain dari yang lain',
+      'pada padahal', 'orang bilang tapi',
+    ],
+  },
+
+  // ── 18. CLIFFHANGER / CURIOSITY GAP (weight 3 — NEW) ──────────────
+  cliffhanger: {
+    weight: 3,
+    keywords: [
+      'tapi ternyata', 'eh ternyata', 'yang bikin kaget',
+      'tau gak', 'mau tau', 'penasaran', 'tunggu dulu',
+      'belum selesai', 'masih ada lagi', 'yang lebih parah',
+      'plot twist', 'tebak apa', 'coba tebak',
+      'yang gak disangka', 'tak disangka', 'nggak nyangka',
+      'lanjut', 'cerita belum selesai',
+      'but then', 'plot twist', 'wait for it', 'guess what',
+      "you won't believe", 'the crazy part is',
+      'it gets worse', 'it gets better',
+      'dan ternyata', 'tiba-tiba', 'tau-tau',
+      'puncaknya', 'klimaksnya', 'yang paling gila',
+    ],
+  },
+
+  // ── 19. DEBATE ARC / DISAGREEMENT (weight 3 — NEW) ─────────────────
+  debate_arc: {
+    weight: 3,
+    keywords: [
+      'tapi kan', 'iya tapi', 'nggak gitu', 'bukan begitu',
+      'gue nggak setuju', 'setuju sih tapi', 'masalahnya',
+      'problemnya', 'sisi lain', 'di satu sisi',
+      'emang bener', 'emang sih', 'oke fair',
+      'tapi gua rasa', 'tapi saya rasa',
+      'argumen', 'argument', 'perdebatan', 'debat',
+      'but actually', 'i disagree', 'on the other hand',
+      'the problem is', 'fair point but', 'counterpoint',
+      'tapi kalo', 'tapi kalau',
+      'sebenernya', 'sebetulnya',
+    ],
+    regex: [/[Aa]pakah\s+(itu|benar|betul)/, /[Bb]eneran\s+(sih|ya|kah)/],
+  },
+
+  // ── 20. BUSINESS / ENTREPRENEURSHIP (weight 3 — NEW) ──────────────
+  business_entrepreneurship: {
+    weight: 3,
+    keywords: [
+      'bisnis', 'usaha', 'startup', 'entrepreneur', 'wirausaha',
+      'bangun bisnis', 'jalanin bisnis', 'mulai bisnis',
+      'partner', 'mitra', 'investor', 'co-founder',
+      'pendanaan', 'funding', 'seed', 'series',
+      'marketing', 'pemasaran', 'branding', 'brand',
+      'produk', 'product', 'launch', 'meluncurkan',
+      'customer', 'pelanggan', 'market', 'pasar',
+      'skalabilitas', 'scale', 'growth', 'tumbuh',
+      'strategi', 'strategy', 'eksekusi', 'execution',
+      'valuasi', 'valuation', 'exit', 'IPO',
+      'business', 'startup', 'founder', 'venture',
+      'B2B', 'B2C', 'SaaS', 'subscription',
+      'bootstrapping', 'side hustle', 'passive income',
+    ],
+  },
+
+  // ── 21. PREDICTIONS / FORECASTING (weight 2 — NEW) ─────────────────
+  predictions_forecasting: {
+    weight: 2,
+    keywords: [
+      'prediksi', 'ramalan', 'masa depan', 'ke depan',
+      'tren', 'trend', 'akan datang', 'next',
+      'dalam 5 tahun', 'dalam 10 tahun',
+      'saya prediksi', 'gue prediksi', 'saya ramal',
+      'bisa jadi', 'kemungkinan', 'mungkin saja',
+      'predict', 'prediction', 'forecast', 'future',
+      'in the next', 'coming years', 'will be',
+      'saya lihat ke depan', 'saya yakin ke depannya',
+      'saya rasa akan', 'nanti akan',
+      'perubahan', 'perubahan besar', 'big change',
+      'revolusi', 'evolusi', 'shift',
+      'era baru', 'new era', 'next big thing',
+      'the future of', 'trending', 'upcoming',
+    ],
+  },
+
+  // ── 22. MISTAKES / FAILURES / LESSONS (weight 3 — NEW) ─────────────
+  mistakes_failures: {
+    weight: 3,
+    keywords: [
+      'gagal', 'kegagalan', 'jatuh', 'bangkrut', 'collapsed',
+      'mistake', 'kesalahan', 'error', 'blunder',
+      'pelajaran', 'lesson', 'lessons learned',
+      'pengalaman pahit', 'bitter experience',
+      'saya belajar', 'gue belajar', 'learned',
+      'dulu saya', 'dulu gue', 'waktu itu saya',
+      'ternyata salah', 'saya kira tapi ternyata',
+      'if only', 'seandainya', 'kalau saja',
+      'the hardest lesson', 'biggest mistake',
+      'failure', 'failed', 'bankrupt', 'crash',
+      'saya gagal', 'gue gagal', 'saya pernah gagal',
+      'bangkit dari', 'rise from', 'mulai dari nol',
+      'start from zero', 'lost everything', 'hancur',
+      'saya akui', 'saya mengaku', 'i admit',
+      'my biggest regret', 'my biggest mistake',
+    ],
+  },
+
+  // ── 23. ACTIONABLE ADVICE (weight 2 — NEW) ─────────────────────────
+  actionable_advice: {
+    weight: 2,
+    keywords: [
+      'saran', 'advice', 'rekomendasi', 'recommendation',
+      'harus', 'wajib', 'pastikan', 'jangan lupa',
+      'coba', 'try', 'lakukan', 'implementasi',
+      'terapkan', 'apply', 'practice',
+      'langkah pertama', 'first step', 'mulailah',
+      'yang perlu kamu', 'yang perlu lu', 'you need to',
+      'tips', 'tip', 'pro tip', 'tips and tricks',
+      'best practice', 'cara terbaik',
+      'recommended', 'highly recommended',
+      'jangan sampai', 'jangan pernah',
+      'yang paling penting', 'most important',
+      'kuncinya adalah', 'the key is',
+      'solusinya', 'the solution',
+    ],
+  },
+
+  // ── 24. SPEAKER DISAGREEMENT (weight 3 — NEW, Phase 3B) ────────────
+  speaker_disagreement: {
+    weight: 3,
+    keywords: [
+      'nggak setuju', 'ga setuju', 'tidak setuju', 'kurang setuju',
+      'maksudnya gini', 'maksud gue', 'maksud saya',
+      'bukan gitu', 'bukan begitu', 'nggak gitu',
+      'tunggu dulu', 'wait wait', 'stop stop',
+      'kalo gitu', 'kalau begitu', 'tapi kan',
+      'iya iya tapi', 'iya sih tapi', 'iya tapi',
+      'sebentar', 'sorry', 'maaf maaf',
+      'testi dulu', 'tes dulu',
+      'no no', 'hold on', 'hang on',
+      'let me finish', 'let me explain',
+      "that's not what", "that's not how",
+      'bentar bentar', 'wait wait wait',
+    ],
+  },
+
+  // ── 25. REACTION MOMENT (weight 2 — NEW, Phase 3B) ─────────────────
+  reaction_moment: {
+    weight: 2,
+    keywords: [
+      'wow', 'woww', 'woah', 'whoa', 'ohh', 'ahh',
+      'ya ampun', 'astaga', 'astagfirullah', 'subhanallah',
+      'masyaallah', 'yaallah', 'ya tuhan',
+      'serius?', 'beneran?', 'really?', 'for real?',
+      'gila', 'anjir', 'anjay', 'waduh', 'aduh',
+      'what?', 'wait what', 'no way', 'omg', 'oh my god',
+      'masa sih', 'masa', 'seriusan',
+      'gitu', 'oh gitu', 'oh begitu',
+      'nah', 'nah gitu', 'nah ini',
+      'iya dong', 'iya lah', 'yes yes',
+      'tuh kan', 'nah kan', 'udah gue bilang',
+      'hahaha', 'wkwk', 'haha', 'hehe', 'hihi',
+      'laughter', 'laughs', 'laughing',
+    ],
+    regex: [
+      /\(laughs?\)/i, /\(laughter\)/i, /\(applause\)/i,
+    ],
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -403,8 +605,8 @@ function scoreSegment(text: string): SegmentScore {
 function formWindows(
   segments: TranscriptSegment[],
   scores: SegmentScore[],
-  minDuration: number = 15,
-  maxDuration: number = 90,
+  minDuration: number = 8,
+  maxDuration: number = 120,
 ): CandidateWindow[] {
   const windows: CandidateWindow[] = [];
   const n = segments.length;
@@ -490,7 +692,20 @@ function formWindows(
 
       // Duration normalization: divide by √duration to prevent bias toward long windows
       const durationNorm = Math.sqrt(duration);
-      const windowScore = (totalRawScore / durationNorm) * contextBoost * diversityBonus;
+
+      // Duration tier bonus: prefer punchy clips (8-45s) over long form
+      let durationTierBonus: number;
+      if (duration >= 8 && duration <= 15) {
+        durationTierBonus = 1.1;       // Punchline clips — tight, high impact
+      } else if (duration >= 16 && duration <= 45) {
+        durationTierBonus = 1.15;      // Sweet spot — TikTok/Reels optimal
+      } else if (duration >= 46 && duration <= 75) {
+        durationTierBonus = 1.0;       // Standard length
+      } else {
+        durationTierBonus = 0.9;       // Long form — needs more signal density
+      }
+
+      const windowScore = (totalRawScore / durationNorm) * contextBoost * diversityBonus * durationTierBonus;
 
       windows.push({
         startSegment: extStart,
@@ -550,4 +765,66 @@ export function extractCandidates(
 
   // Step 5: Return top-N
   return windows.slice(0, maxCandidates);
+}
+
+/**
+ * Post-extraction speaker enrichment for candidate windows.
+ *
+ * After candidates are extracted, enriches each with speaker metadata
+ * from the transcript. This is a separate step so the core extraction
+ * pipeline remains unchanged.
+ *
+ * Gracefully handles missing speaker data — candidates without speaker
+ * info are returned unchanged.
+ *
+ * @param candidates  - Extracted candidate windows (pre-ranking)
+ * @param transcript  - Full transcript with optional speaker field
+ * @returns Same candidates with speaker metadata populated
+ */
+export function enrichCandidatesWithSpeakerData(
+  candidates: CandidateWindow[],
+  transcript: TranscriptSegment[],
+): CandidateWindow[] {
+  // Check if transcript has speaker data
+  const hasSpeakers = transcript.some(s => s.speaker !== undefined && s.speaker !== 'mixed');
+  if (!hasSpeakers) return candidates;
+
+  for (const c of candidates) {
+    const windowSpeakers = new Set<string>();
+    let changes = 0;
+    let lastSpeaker: string | undefined;
+
+    for (let i = c.startSegment; i <= c.endSegment; i++) {
+      const seg = transcript[i];
+      if (!seg) continue;
+      const s = seg.speaker;
+      if (!s || s === 'mixed') continue;
+
+      windowSpeakers.add(s);
+      if (lastSpeaker && s !== lastSpeaker) {
+        changes++;
+      }
+      lastSpeaker = s;
+    }
+
+    // Compute speaker text totals for primary speaker
+    const speakerBytes: Record<string, number> = {};
+    for (let i = c.startSegment; i <= c.endSegment; i++) {
+      const seg = transcript[i];
+      if (!seg || !seg.speaker || seg.speaker === 'mixed') continue;
+      speakerBytes[seg.speaker] = (speakerBytes[seg.speaker] || 0) + seg.text.length;
+    }
+
+    const speakerList = [...windowSpeakers];
+    c.speakers = speakerList;
+    c.speakerChangeCount = changes;
+    c.exchangeRate = c.durationSeconds > 0
+      ? Math.round((changes / c.durationSeconds) * 60 * 10) / 10
+      : 0;
+    c.primarySpeaker = speakerList.length > 0
+      ? speakerList.sort((a, b) => (speakerBytes[b] || 0) - (speakerBytes[a] || 0))[0]
+      : undefined;
+  }
+
+  return candidates;
 }

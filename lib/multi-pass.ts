@@ -297,7 +297,7 @@ async function runSinglePass(
 // LLM Call
 // ---------------------------------------------------------------------------
 
-async function callLLMMultiPass(model: string, system: string, user: string): Promise<string> {
+async function callLLMMultiPass(model: string, system: string, user: string, timeoutMs?: number): Promise<string> {
   const apiKey = process.env.OPENCODE_GO_API_KEY;
   if (!apiKey) throw new AppError('ANALYSIS_FAILED', 'No API key configured.', 500);
 
@@ -313,7 +313,7 @@ async function callLLMMultiPass(model: string, system: string, user: string): Pr
       temperature: 0.3,
       max_tokens: 32768,
     }),
-    signal: AbortSignal.timeout(500_000),
+    signal: AbortSignal.timeout(timeoutMs ?? 500_000),
   });
 
   if (!response.ok) {
@@ -357,76 +357,92 @@ async function runCombinedPass(
   };
 
   // Limit candidates to prevent overly long prompts
-  const maxCombined = Math.min(candidates.length, 30);
+  // Reduced from 30 → 15 to avoid HTTP 500 on combined multi-dimension prompt.
+  // Each candidate × 5 dimensions produces large JSON; 30 candidates × 5 = 150 entries
+  // was overwhelming the API. 15 candidates × 5 = 75 entries is manageable.
+  const maxCombined = Math.min(candidates.length, 15);
   const sampled = candidates.slice(0, maxCombined);
   if (maxCombined < candidates.length) {
     console.log(`[P5A] Combined pass: sampling ${maxCombined}/${candidates.length} candidates`);
   }
 
   const { system: combinedSystem, user: combinedUser } = buildCombinedPassPrompt(sampled, metadata.title);
-  console.time(`[PROFILE] ${metadata.youtubeId} combined_multi_pass`);
-  try {
-    const rawText = await callLLMMultiPass(model, combinedSystem, combinedUser);
-    const cleaned = stripMarkdownFencesMultiPass(rawText);
-    const parsed = JSON.parse(cleaned);
 
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      console.log(`[P5A] Combined pass: empty or invalid response`);
+  // Combined pass: 1 attempt + 1 retry on server error (500+)
+  // Timeout lowered to 180s to avoid wasting 3+ minutes if API rejects large payload
+  const COMBINED_TIMEOUT_MS = 180_000;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    console.time(`[PROFILE] ${metadata.youtubeId} combined_multi_pass_${attempt}`);
+    try {
+      const rawText = await callLLMMultiPass(model, combinedSystem, combinedUser, COMBINED_TIMEOUT_MS);
+      const cleaned = stripMarkdownFencesMultiPass(rawText);
+      const parsed = JSON.parse(cleaned);
+
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        console.log(`[P5A] Combined pass: empty or invalid response`);
+        return null;
+      }
+
+      // Validate and group by inferred pass origin
+      const byPass: Record<string, RawMoment[]> = {};
+      let validCount = 0;
+      let skippedCount = 0;
+
+      for (const item of parsed) {
+        const obj = item as Record<string, unknown> | null;
+        if (!obj || typeof obj !== 'object') { skippedCount++; continue; }
+
+        const moment = validateSinglePassMoment(obj);
+        if (!moment) { skippedCount++; continue; }
+
+        // Infer pass origin from DNA tags
+        const inferredPasses = new Set<string>();
+        for (const tag of moment.dnaTags) {
+          const pass = TAG_TO_PASS[tag];
+          if (pass) inferredPasses.add(pass);
+        }
+
+        if (inferredPasses.size === 0) {
+          // Default to hook if no pass can be inferred
+          inferredPasses.add('hook');
+        }
+
+        const inferredArray = Array.from(inferredPasses);
+        for (const pass of inferredArray) {
+          if (!byPass[pass]) byPass[pass] = [];
+          byPass[pass].push(moment);
+        }
+        validCount++;
+      }
+
+      console.log(`[P5A] Combined pass: ${validCount} valid + ${skippedCount} skipped across ${Object.keys(byPass).length} pass types`);
+
+      if (validCount === 0) return null;
+
+      // Build PassResult for each pass type
+      const results: PassResult[] = passNames.map(passName => ({
+        passName,
+        moments: byPass[passName] || [],
+        candidatesEvaluated: candidates.length,
+        succeeded: (byPass[passName]?.length || 0) > 0,
+      }));
+
+      return results;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      if (attempt === 0 && msg.includes('HTTP 500')) {
+        // Retry once on server error (transient HTTP 500)
+        console.log(`[P5A] Combined pass attempt ${attempt + 1} failed with server error. Retrying...`);
+        continue;
+      }
+      console.log(`[P5A] Combined pass failed after ${attempt + 1} attempt(s): ${msg.slice(0, 150)}`);
       return null;
+    } finally {
+      console.timeEnd(`[PROFILE] ${metadata.youtubeId} combined_multi_pass_${attempt}`);
     }
-
-    // Validate and group by inferred pass origin
-    const byPass: Record<string, RawMoment[]> = {};
-    let validCount = 0;
-    let skippedCount = 0;
-
-    for (const item of parsed) {
-      const obj = item as Record<string, unknown> | null;
-      if (!obj || typeof obj !== 'object') { skippedCount++; continue; }
-
-      const moment = validateSinglePassMoment(obj);
-      if (!moment) { skippedCount++; continue; }
-
-      // Infer pass origin from DNA tags
-      const inferredPasses = new Set<string>();
-      for (const tag of moment.dnaTags) {
-        const pass = TAG_TO_PASS[tag];
-        if (pass) inferredPasses.add(pass);
-      }
-
-      if (inferredPasses.size === 0) {
-        // Default to hook if no pass can be inferred
-        inferredPasses.add('hook');
-      }
-
-      const inferredArray = Array.from(inferredPasses);
-      for (const pass of inferredArray) {
-        if (!byPass[pass]) byPass[pass] = [];
-        byPass[pass].push(moment);
-      }
-      validCount++;
-    }
-
-    console.log(`[P5A] Combined pass: ${validCount} valid + ${skippedCount} skipped across ${Object.keys(byPass).length} pass types`);
-
-    if (validCount === 0) return null;
-
-    // Build PassResult for each pass type
-    const results: PassResult[] = passNames.map(passName => ({
-      passName,
-      moments: byPass[passName] || [],
-      candidatesEvaluated: candidates.length,
-      succeeded: (byPass[passName]?.length || 0) > 0,
-    }));
-
-    return results;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    console.log(`[P5A] Combined pass failed: ${msg.slice(0, 150)}`);
-    return null;
-  } finally {
-    console.timeEnd(`[PROFILE] ${metadata.youtubeId} combined_multi_pass`);
   }
+  console.log(`[P5A] Combined pass: exhausted retries`);
+  return null;
 }
 
 /** Validate a single moment from the combined pass output, including passType. */

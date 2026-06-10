@@ -15,6 +15,7 @@ import { rankMoments, getDedupConfig } from '@/lib/ranking';
 import { PROMPT_VERSION_V2C as PROMPT_VERSION } from '@/lib/prompt';
 import { detectGenre } from '@/lib/genre-detector';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { generateAllTitlesForAnalysis } from '@/lib/title-generator';
 import type { RankedMoment } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
@@ -91,10 +92,10 @@ export async function runAnalysisPipeline(
     // ---- Stage 2: Extract candidates ----
     await setStage(analysisId, 'extracting_candidates');
     console.time(`[PROFILE] ${youtubeId} 2_analyze_transcript`);
-    const analysisResult = await analyzeTranscript(videoData.metadata, videoData.transcript);
+    const analysisResult = await analyzeTranscript(videoData.metadata, videoData.transcript, analysisId);
     console.timeEnd(`[PROFILE] ${youtubeId} 2_analyze_transcript`);
 
-    // ---- Stage 3: Ranking + Dedup ----
+    // ---- Stage 3: Multi-pass verification ----
     await setStage(analysisId, 'ranking');
     console.time(`[PROFILE] ${youtubeId} 3_ranking`);
     const rawMoments = analysisResult.moments;
@@ -134,13 +135,15 @@ export async function runAnalysisPipeline(
     );
 
     // Store moments
+    const insertedMomentIds: string[] = [];
     for (const m of rankedMoments) {
-      await query(
+      const result = await query<{ id: string }>(
         `INSERT INTO moments
            (analysis_id, start_time, end_time, worth_clipping_score,
             confidence, dna_tags, reasoning, transcript_excerpt,
             rank_position, tier)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)`,
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
+         RETURNING id`,
         [
           analysisId,
           m.startTime,
@@ -154,6 +157,7 @@ export async function runAnalysisPipeline(
           m.tier,
         ],
       );
+      insertedMomentIds.push(result.rows[0].id);
     }
 
     console.log(`[ASYNC] Analysis ${analysisId} completed: ${totalMomentsFound} moments in ${processingTimeMs}ms`);
@@ -165,13 +169,16 @@ export async function runAnalysisPipeline(
         ? JSON.stringify(analysisResult.rawResponse).length * 0.75
         : 0;
       const llmCallEstimate = analysisResult.model ? 1 : 0;
+      const highSignalCount = rawMoments.filter(m => m.worthClippingScore >= 70).length;
+      const transcriptWordCount = videoData.transcript.reduce((sum, seg) => sum + (seg.text?.split(/\s+/).length || 0), 0);
       await query(
         `INSERT INTO analysis_metrics
            (analysis_id, video_duration_seconds, transcript_segments,
             candidates_extracted, candidates_validated, candidates_ranked,
-            candidates_deduped, final_clips, elite_clips,
+            candidates_deduped, high_signal_candidates,
+            final_clips, elite_clips, transcript_words,
             runtime_ms, total_tokens, llm_calls, estimated_cost)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
         [
           analysisId,
           Math.round(videoData.metadata.durationSeconds),
@@ -180,8 +187,10 @@ export async function runAnalysisPipeline(
           rawMoments.length,
           rankedMoments.length,
           rawMoments.length - rankedMoments.length,
+          highSignalCount,
           rankedMoments.length,
           rankedMoments.filter(m => m.tier === 'elite').length,
+          transcriptWordCount,
           processingTimeMs,
           Math.round(tokenEstimate),
           llmCallEstimate,
@@ -191,6 +200,39 @@ export async function runAnalysisPipeline(
     } catch (e) {
       console.error(`[METRICS] Failed to store metrics for ${analysisId}:`, e);
     }
+
+    // ---- Generate AI title suggestions for each moment (fire & forget) ----
+    // Don't block pipeline completion on title generation
+    (async () => {
+      try {
+        const momentsForTitle: Array<{
+          id: string;
+          startTime: number;
+          endTime: number;
+          worthClippingScore: number;
+          dnaTags: string[];
+          reasoning: string;
+          transcriptExcerpt: string;
+        }> = rankedMoments.map((m, i) => ({
+          id: insertedMomentIds[i],
+          startTime: m.startTime,
+          endTime: m.endTime,
+          worthClippingScore: m.worthClippingScore,
+          dnaTags: m.dnaTags,
+          reasoning: m.reasoning,
+          transcriptExcerpt: m.transcriptExcerpt,
+        }));
+        await generateAllTitlesForAnalysis(
+          analysisId,
+          momentsForTitle,
+          videoData.metadata.title,
+          videoData.metadata.channelName,
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        console.error(`[TITLES] Title generation failed for ${analysisId}: ${msg.slice(0, 200)}`);
+      }
+    })();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error(`[ASYNC] Analysis ${analysisId} failed:`, message);

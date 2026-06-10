@@ -30,6 +30,10 @@ import { query } from '@/db/client';
 import { validateYouTubeUrl, extractVideoId } from '@/lib/validators';
 import { runAnalysisPipeline } from '@/lib/analyze-pipeline';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { cleanupZombieAnalyses } from '@/lib/zombie-cleanup';
+
+// Run zombie cleanup once on first startup
+cleanupZombieAnalyses();
 
 // ---------------------------------------------------------------------------
 // POST /api/analyze
@@ -81,10 +85,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // ---- 3. Ensure video exists in DB (creates if new) ----
     let videoDbId: string;
     try {
-      // We need at minimum the video_id to create the analysis.
-      // fetchVideoDataWithFallback does this, but it's expensive.
-      // Instead, upsert a minimal video record and let the background
-      // pipeline fill in the details.
       const existing = await query<{ id: string }>(
         'SELECT id FROM videos WHERE youtube_id = $1',
         [youtubeId],
@@ -92,7 +92,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (existing.rows.length > 0) {
         videoDbId = existing.rows[0].id;
       } else {
-        // Insert minimal record — background pipeline will update metadata
         const inserted = await query<{ id: string }>(
           `INSERT INTO videos (youtube_id, title, channel_name, duration_seconds)
            VALUES ($1, $2, $3, $4)
@@ -106,7 +105,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return error(500, 'ANALYSIS_FAILED', `Failed to prepare database: ${message.slice(0, 120)}`);
     }
 
-    // ---- 4. Create analysis record with status='pending' ----
+    // ---- 4. Check analysis cache ----
+    // If this video already has a completed analysis, return cached result.
+    try {
+      const cached = await query<{ id: string }>(
+        `SELECT a.id FROM analyses a
+         WHERE a.video_id = $1 AND a.status = 'completed'
+         ORDER BY a.created_at DESC LIMIT 1`,
+        [videoDbId],
+      );
+      if (cached.rows.length > 0) {
+        console.log(`[ANALYSIS CACHE] hit for ${youtubeId} — returning existing analysis ${cached.rows[0].id}`);
+        return NextResponse.json({
+          analysisId: cached.rows[0].id,
+          status: 'completed',
+          cached: true,
+        });
+      }
+    } catch {
+      // Cache check failure is non-fatal — fall through to fresh analysis
+      console.warn(`[ANALYSIS CACHE] check failed for ${youtubeId} — proceeding with fresh analysis`);
+    }
+    console.log(`[ANALYSIS CACHE] miss for ${youtubeId} — running full pipeline`);
+
+    // ---- 5. Create analysis record with status='pending' ----
     let analysisId: string;
     try {
       const result = await query<{ id: string }>(
@@ -122,15 +144,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return error(500, 'ANALYSIS_FAILED', `Failed to create analysis record: ${message.slice(0, 120)}`);
     }
 
-    // ---- 5. Return immediately ----
-    // The full analysis runs in the background.
-    // We intentionally don't await it — fire and forget.
+    // ---- 6. Return immediately, run pipeline in background ----
     runAnalysisPipeline(analysisId, youtubeId, trimmedUrl, ipAddress).catch((err) => {
       console.error(`[ASYNC] Unhandled pipeline error for ${analysisId}:`, err);
     });
 
     return NextResponse.json(
-      { analysisId, status: 'processing' },
+      { analysisId, status: 'processing', cached: false },
       { status: 202 },
     );
   } catch (e) {

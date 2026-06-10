@@ -14,6 +14,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/db/client';
 import { secondsToTimestamp } from '@/lib/format';
+import { computeExportStrategy } from '@/lib/export-strategy';
+import { computeAllDisplayScores } from '@/lib/score-spread';
 
 export async function GET(
   request: NextRequest,
@@ -77,9 +79,11 @@ export async function GET(
       transcript_excerpt: string;
       rank_position: number;
       tier: string;
+      suggested_titles: unknown;
     }>(
       `SELECT start_time, end_time, worth_clipping_score, confidence,
-              dna_tags, reasoning, transcript_excerpt, rank_position, tier
+              dna_tags, reasoning, transcript_excerpt, rank_position, tier,
+              suggested_titles
        FROM moments
        WHERE analysis_id = $1
        ORDER BY rank_position`,
@@ -101,14 +105,72 @@ export async function GET(
         startTimestamp: secondsToTimestamp(startTime),
         endTimestamp: secondsToTimestamp(endTime),
         transcriptExcerpt: m.transcript_excerpt || '',
+        suggestedTitles: m.suggested_titles as Array<{ style: string; title: string }> || null,
+        exportStrategy: null as Record<string, unknown> | null,
       };
     });
+
+    // Apply score spread to address compression
+    // Display scores use rank-based sqrt curve when raw scores are tight (<30pt range)
+    const displayScores = computeAllDisplayScores(moments);
+    for (const moment of moments) {
+      const displayScore = displayScores.get(moment.rank);
+      if (displayScore !== undefined) {
+        (moment as any).displayScore = displayScore;
+      }
+    }
+
+    // Compute export strategy for each moment (requires transcript timing data)
+    try {
+      const videoResult = await query<{ transcript: unknown }>(
+        'SELECT transcript FROM videos WHERE id = (SELECT video_id FROM analyses WHERE id = $1)',
+        [id],
+      );
+      if (videoResult.rows.length > 0 && videoResult.rows[0].transcript) {
+        const transcript = videoResult.rows[0].transcript as Array<{ start: number; duration: number; text: string }>;
+        if (Array.isArray(transcript) && transcript.length > 0) {
+          for (const moment of moments) {
+            try {
+              (moment as any).exportStrategy = computeExportStrategy(
+                transcript,
+                moment.startTime,
+                moment.endTime,
+              );
+            } catch { /* skip per-moment failures */ }
+          }
+        }
+      }
+    } catch { /* export strategy optional */ }
+
+    // Fetch funnel metrics
+    let funnel: Record<string, number> | null = null;
+    try {
+      const metricsResult = await query<Record<string, unknown>>(
+        `SELECT transcript_words, transcript_segments, candidates_extracted,
+                high_signal_candidates, elite_clips, candidates_ranked
+         FROM analysis_metrics
+         WHERE analysis_id = $1`,
+        [id],
+      );
+      if (metricsResult.rows.length > 0) {
+        const m = metricsResult.rows[0];
+        funnel = {
+          transcriptWords: (m.transcript_words as number) || 0,
+          transcriptSegments: (m.transcript_segments as number) || 0,
+          candidateMoments: (m.candidates_extracted as number) || 0,
+          highSignalMoments: (m.high_signal_candidates as number) || 0,
+          eliteMoments: (m.elite_clips as number) || 0,
+          finalRecommendations: (m.candidates_ranked as number) || 0,
+        };
+      }
+    } catch { /* funnel data optional */ }
 
     return NextResponse.json({
       analysisId: row.id,
       videoId: row.youtube_id,
       status: 'completed',
       moments,
+      funnel,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

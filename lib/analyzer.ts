@@ -19,6 +19,7 @@
  */
 
 import { AppError } from '@/lib/errors';
+import { query } from '@/db/client';
 import { buildActivePrompt, MODELS, TARGET_MODEL, PROMPT_VERSION_V2C } from '@/lib/prompt';
 import { extractCandidates, type CandidateWindow } from '@/lib/candidate-extraction';
 import { cleanTranscript } from '@/lib/transcript-cleaner';
@@ -202,6 +203,7 @@ function buildGenreAwarePrompt(
 export async function analyzeTranscript(
   metadata: VideoMetadata,
   transcript: TranscriptSegment[],
+  analysisId?: string,
 ): Promise<AnalysisResult> {
   const youtubeId = metadata.youtubeId;
   // Compute effective duration first (needed for dynamic candidate cap)
@@ -252,6 +254,14 @@ export async function analyzeTranscript(
   if (candidates.length === 0) {
     console.log(`[V2] No candidates extracted. Returning empty.`);
     return { moments: [], model: TARGET_MODEL, rawResponse: null };
+  }
+
+  // Progress: candidate extraction done → batch analysis starts
+  if (analysisId) {
+    await query(
+      'UPDATE analyses SET progress_stage = $1 WHERE id = $2',
+      ['batch_analysis', analysisId],
+    ).catch(() => {});
   }
 
   // Step 2: Split candidates into batches for multi-batch evaluation
@@ -405,6 +415,14 @@ export async function analyzeTranscript(
   console.log(`[FORENSIC] Batch score range: min=${Math.min(...allValidMoments.map(m=>m.worthClippingScore))} max=${Math.max(...allValidMoments.map(m=>m.worthClippingScore))} avg=${(allValidMoments.reduce((s,m)=>s+m.worthClippingScore,0)/Math.max(1,allValidMoments.length)).toFixed(1)}`);
   console.log(`[V3] Multi-batch complete. ${allValidMoments.length} valid moments across ${numBatches} batches from ${candidates.length} total candidates.`);
   console.timeEnd(`[PROFILE] ${youtubeId} 2b_llm_scoring`);
+
+  // Progress: batch scoring done → multi-pass verification starts
+  if (analysisId) {
+    await query(
+      'UPDATE analyses SET progress_stage = $1 WHERE id = $2',
+      ['multi_pass', analysisId],
+    ).catch(() => {});
+  }
 
   // Step 5: Phase 4B baseline pass bonuses + Phase 5A genre-calibrated pass bonuses
   const BASE_PASS_BONUSES: Record<string, number> = {
