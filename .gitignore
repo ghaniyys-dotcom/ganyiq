@@ -44,3 +44,5 @@ next-env.d.ts
 cookies.txt
 .next.backup/
 public/clips/
+public/clips/
+backups/*.tar.gz
