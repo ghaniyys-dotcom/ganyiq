@@ -595,6 +595,17 @@ const EXAMPLE_VIDEOS = [
   { label: 'CEO Podcast — Onadio', videoId: 'BlPQ97-RRJ8' },
 ];
 
+// Subtitle style options (mirrors worker/subtitle-templates.ts TEMPLATE_NAMES)
+const SUBTITLE_STYLE_OPTIONS: Array<{ id: string; label: string }> = [
+  { id: 'opus', label: 'Opus Style' },
+  { id: 'hormozi', label: 'Alex Hormozi' },
+  { id: 'gadzhi', label: 'Iman Gadzhi' },
+  { id: 'mrbeast', label: 'MrBeast' },
+  { id: 'podcast_minimal', label: 'Podcast Minimal' },
+  { id: 'documentary', label: 'Documentary' },
+  { id: 'clean_corporate', label: 'Clean Corporate' },
+];
+
 export default function Home() {
   const [url, setUrl] = useState('');
   const [stage, setStage] = useState<Stage>('idle');
@@ -619,6 +630,7 @@ export default function Home() {
   const [clipUrls, setClipUrls] = useState<Record<number, string>>({});
   const [clipErrors, setClipErrors] = useState<Record<number, string>>({});
   const [renderMode, setRenderMode] = useState<'landscape' | 'vertical'>('vertical');
+  const [subtitleStyle, setSubtitleStyle] = useState('opus');
   const [urlError, setUrlError] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
@@ -757,7 +769,7 @@ export default function Home() {
       const res = await fetch('/api/clips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ analysisId: result.analysisId, momentIndex, renderMode }),
+        body: JSON.stringify({ analysisId: result.analysisId, momentIndex, renderMode, subtitleStyle }),
       });
       const data = await res.json();
 
@@ -1591,7 +1603,7 @@ export default function Home() {
 
             {/* Format Ratio Selector */}
             <div className="ws-ratio-selector">
-              <span className="ratio-label">Format Pratinjau:</span>
+              <span className="ratio-label">Format:</span>
               <div className="ratio-toggle-group">
                 <button
                   type="button"
@@ -1601,7 +1613,7 @@ export default function Home() {
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <rect x="2" y="5" width="20" height="14" rx="2" />
                   </svg>
-                  Landscape 16:9
+                  16:9
                 </button>
                 <button
                   type="button"
@@ -1611,8 +1623,24 @@ export default function Home() {
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <rect x="6" y="2" width="12" height="20" rx="3" />
                   </svg>
-                  Shorts 9:16
+                  9:16
                 </button>
+              </div>
+            </div>
+
+            {/* P0.5: Subtitle Style Dropdown */}
+            <div className="ws-subtitle-selector">
+              <span className="ratio-label">Subtitles:</span>
+              <div className="style-dropdown-group">
+                <select
+                  className="style-dropdown"
+                  value={subtitleStyle}
+                  onChange={(e) => setSubtitleStyle(e.target.value)}
+                >
+                  {SUBTITLE_STYLE_OPTIONS.map(opt => (
+                    <option key={opt.id} value={opt.id}>{opt.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
 

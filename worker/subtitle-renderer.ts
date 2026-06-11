@@ -1,9 +1,11 @@
 /**
- * worker/subtitle-renderer.ts — ASS subtitle generation for GANYIQ V2.
+ * worker/subtitle-renderer.ts — ASS subtitle generation for GANYIQ V3 (P0.4).
  *
  * Generates Advanced SubStation Alpha (.ass) subtitle files with:
  *   - Karaoke word highlighting (syllable-level \K tags)
  *   - Speaker-aware coloring (different color per speaker)
+ *   - WORD EMPHASIS — numbers, money, names, emotional phrases highlighted in gold
+ *   - Filler word dimming (uh, um, anu, eee in gray)
  *   - Smart positioning (avoids face region — top 70% free)
  *   - Max 2 lines, 40 chars per line
  *   - Bottom 12% of frame, centered
@@ -15,6 +17,16 @@
 import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, resolve } from 'path';
 import type { WordTimestamp, SpeakerLabel } from './speaker-detector';
+import { analyzeWordEmphasis, getEmphasisColor, type EmphasisAnalysis } from './emphasis-engine';
+import {
+  getTemplate,
+  templateToConfig,
+  buildTemplateStyles,
+  getTemplateEmphasisColor,
+  transformWordForTemplate,
+  type SubtitleTemplateId,
+  type SubtitleTemplate,
+} from './subtitle-templates';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,6 +48,8 @@ export interface SubtitleWord {
   start: number;
   end: number;
   speaker?: string;
+  /** P0.4: Emphasis color override (gold for highlights, gray for dimmed). */
+  emphasisColor?: string;
 }
 
 export interface SubtitleLine {
@@ -69,6 +83,9 @@ const DEFAULT_CONFIG: SubtitleConfig = {
   ]),
 };
 
+/** Default template name. */
+const DEFAULT_TEMPLATE: SubtitleTemplateId = 'opus';
+
 function log(tag: string, message: string): void {
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
   console.log(`[${ts}] [SUBTITLE${tag.padEnd(4)}] ${message}`);
@@ -100,15 +117,22 @@ function getSpeakerColor(speaker: string | undefined, config: SubtitleConfig): s
 /**
  * Generate .ass file content from word-level timestamps.
  *
- * Karaoke effect: uses \K tags for syllable-level timing.
- * When a syllable's time is reached, its color changes from the outlined
- * style to the highlighted style.
+ * P0.4 Feature: Word emphasis detection via NLP analysis.
+ *   - Numbers, money, names, emotional phrases → highlighted in gold
+ *   - Filler words (uh, um, anu, eee) → dimmed in gray
+ *   - Only ~15% of words are emphasized to maintain visual impact
+ *
+ * P0.5 Feature: Subtitle template system with 7 professional styles.
+ *   - Each template controls font, colors, size, outline, positioning
+ *   - Word-by-word pop mode gives each word its own Dialogue event
+ *   - Template-driven emphasis colors
  *
  * @param words - Word-level timestamps
  * @param speakerSegments - Speaker segments for coloring
  * @param clipStart - Clip start time in seconds
  * @param clipEnd - Clip end time in seconds
  * @param config - Subtitle configuration
+ * @param templateName - Subtitle template name (default: 'opus')
  * @returns ASS file content as string
  */
 export function generateAssSubtitle(
@@ -117,14 +141,28 @@ export function generateAssSubtitle(
   clipStart: number,
   clipEnd: number,
   config: SubtitleConfig = DEFAULT_CONFIG,
+  templateName: SubtitleTemplateId = DEFAULT_TEMPLATE,
 ): string {
   const clipDuration = clipEnd - clipStart;
 
-  // Group words into lines (chunks of ~5-8 words or natural pauses)
-  const lines = groupWordsIntoLines(words, speakerSegments, clipStart, clipEnd);
+  // Filter words within clip range
+  const clipWords = words.filter(w => w.start >= clipStart && w.end <= clipEnd);
+
+  // P0.4: Run emphasis analysis on the words
+  const emphasis = analyzeWordEmphasis(clipWords, speakerSegments);
+  if (emphasis.stats.highlighted > 0 || emphasis.stats.dimmed > 0) {
+    log('EMPHASIS', `${emphasis.stats.highlighted}/${emphasis.stats.totalWords} highlighted (${emphasis.stats.percentageHighlighted}%), ${emphasis.stats.dimmed} dimmed`);
+  }
+
+  // P0.5: Get template
+  const template = getTemplate(templateName);
+  log('TEMPLATE', `Using template: ${template.name} (${template.wordRenderMode})`);
+
+  // Group words into lines with emphasis coloring
+  const lines = groupWordsIntoLines(clipWords, speakerSegments, clipStart, clipEnd, emphasis, template);
 
   // Build ASS file
-  const assContent = buildAssFile(lines, config, clipDuration);
+  const assContent = buildAssFile(lines, config, clipDuration, template);
   return assContent;
 }
 
@@ -136,6 +174,8 @@ function groupWordsIntoLines(
   speakerSegments: SpeakerLabel[],
   clipStart: number,
   clipEnd: number,
+  emphasis?: EmphasisAnalysis,
+  template?: SubtitleTemplate,
 ): SubtitleLine[] {
   if (words.length === 0) return [];
 
@@ -158,11 +198,33 @@ function groupWordsIntoLines(
       s => word.start >= s.start && word.end <= s.end
     )?.speaker;
 
+    // P0.4: Get emphasis analysis for this word
+    const emphasisInfo = emphasis?.wordMap?.get(i);
+    const isHighlight = emphasisInfo?.type === 'highlight';
+    const isDim = emphasisInfo?.type === 'dim';
+
+    // P0.5: Get template-aware color and transformed text
+    let wordTextFinal = wordText;
+    let emphasisColor: string | undefined;
+
+    if (template) {
+      const templateColor = getTemplateEmphasisColor(template, isHighlight, isDim);
+      if (templateColor !== template.colors.primary) {
+        emphasisColor = templateColor;
+      }
+      wordTextFinal = transformWordForTemplate(wordText, isHighlight, template);
+    } else {
+      // Fallback to P0.4 behavior
+      const ec = getEmphasisColor(i, emphasis?.wordMap);
+      if (ec !== '&H00FFFFFF') emphasisColor = ec;
+    }
+
     const subWord: SubtitleWord = {
-      text: wordText,
+      text: wordTextFinal,
       start: word.start,
       end: word.end,
       speaker,
+      emphasisColor,
     };
 
     // Check for natural break: pause, line length, or punctuation
@@ -229,12 +291,19 @@ function getDominantSpeaker(words: SubtitleWord[]): string | undefined {
 }
 
 /**
- * Build the complete .ass file content.
+ * Build the complete .ass file content with emphasis-aware coloring and template styling.
+ *
+ * P0.4: Each word's \c color tag is overridden by emphasis analysis.
+ * P0.5: Template-driven styles, word-by-word events, per-word transforms.
+ *
+ * Emphasis is attached to SubtitleWord during line grouping to avoid
+ * index misalignment issues caused by word skipping.
  */
 function buildAssFile(
   lines: SubtitleLine[],
   config: SubtitleConfig,
   clipDuration: number,
+  template?: SubtitleTemplate,
 ): string {
   const resolutionX = 1920;
   const resolutionY = 1080;
@@ -243,9 +312,20 @@ function buildAssFile(
   const marginBottom = Math.round(resolutionY * (config.verticalPosition / 100));
   const marginVertical = marginBottom;
 
-  // Build ASS header
+  // P0.5: Build ASS header with template-driven styles
+  let stylesSection: string;
+  if (template) {
+    stylesSection = buildTemplateStyles(template, marginVertical);
+  } else {
+    // Fallback to legacy styles
+    stylesSection = `Style: Default,${config.fontName},${config.fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,${config.outlineWidth},0,2,40,40,${marginVertical},1
+Style: Highlight,${config.fontName},${config.fontSize},&H0066C2E2,&H00FFFFFF,&H00000000,&H22000000,1,0,0,0,100,100,0,0,1,${config.outlineWidth},0,2,40,40,${marginVertical},1
+Style: AltSpeaker,${config.fontName},${config.fontSize},&H0066B9E2,&H00FFFFFF,&H00000000,&H22000000,1,0,0,0,100,100,0,0,1,${config.outlineWidth},0,2,40,40,${marginVertical},1`;
+  }
+
   const header = `[Script Info]
-; Generated by GANYIQ Subtitle Renderer V2
+; Generated by GANYIQ Subtitle Renderer V3 with Emphasis Engine
+; Template: ${template?.name || 'Default'}
 ScriptType: v4.00+
 PlayResX: ${resolutionX}
 PlayResY: ${resolutionY}
@@ -254,37 +334,79 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${config.fontName},${config.fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,${config.outlineWidth},0,2,40,40,${marginVertical},1
-Style: Highlight,${config.fontName},${config.fontSize},&H00${getSpeakerColor('default', config) !== 'WHITE' ? 'E2C266' : 'FFFFFF'},&H00FFFFFF,&H00000000,&H22000000,1,0,0,0,100,100,0,0,1,${config.outlineWidth},0,2,40,40,${marginVertical},1
-Style: AltSpeaker,${config.fontName},${config.fontSize},&H0066B9E2,&H00FFFFFF,&H00000000,&H22000000,1,0,0,0,100,100,0,0,1,${config.outlineWidth},0,2,40,40,${marginVertical},1
+${stylesSection}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  // Build event lines with karaoke
+  // P0.5: Build event lines — standard or word-by-word
   let events = '';
 
   for (const line of lines) {
-    const startTime = formatAssTime(line.start);
-    const endTime = formatAssTime(line.end);
-    const color = getSpeakerColor(line.speaker, config);
+    const lineStartTime = formatAssTime(line.start);
+    const lineEndTime = formatAssTime(line.end);
+    const baseColor = getSpeakerColor(line.speaker, config);
 
     // Determine style based on speaker
     const style = line.speaker && line.speaker !== 'SPEAKER_00' ? 'AltSpeaker' : 'Default';
 
-    // Build karaoke text
-    let karaokeText = '';
-    for (let wi = 0; wi < line.words.length; wi++) {
-      const word = line.words[wi];
-      const wordDuration = Math.round((word.end - word.start) * 100); // centiseconds for \K
-      const durationCs = Math.max(1, wordDuration);
-
-      if (wi > 0) karaokeText += ' ';
-      karaokeText += `{\\K${durationCs}\\c${color}}${escapeAssText(word.text)}`;
+    // P0.5: Static line mode — full line appears instantly, no word-by-word reveal
+    if (template && template.wordRenderMode === 'static_line') {
+      // Output the entire line as-is with per-word \c color tags but no \K timing
+      let lineText = '';
+      for (let wi = 0; wi < line.words.length; wi++) {
+        const word = line.words[wi];
+        const effectiveColor = word.emphasisColor || baseColor;
+        if (wi > 0) lineText += ' ';
+        lineText += `{\\c${effectiveColor}}${escapeAssText(word.text)}`;
+      }
+      events += `Dialogue: 0,${lineStartTime},${lineEndTime},${style},,0,0,0,,${lineText}\n`;
     }
+    // P0.5: Word-by-word mode — each word gets its own Dialogue event
+    else if (template && template.wordByWordEvents && line.words.length > 1) {
+      // Each word appears sequentially with pop duration
+      const popDurationCs = template.wordPopDurationCs;
+      const totalLineDurationMs = (line.end - line.start) * 1000;
+      const wordCount = line.words.length;
+      // Spread words evenly across the line duration
+      const wordIntervalCs = Math.max(1, Math.round(totalLineDurationMs / 10 / wordCount));
 
-    events += `Dialogue: 0,${startTime},${endTime},${style},,0,0,0,,${karaokeText}\n`;
+      for (let wi = 0; wi < line.words.length; wi++) {
+        const word = line.words[wi];
+        const wordStart = line.start + (wi / wordCount) * (line.end - line.start);
+        // Each word is visible from its start time to the next word's start
+        const wordEnd = wi < wordCount - 1
+          ? line.start + ((wi + 1) / wordCount) * (line.end - line.start)
+          : line.end;
+
+        const wStartTime = formatAssTime(wordStart);
+        const wEndTime = formatAssTime(wordEnd);
+        const effectiveColor = word.emphasisColor || baseColor;
+
+        // Use \K for timed reveal of this single word
+        const wordDurationCs = Math.max(1, Math.round((wordEnd - wordStart) * 100));
+        const wordText = `{\\K${wordDurationCs}\\c${effectiveColor}}${escapeAssText(word.text)}`;
+
+        events += `Dialogue: 0,${wStartTime},${wEndTime},${style},,0,0,0,,${wordText}\n`;
+      }
+    } else {
+      // Standard line-level karaoke with emphasis-aware word coloring
+      let karaokeText = '';
+      for (let wi = 0; wi < line.words.length; wi++) {
+        const word = line.words[wi];
+        const wordDuration = Math.round((word.end - word.start) * 100); // centiseconds for \K
+        const durationCs = Math.max(1, wordDuration);
+
+        // Use emphasis color if set on the word, otherwise speaker color
+        const effectiveColor = word.emphasisColor || baseColor;
+
+        if (wi > 0) karaokeText += ' ';
+        karaokeText += `{\\K${durationCs}\\c${effectiveColor}}${escapeAssText(word.text)}`;
+      }
+
+      events += `Dialogue: 0,${lineStartTime},${lineEndTime},${style},,0,0,0,,${karaokeText}\n`;
+    }
   }
 
   return header + events;
@@ -320,6 +442,7 @@ export interface SubtitleRenderResult {
  * @param clipEnd - Clip end time in seconds
  * @param outputDir - Directory to write .ass file
  * @param filename - Output filename (without extension)
+ * @param subtitleStyle - Subtitle template name (default: 'opus')
  * @returns SubtitleRenderResult with path to .ass file
  */
 export function renderSubtitles(
@@ -329,13 +452,14 @@ export function renderSubtitles(
   clipEnd: number,
   outputDir: string,
   filename: string,
+  subtitleStyle: SubtitleTemplateId = DEFAULT_TEMPLATE,
 ): SubtitleRenderResult {
   // Ensure output directory exists
   if (!existsSync(outputDir)) {
     mkdirSync(outputDir, { recursive: true });
   }
 
-  const assContent = generateAssSubtitle(words, speakerSegments, clipStart, clipEnd);
+  const assContent = generateAssSubtitle(words, speakerSegments, clipStart, clipEnd, DEFAULT_CONFIG, subtitleStyle);
   const assFilePath = join(outputDir, `${filename}.ass`);
 
   writeFileSync(assFilePath, assContent, 'utf-8');

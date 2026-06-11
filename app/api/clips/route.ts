@@ -21,7 +21,7 @@ import { query } from '@/db/client';
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json();
-    const { analysisId, momentIndex, renderMode } = body || {};
+    const { analysisId, momentIndex, renderMode, subtitleStyle } = body || {};
 
     if (!analysisId || typeof momentIndex !== 'number') {
       return NextResponse.json(
@@ -77,12 +77,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // 3. Create clip job in queue
-    const clipParams = {
+    const clipParams: Record<string, unknown> = {
       videoId: moment.video_id,
       startTime: parseFloat(moment.start_time),
       endTime: parseFloat(moment.end_time),
       renderMode: finalRenderMode,
     };
+    if (subtitleStyle) {
+      clipParams.subtitleStyle = subtitleStyle;
+    }
 
     const youtubeUrl = `https://www.youtube.com/watch?v=${moment.youtube_id}`;
 

@@ -96,8 +96,8 @@ export interface MultiCropSegment {
     type: 'crossfade' | 'none';
     duration: number;
   };
-  /** Layout mode for this segment (P1.1 PiP). */
-  mode?: 'single' | 'split_2' | 'reaction_cut' | 'listener_pip';
+  /** Layout mode for this segment (P1.1+ split-screen intelligence). */
+  mode?: 'single' | 'split_2' | 'split_3' | 'split_4' | 'reaction_cut' | 'listener_pip' | 'hero_reaction' | 'wide_context';
 }
 
 export interface TrackResult {

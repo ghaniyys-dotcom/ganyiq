@@ -17,6 +17,7 @@ import { platform } from 'os';
 import { analyzeFaces, type CropSegment, type MultiCropSegment, type MultiFaceSample } from './face-tracker';
 import type { DecisionSegment } from './decision-engine';
 import { renderSubtitles, type SubtitleRenderResult, buildSubtitleFilter } from './subtitle-renderer';
+import type { SubtitleTemplateId } from './subtitle-templates';
 
 // ---------------------------------------------------------------------------
 // Interfaces (mirrors the types in worker/index.ts)
@@ -43,6 +44,7 @@ interface Job {
     startTime: number;
     endTime: number;
     renderMode?: 'landscape' | 'vertical' | 'vertical-split';
+    subtitleStyle?: SubtitleTemplateId;
   };
 }
 
@@ -84,6 +86,7 @@ interface ClipParams {
   startTime: number;
   endTime: number;
   renderMode?: 'landscape' | 'vertical' | 'vertical-split';
+  subtitleStyle?: SubtitleTemplateId;
 }
 
 function loadCacheManifest(): Record<string, CacheEntry> {
@@ -185,7 +188,8 @@ export async function renderClip(
   const params = job.clipParams;
   if (!params) throw new Error('clip_params missing from job');
 
-  const { videoId, startTime, endTime } = params;
+  const { videoId, startTime, endTime, subtitleStyle } = params;
+  const effectiveSubtitleStyle: SubtitleTemplateId = subtitleStyle || 'opus';
   const videoUrl = job.youtubeUrl;
 
   log('CLIP', `Rendering clip ${videoId} ${startTime}s-${endTime}s`);
@@ -271,7 +275,9 @@ export async function renderClip(
       endTime,
       tempSubtitlesDir,
       `${videoId}_${Math.round(startTime)}s`,
+      effectiveSubtitleStyle,
     );
+    log('SUBTITLE', `Using subtitle style: ${effectiveSubtitleStyle}`);
     subtitleFilter = `,${buildSubtitleFilter(subtitleResult.assFilePath)}`;
     log('SUBTITLE', `✅ Subtitles generated: ${subtitleResult.lineCount} lines, ${subtitleResult.wordCount} words`);
   } else {
@@ -840,11 +846,10 @@ async function renderVerticalSplit(
 
       // Detect PiP mode: 2 crops with mode === 'listener_pip'
       const isPiP = numFaces >= 2 && seg.mode === 'listener_pip';
+      const isHeroReaction = seg.mode === 'hero_reaction';
 
       if (isPiP) {
         // ── Picture-in-Picture: speaker full-frame + listener inset ──
-        // crops[0] = primary speaker (full 1080x1920)
-        // crops[1] = listener (PiP inset, ~25% frame, bottom-right)
         const mainFace = seg.crops[0];
         const pipFace = seg.crops[1];
 
@@ -852,14 +857,12 @@ async function renderVerticalSplit(
         const mainCw = OLD_CROP_W;
         const mainCropX = clamp(Math.round(mainCx - mainCw / 2), 0, sourceWidth - mainCw);
 
-        // PiP inset dimensions: 25% of 1080x1920 = 270x480
         const PIP_OUT_W = 270;
         const PIP_OUT_H = 480;
-        // Crop a slightly wider area from source for the PiP to avoid being too tight
         const pipCx = pipFace.cropX !== undefined
           ? pipFace.cropX + OLD_CROP_W / 2
           : sourceWidth / 2;
-        const pipScaleFactor = (FULL_H / PIP_OUT_H) * 0.85; // 85% → crop wider frame
+        const pipScaleFactor = (FULL_H / PIP_OUT_H) * 0.85;
         const pipCropW = Math.min(Math.round(PIP_OUT_W * pipScaleFactor), sourceWidth);
         const pipCropH = FULL_H;
         const pipCropX = clamp(Math.round(pipCx - pipCropW / 2), 0, sourceWidth - pipCropW);
@@ -876,21 +879,16 @@ async function renderVerticalSplit(
           + `crop=${pipCropW}:${pipCropH}:${pipCropX}:0,`
           + `scale=${PIP_OUT_W - 4}:${PIP_OUT_H - 4}:flags=lanczos,`
           + `setsar=1,`
-          + // Add thin gold border via pad
-          `pad=${PIP_OUT_W}:${PIP_OUT_H}:2:2:color=0xE2C266,`
-          + // Split for shadow creation
-          `split[pip_img${segIdx}][pip_shadow${segIdx}]`
+          + `pad=${PIP_OUT_W}:${PIP_OUT_H}:2:2:color=0xE2C266,`
+          + `split[pip_img${segIdx}][pip_shadow${segIdx}]`
         );
-        // Create soft drop shadow: fill with semi-transparent black, blur
         filterParts.push(
           `[pip_shadow${segIdx}]format=rgba,drawbox=x=0:y=0:w=iw:h=ih:color=black@0.35:t=fill,`
           + `boxblur=6:3[shadow${segIdx}]`
         );
-        // Overlay shadow first (4px bottom-right offset from PiP position)
         filterParts.push(
           `[main${segIdx}][shadow${segIdx}]overlay=W-w-20:H-h-20[main_shadowed${segIdx}]`
         );
-        // Then overlay PiP on top
         filterParts.push(
           `[main_shadowed${segIdx}][pip_img${segIdx}]overlay=W-w-24:H-h-24,`
           + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
@@ -898,23 +896,101 @@ async function renderVerticalSplit(
         filterParts.push(
           `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
         );
-        log('SPLIT', `Seg ${segIdx}: PiP main=(${mainCropX},0) pip=(${pipCropX},0) [${segStart}s-${segEnd}s]`);
+        log('SPLIT', `Seg ${segIdx}: PiP [${segStart}s-${segEnd}s]`);
+
+      } else if (isHeroReaction) {
+        // ── HERO_REACTION: 60/40 top/bottom split ──
+        // crops[0] = primary speaker (top 60%, full width)
+        // crops[1..2] = reaction panel(s) (bottom 40%, 1 or 2 faces side by side)
+        const heroFace = seg.crops[0];
+        const heroCx = heroFace.cropX + OLD_CROP_W / 2;
+        const heroCw = OLD_CROP_W;
+        const heroCropX = clamp(Math.round(heroCx - heroCw / 2), 0, sourceWidth - heroCw);
+
+        const reactionCount = Math.min(seg.crops.length - 1, 2); // 1 or 2 reaction panels
+        const HERO_H = Math.floor(1920 * 0.6); // 1152px
+        const REACT_H = 1920 - HERO_H;         // 768px
+
+        // Hero panel (top 60%)
+        filterParts.push(
+          `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+          + `crop=${heroCw}:${FULL_H}:${heroCropX}:0,`
+          + `scale=1080:${HERO_H}:flags=lanczos,`
+          + `unsharp=5:5:0.8:3:3:0.4,`
+          + `setsar=1[hero${segIdx}]`
+        );
+
+        // Reaction panel(s) (bottom 40%)
+        if (reactionCount === 1) {
+          const rFace = seg.crops[1];
+          const rCx = rFace.cropX !== undefined ? rFace.cropX + OLD_CROP_W / 2 : sourceWidth / 2;
+          const rCropW = OLD_CROP_W;
+          const rCropX = clamp(Math.round(rCx - rCropW / 2), 0, sourceWidth - rCropW);
+          filterParts.push(
+            `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+            + `crop=${rCropW}:${FULL_H}:${rCropX}:0,`
+            + `scale=1080:${REACT_H}:flags=lanczos,`
+            + `setsar=1[react${segIdx}]`
+          );
+          filterParts.push(
+            `[hero${segIdx}][react${segIdx}]vstack=inputs=2,`
+            + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+          );
+        } else {
+          // 2 reaction panels side by side
+          const r1Face = seg.crops[1];
+          const r2Face = seg.crops[2];
+          const r1Cx = r1Face.cropX !== undefined ? r1Face.cropX + OLD_CROP_W / 2 : sourceWidth / 2;
+          const r2Cx = r2Face.cropX !== undefined ? r2Face.cropX + OLD_CROP_W / 2 : sourceWidth / 2;
+          const rCropW = Math.round(OLD_CROP_W * 0.9); // wider crop for reaction panels
+          const r1CropX = clamp(Math.round(r1Cx - rCropW / 2), 0, sourceWidth - rCropW);
+          const r2CropX = clamp(Math.round(r2Cx - rCropW / 2), 0, sourceWidth - rCropW);
+          filterParts.push(
+            `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+            + `crop=${rCropW}:${FULL_H}:${r1CropX}:0,`
+            + `scale=540:${REACT_H}:flags=lanczos,`
+            + `setsar=1[r1${segIdx}]`
+          );
+          filterParts.push(
+            `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+            + `crop=${rCropW}:${FULL_H}:${r2CropX}:0,`
+            + `scale=540:${REACT_H}:flags=lanczos,`
+            + `setsar=1[r2${segIdx}]`
+          );
+          filterParts.push(
+            `[r1${segIdx}][r2${segIdx}]hstack=inputs=2[react_row${segIdx}]`
+          );
+          filterParts.push(
+            `[hero${segIdx}][react_row${segIdx}]vstack=inputs=2,`
+            + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+          );
+        }
+
+        filterParts.push(
+          `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
+        );
+        log('SPLIT', `Seg ${segIdx}: Hero+Reaction [${segStart}s-${segEnd}s]`);
+
       } else if (numFaces <= 1) {
-        // ── Single-face (includes REACTION_CUT): trim → crop → scale → sharpen → subtitle ──
+        // ── Single-face (SINGLE, REACTION_CUT, WIDE_CONTEXT): trim → crop → scale → sharpen → subtitle ──
         const faceCx = seg.crops[0]?.cropX !== undefined
           ? seg.crops[0].cropX + OLD_CROP_W / 2
           : sourceWidth / 2;
-        const cw = OLD_CROP_W;
-        const cx = clamp(Math.round(faceCx - cw / 2), 0, sourceWidth - cw);
+
+        // WIDE_CONTEXT: 90% of normal crop width (less zoomed in)
+        const isWide = seg.mode === 'wide_context';
+        const cw = isWide ? OLD_CROP_W * 1.1 : OLD_CROP_W;
+        const effectiveCw = Math.min(Math.round(cw), sourceWidth);
+        const cx = clamp(Math.round(faceCx - effectiveCw / 2), 0, sourceWidth - effectiveCw);
         const cy = 0;
 
-        const reactionLabel = seg.crops[0]?.isReaction ? 'reaction' : 'single';
+        const reactionLabel = seg.crops[0]?.isReaction ? 'reaction' : isWide ? 'wide' : 'single';
 
         if (seg.crops[0]?.isReaction) {
           const reactionZoom = 1.05;
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
-            + `crop=${Math.round(cw / reactionZoom)}:${FULL_H}:${Math.round(cx + cw * (1 - 1/reactionZoom) / 2)}:${cy},`
+            + `crop=${Math.round(effectiveCw / reactionZoom)}:${FULL_H}:${Math.round(cx + effectiveCw * (1 - 1/reactionZoom) / 2)}:${cy},`
             + `scale=1080:1920:flags=lanczos,`
             + `unsharp=5:5:0.8:3:3:0.4,`
             + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
@@ -922,7 +998,7 @@ async function renderVerticalSplit(
         } else {
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
-            + `crop=${Math.round(cw)}:${FULL_H}:${cx}:${cy},`
+            + `crop=${effectiveCw}:${FULL_H}:${cx}:${cy},`
             + `scale=1080:1920:flags=lanczos,`
             + `unsharp=5:5:0.8:3:3:0.4,`
             + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
@@ -933,8 +1009,63 @@ async function renderVerticalSplit(
           `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
         );
         log('SPLIT', `Seg ${segIdx}: ${reactionLabel} crop=${cx},${cy} [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
+
+      } else if (seg.mode === 'split_4') {
+        // ── SPLIT_4: 2x2 grid ──
+        const faceCount = 4;
+        const cellW = 540;   // 1080/2
+        const cellH = 960;   // 1920/2
+
+        // Compute crop width for each face
+        let panelCropW = Math.round(FULL_H * (1080 / cellH));
+        panelCropW = Math.min(panelCropW, sourceWidth);
+
+        const splitLabel = `sp${segIdx}`;
+        filterParts.push(
+          `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+          + `split=4[${splitLabel}_0][${splitLabel}_1][${splitLabel}_2][${splitLabel}_3]`
+        );
+
+        // Top row: faces 0,1 side by side
+        for (let fi = 0; fi < 2; fi++) {
+          const face = seg.crops[fi];
+          const faceCx = face.cropX !== undefined ? face.cropX + OLD_CROP_W / 2 : sourceWidth / 2;
+          const cx = clamp(Math.round(faceCx - panelCropW / 2), 0, sourceWidth - panelCropW);
+          filterParts.push(
+            `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,`
+            + `scale=${cellW}:${cellH}:flags=lanczos,setsar=1,setpts=PTS-STARTPTS[row0c${fi}${segIdx}]`
+          );
+        }
+        filterParts.push(
+          `[row0c0${segIdx}][row0c1${segIdx}]hstack=inputs=2[top_row${segIdx}]`
+        );
+
+        // Bottom row: faces 2,3 side by side
+        for (let fi = 2; fi < 4; fi++) {
+          const face = seg.crops[fi];
+          const faceCx = face.cropX !== undefined ? face.cropX + OLD_CROP_W / 2 : sourceWidth / 2;
+          const cx = clamp(Math.round(faceCx - panelCropW / 2), 0, sourceWidth - panelCropW);
+          filterParts.push(
+            `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,`
+            + `scale=${cellW}:${cellH}:flags=lanczos,setsar=1,setpts=PTS-STARTPTS[row1c${fi - 2}${segIdx}]`
+          );
+        }
+        filterParts.push(
+          `[row1c0${segIdx}][row1c1${segIdx}]hstack=inputs=2[btm_row${segIdx}]`
+        );
+
+        // Stack rows
+        filterParts.push(
+          `[top_row${segIdx}][btm_row${segIdx}]vstack=inputs=2,setsar=1,`
+          + `unsharp=5:5:0.8:3:3:0.4,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+        );
+        filterParts.push(
+          `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
+        );
+        log('SPLIT', `Seg ${segIdx}: 4-way grid [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
+
       } else {
-        // ── Multi-face: trim → split → crop each → vstack → sharpen → subtitle ──
+        // ── Multi-face vstack (SPLIT_2, SPLIT_3): trim → split → crop each → vstack → sharpen → subtitle ──
         const faceCount = Math.min(numFaces, SPLIT_MAX_FACES);
         const segHeight = Math.floor(1920 / faceCount);
         let panelCropW = Math.round(FULL_H * (1080 / segHeight));
@@ -967,7 +1098,7 @@ async function renderVerticalSplit(
         filterParts.push(
           `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
         );
-        log('SPLIT', `Seg ${segIdx}: ${faceCount}-way split cw=${panelCropW} [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
+        log('SPLIT', `Seg ${segIdx}: ${faceCount}-way vstack cw=${panelCropW} [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
       }
 
       segIdx++;

@@ -1,26 +1,23 @@
 /**
- * worker/decision-engine.ts — Rendering Decision Engine for GANYIQ V2 (P1.1)
+ * worker/decision-engine.ts — Rendering Decision Engine for GANYIQ V3 (P1.1)
  *
  * Transforms raw face tracking + speaker detection data into cinematic,
  * professionally-edited video segments with:
  *
- *   1. EMA Camera Smoothing — fluid, eased camera movements instead of hard cuts
- *   2. Reaction Cut Logic — deliberately cut to listener reactions (laughter, gasp, emotion)
- *   3. Smart Layout Switching — SINGLE ↔ SPLIT_2 ↔ PiP based on conversational dynamics
+ *   1. EMA Camera Smoothing — fluid, eased camera movements
+ *   2. Reaction Cut Logic — deliberately cut to listener reactions
+ *   3. Smart Layout Switching — conversation-aware multi-person layouts
+ *   4. Peak Moment Escalation — escalate layout during high-energy moments
  *
- * Architecture:
- *   ┌────────────────────────────────────────────────────────┐
- *   │ DecisionEngine (state machine, per-frame)              │
- *   │                                                        │
- *   │  Input: SpeakerFrame[] (tracked faces + speaker data)  │
- *   │                                                        │
- *   │  1. Per-frame layout decision (mode, primary, secondary)│
- *   │  2. EMA filter → smooth crop trajectories              │
- *   │  3. Reaction scheduler → insert listener cuts          │
- *   │  4. Segment builder → output MultiCropSegment[]        │
- *   │                                                        │
- *   │  Output: DecisionResult { segments, transitions }      │
- *   └────────────────────────────────────────────────────────┘
+ * Supported layouts:
+ *   SINGLE         — 1 face, full 1080x1920
+ *   SPLIT_2        — 2 faces, 50/50 vertical stack
+ *   SPLIT_3        — 3 faces, 33/33/33 or hero+2 grid
+ *   SPLIT_4        — 4 faces, 2x2 grid
+ *   REACTION_CUT   — brief cut to listener reaction (overrides others)
+ *   LISTENER_PIP   — picture-in-picture: speaker full + listener inset
+ *   HERO_REACTION  — 60/40 top/bottom: primary speaker + 1-2 reaction panels
+ *   WIDE_CONTEXT   — wider crop (10% less zoom) for gesturing/context
  */
 
 import type { SpeakerFrame, AudioEventType } from './speaker-detector';
@@ -31,16 +28,21 @@ import type { SpeakerFrame, AudioEventType } from './speaker-detector';
 
 /** Layout modes available to the rendering engine. */
 export enum DecisionMode {
-  SINGLE = 'single',               // one face, full 9:16 frame
-  SPLIT_2 = 'split_2',             // two faces, 50/50 vertical stack
-  REACTION_CUT = 'reaction_cut',   // brief cut to listener reaction (overrides others)
-  LISTENER_PIP = 'listener_pip',   // picture-in-picture: speaker full + listener inset
+  SINGLE = 'single',               // 1 face, full 9:16 frame
+  SPLIT_2 = 'split_2',             // 2 faces, 50/50 vertical stack
+  SPLIT_3 = 'split_3',             // 3 faces, 33/33/33 vertical stack
+  SPLIT_4 = 'split_4',             // 4 faces, 2x2 grid
+  REACTION_CUT = 'reaction_cut',   // brief cut to listener reaction
+  LISTENER_PIP = 'listener_pip',   // speaker full + listener inset
+  HERO_REACTION = 'hero_reaction', // 60/40 speaker + reaction panels
+  WIDE_CONTEXT = 'wide_context',   // wider crop (90% zoom)
 }
 
 /** Per-frame decision output. */
 export interface DecisionFrame {
   time: number;
   mode: DecisionMode;
+  /** Primary speaker face ID and crop (EMA-smoothed). */
   primaryFaceId: number | null;
   primaryCropX: number;       // raw (before EMA)
   primaryCropY: number;
@@ -49,9 +51,17 @@ export interface DecisionFrame {
   secondaryFaceId: number | null;
   secondaryCropX: number;
   secondaryCropY: number;
+  tertiaryFaceId: number | null;
+  tertiaryCropX: number;
+  tertiaryCropY: number;
+  quaternaryFaceId: number | null;
+  quaternaryCropX: number;
+  quaternaryCropY: number;
   audioEvent: AudioEventType;
   eventConfidence: number;
-  transitionAlpha: number;    // 0=hard cut…1=fully smoothed
+  transitionAlpha: number;
+  /** Peak moment score (0-100). >50 triggers escalation. */
+  peakScore: number;
 }
 
 /** A rendered segment exported to clip-renderer. */
@@ -64,12 +74,11 @@ export interface DecisionSegment {
     cropY: number;
     faceId: number;
     confidence: number;
-    isReaction?: boolean;     // true if this was a reaction insert
+    isReaction?: boolean;
   }>;
-  /** Optional fade parameters for smoother transitions between segments. */
   transitionOut?: {
     type: 'crossfade' | 'none';
-    duration: number;         // seconds
+    duration: number;
   };
 }
 
@@ -85,24 +94,32 @@ export interface DecisionResult {
 // Configuration
 // ---------------------------------------------------------------------------
 
-const REACTION_HOLD_MIN = 0.8;      // minimum reaction cut duration (seconds)
-const REACTION_HOLD_MAX = 1.8;      // maximum reaction cut duration
-const REACTION_COOLDOWN = 2.5;      // minimum seconds between reaction cuts
-const REACTION_EVENT_DELAY = 0.15;  // wait after event onset before cutting
+// Reaction cut tunables
+const REACTION_HOLD_MIN = 0.8;
+const REACTION_HOLD_MAX = 1.8;
+const REACTION_COOLDOWN = 2.5;
+const REACTION_EVENT_DELAY = 0.15;
 
-const LAYOUT_HOLD_SINGLE = 1.5;     // hold single mode before split can activate
-const LAYOUT_HOLD_SPLIT = 1.5;      // hold split mode before single can activate
-const LAYOUT_HOLD_PIP = 2.0;        // minimum hold PiP mode before switching back
-const LAYOUT_HOLD_PIP_ACTIVATE = 2.0; // min time in SINGLE before PiP can activate
+// Layout hold timers (prevent flicker)
+const LAYOUT_HOLD_SINGLE = 1.5;
+const LAYOUT_HOLD_SPLIT = 1.5;
+const LAYOUT_HOLD_SPLIT_3 = 2.0;
+const LAYOUT_HOLD_SPLIT_4 = 2.5;
+const LAYOUT_HOLD_PIP = 2.0;
+const LAYOUT_HOLD_PIP_ACTIVATE = 2.0;
+const LAYOUT_HOLD_HERO = 2.0;
+const LAYOUT_HOLD_WIDE = 1.5;
 
-const SPLIT_MIN_SPEAKERS = 2;       // minimum active speakers in window to trigger split
-const SPEAKER_WINDOW_SEC = 5.0;     // rolling window for speaker activity tracking
+// Speaker activity thresholds
+const SPLIT_MIN_SPEAKERS = 2;
+const SPEAKER_WINDOW_SEC = 5.0;
 
-const EMA_ALPHA_DEFAULT = 0.15;     // smooth, cinematic camera movement
-const EMA_ALPHA_SPRINT = 0.6;       // faster settling after mode switch
-const EMA_SPRINT_FRAMES = 3;        // number of sprint frames after switch
+// EMA smoothing
+const EMA_ALPHA_DEFAULT = 0.15;
+const EMA_ALPHA_SPRINT = 0.6;
+const EMA_SPRINT_FRAMES = 3;
 
-const REACTION_CUT_CROP_X_BIAS = 0.40; // for reaction cut, position listener at 40% width (slightly offset)
+// Reaction duration by event type
 const REACTION_CUT_DURATION_FACTOR: Record<AudioEventType, number> = {
   'normal': 0,
   'laughter': 1.5,
@@ -111,6 +128,17 @@ const REACTION_CUT_DURATION_FACTOR: Record<AudioEventType, number> = {
   'silence': 0,
   'applause': 1.0,
 };
+
+// Peak moment thresholds
+const PEAK_MOMENT_ESCALATE = 50;   // min score to escalate layout
+const PEAK_MOMENT_MAX = 80;        // max escalation level
+const PEAK_HOLD_DECAY = 0.5;       // seconds decay after peak ends
+
+// Visual rhythm
+const MIN_SHOT_DURATION = 0.5;     // discard sub-500ms segments
+const MAX_SHOT_DURATION = 8.0;     // force cut after 8s
+const MAX_CUTS_PER_WINDOW = 3;     // max cuts in 5s window
+const CUT_SUPPRESSION_WINDOW = 5.0;
 
 function log(tag: string, message: string): void {
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -121,11 +149,6 @@ function log(tag: string, message: string): void {
 // Speaker Activity Tracker
 // ===========================================================================
 
-/**
- * Tracks which face IDs have been active speakers in a rolling time window.
- * Used by the layout switcher to determine if a conversation has multiple
- * active participants (warranting split-screen) vs. a single dominant speaker.
- */
 class SpeakerActivityTracker {
   private events: Array<{ faceId: number; time: number }> = [];
   private readonly windowSec: number;
@@ -148,10 +171,15 @@ class SpeakerActivityTracker {
     return this.getActiveSpeakers(currentTime).size;
   }
 
-  /** Check if a specific face has been active recently. */
   isRecentlyActive(faceId: number, currentTime: number): boolean {
     this.prune(currentTime);
     return this.events.some(e => e.faceId === faceId);
+  }
+
+  /** Get speaker count for a specific face */
+  getSpeakerFrequency(faceId: number, currentTime: number): number {
+    this.prune(currentTime);
+    return this.events.filter(e => e.faceId === faceId).length;
   }
 
   private prune(currentTime: number): void {
@@ -168,20 +196,6 @@ class SpeakerActivityTracker {
 // EMA Camera Smoother
 // ===========================================================================
 
-/**
- * Exponential Moving Average filter for camera crop positions.
- *
- * Produces cinematic, fluid camera movement by blending each new target
- * position with the previous smoothed position.
- *
- *   smoothX₀ = targetX₀
- *   smoothXₜ = smoothXₜ₋₁ + α · (targetXₜ − smoothXₜ₋₁)
- *
- * α (alpha) controls responsiveness:
- *   low (0.05-0.15) = very smooth, slow to settle
- *   medium (0.2-0.4) = good balance
- *   high (0.5-1.0) = responsive, snappier
- */
 class EmaCameraSmoother {
   private smoothX: number | null = null;
   private smoothY: number | null = null;
@@ -194,21 +208,12 @@ class EmaCameraSmoother {
     this.sprintAlpha = sprintAlpha;
   }
 
-  /**
-   * Push a new target position.
-   * @param targetX - Raw target crop X
-   * @param targetY - Raw target crop Y
-   * @param forceSprint - If true, use higher alpha for fast settling (e.g., after mode switch)
-   * @returns Smoothed { x, y }
-   */
-  /** Get current alpha value (useful for logging). */
   getCurrentAlpha(): number {
     return this.sprintRemaining > 0 ? this.sprintAlpha : this.alpha;
   }
 
   push(targetX: number, targetY: number, forceSprint: boolean = false): { x: number; y: number } {
     if (this.smoothX === null || this.smoothY === null) {
-      // First frame — snap to target
       this.smoothX = targetX;
       this.smoothY = targetY;
       return { x: this.smoothX, y: this.smoothY };
@@ -241,18 +246,6 @@ class EmaCameraSmoother {
 // Reaction Cut Scheduler
 // ===========================================================================
 
-/**
- * Schecules and manages reaction cuts.
- *
- * When an audio event (laughter, gasp, emotion_peak) is detected AND there's
- * a visible listener face, the scheduler schedules a brief cut to that face.
- *
- * Scheduling algorithm:
- *   1. Event detected → verify listener face exists in current frame
- *   2. Wait REACTION_EVENT_DELAY for the moment to register
- *   3. Cut to listener face for REACTION_HOLD_MIN..MAX seconds
- *   4. Transition back to primary speaker
- */
 class ReactionScheduler {
   private state: 'idle' | 'pending' | 'active' = 'idle';
   private pendingEvent: AudioEventType = 'normal';
@@ -260,11 +253,10 @@ class ReactionScheduler {
   private pendingTime: number = 0;
   private pendingListenerFaceId: number | null = null;
   private activationTime: number = 0;
-  private lastReactionEnd: number = -REACTION_COOLDOWN; // allow immediate first reaction
+  private lastReactionEnd: number = -REACTION_COOLDOWN;
 
   get isActive(): boolean { return this.state === 'active'; }
   get isPending(): boolean { return this.state === 'pending'; }
-  /** Whether any reaction has been triggered since last reset. */
   get hasHadReaction(): boolean { return this.lastReactionEnd > -REACTION_COOLDOWN / 2; }
   get currentListenerFaceId(): number | null {
     return this.state === 'active' || this.state === 'pending'
@@ -272,10 +264,6 @@ class ReactionScheduler {
       : null;
   }
 
-  /**
-   * Offer an event to the scheduler.
-   * Returns true if the event was accepted (will result in a reaction cut).
-   */
   offerEvent(
     eventType: AudioEventType,
     confidence: number,
@@ -283,21 +271,15 @@ class ReactionScheduler {
     listenerFaceIds: number[],
     speakerFaceIds: number[],
   ): boolean {
-    // Only meaningful events
     if (eventType === 'normal' || eventType === 'silence') return false;
     if (confidence < 0.4) return false;
 
-    // Need at least one listener face
     const validListeners = listenerFaceIds.filter(id => !speakerFaceIds.includes(id));
     if (validListeners.length === 0) return false;
 
-    // Cooldown check
     if (currentTime - this.lastReactionEnd < REACTION_COOLDOWN) return false;
-
-    // Don't queue if already in a reaction
     if (this.state === 'active') return false;
 
-    // Accept the event
     this.state = 'pending';
     this.pendingEvent = eventType;
     this.pendingConfidence = confidence;
@@ -307,13 +289,8 @@ class ReactionScheduler {
     return true;
   }
 
-  /**
-   * Tick the scheduler. Call every frame.
-   * @returns 'activate' if this frame should switch to reaction, 'continue' if already in reaction, 'end' if reaction just ended, null otherwise
-   */
   tick(currentTime: number): 'activate' | 'continue' | 'end' | null {
     if (this.state === 'pending') {
-      // Wait for the delay to pass
       if (currentTime - this.pendingTime >= REACTION_EVENT_DELAY) {
         this.state = 'active';
         this.activationTime = currentTime;
@@ -348,6 +325,141 @@ class ReactionScheduler {
     this.pendingListenerFaceId = null;
     this.activationTime = 0;
     this.lastReactionEnd = -REACTION_COOLDOWN;
+  }
+}
+
+// ===========================================================================
+// Peak Moment Detector
+// ===========================================================================
+
+/**
+ * Detects high-energy moments and computes a peak score for layout escalation.
+ *
+ * Signals considered:
+ *   - Simultaneous reactions (2+ faces with non-normal event)
+ *   - Rapid speaker exchange (3+ turns in 8s)
+ *   - High-confidence audio events (laughter, applause)
+ *   - Visual reactions from multiple faces
+ */
+class PeakMomentDetector {
+  private turnTimes: number[] = [];
+  private reactionWindowEvents: Array<{ time: number; type: AudioEventType; confidence: number }> = [];
+  private lastReactionCount: number = 0;
+  private peakScore: number = 0;
+  private peakStartTime: number = 0;
+  private isPeaking: boolean = false;
+
+  get currentPeakScore(): number { return this.peakScore; }
+  get isCurrentlyPeaking(): boolean { return this.isPeaking; }
+
+  recordTurn(time: number): void {
+    this.turnTimes.push(time);
+    this.pruneTurns(time);
+  }
+
+  recordReaction(time: number, eventType: AudioEventType, confidence: number): void {
+    if (eventType !== 'normal' && eventType !== 'silence') {
+      this.reactionWindowEvents.push({ time, type: eventType, confidence });
+    }
+    this.pruneReactions(time);
+  }
+
+  tick(currentTime: number): number {
+    this.pruneTurns(currentTime);
+    this.pruneReactions(currentTime);
+
+    let score = 0;
+
+    // Factor 1: Rapid speaker exchange (max 30 pts)
+    const turnsInWindow = this.turnTimes.length;
+    if (turnsInWindow >= 3) {
+      score += Math.min(30, turnsInWindow * 8);
+    }
+
+    // Factor 2: Multiple simultaneous reactions (max 40 pts)
+    const recentReactions = this.reactionWindowEvents;
+    const uniqueTypes = new Set(recentReactions.map(e => e.type));
+    const highConfEvents = recentReactions.filter(e => e.confidence > 0.6);
+    if (highConfEvents.length >= 2) {
+      score += Math.min(40, highConfEvents.length * 15);
+    } else if (recentReactions.length >= 2) {
+      score += Math.min(20, recentReactions.length * 8);
+    }
+
+    // Factor 3: High-confidence laughter/applause (max 30 pts)
+    const laughterEvents = recentReactions.filter(
+      e => (e.type === 'laughter' || e.type === 'applause') && e.confidence > 0.5
+    );
+    if (laughterEvents.length > 0) {
+      score += Math.min(30, laughterEvents.length * 12);
+    }
+
+    // Smooth and track peak state
+    this.peakScore = this.peakScore * 0.8 + score * 0.2;
+
+    if (this.peakScore > PEAK_MOMENT_ESCALATE && !this.isPeaking) {
+      this.isPeaking = true;
+      this.peakStartTime = currentTime;
+      log('PEAK', `Peak moment detected: score=${this.peakScore.toFixed(0)}`);
+    }
+
+    if (this.isPeaking && this.peakScore < PEAK_MOMENT_ESCALATE * 0.6 &&
+        currentTime - this.peakStartTime > PEAK_HOLD_DECAY) {
+      this.isPeaking = false;
+      log('PEAK', `Peak moment ended: score=${this.peakScore.toFixed(0)}`);
+    }
+
+    return Math.round(this.peakScore);
+  }
+
+  private pruneTurns(time: number): void {
+    const cutoff = time - CUT_SUPPRESSION_WINDOW;
+    this.turnTimes = this.turnTimes.filter(t => t >= cutoff);
+  }
+
+  private pruneReactions(time: number): void {
+    const cutoff = time - 3.0;
+    this.reactionWindowEvents = this.reactionWindowEvents.filter(e => e.time >= cutoff);
+  }
+
+  reset(): void {
+    this.turnTimes = [];
+    this.reactionWindowEvents = [];
+    this.peakScore = 0;
+    this.isPeaking = false;
+  }
+}
+
+// ===========================================================================
+// Cut Suppression Tracker
+// ===========================================================================
+
+class CutSuppressionTracker {
+  private cutTimes: number[] = [];
+
+  recordCut(time: number): void {
+    this.cutTimes.push(time);
+    this.prune(time);
+  }
+
+  isSuppressed(time: number): boolean {
+    this.prune(time);
+    return this.cutTimes.length >= MAX_CUTS_PER_WINDOW;
+  }
+
+  timeSinceLastCut(time: number): number {
+    this.prune(time);
+    if (this.cutTimes.length === 0) return Infinity;
+    return time - this.cutTimes[this.cutTimes.length - 1];
+  }
+
+  private prune(time: number): void {
+    const cutoff = time - CUT_SUPPRESSION_WINDOW;
+    this.cutTimes = this.cutTimes.filter(t => t >= cutoff);
+  }
+
+  reset(): void {
+    this.cutTimes = [];
   }
 }
 
@@ -388,45 +500,41 @@ const DEFAULT_CONFIG: DecisionEngineConfig = {
 };
 
 /**
- * Rendering Decision Engine — Main entry point.
- *
- * Processes a sequence of SpeakerFrames and produces DecisionSegments
- * optimized for cinematic short-form video output.
+ * Rendering Decision Engine V3 — Multi-person split-screen intelligence.
  *
  * Key behaviors:
- *   - EMA-smooth camera movement instead of hard cuts
- *   - Dynamic reaction cuts that briefly show listener reactions
- *   - Intelligent SINGLE ↔ SPLIT_2 ↔ PiP switching based on conversation dynamics
+ *   - Conversation-aware layout switching (SINGLE ↔ SPLIT_2/3/4 ↔ PiP ↔ HERO)
+ *   - Peak moment escalation (escalate layout during high-energy moments)
+ *   - Cut suppression (prevents rapid flickering)
+ *   - EMA-smooth camera movement
+ *   - Dynamic reaction cuts
  */
 export class DecisionEngine {
   private config: DecisionEngineConfig;
   private smoother: EmaCameraSmoother;
   private scheduler: ReactionScheduler;
   private speakerTracker: SpeakerActivityTracker;
+  private peakDetector: PeakMomentDetector;
+  private cutSuppressor: CutSuppressionTracker;
 
   // State machine
   private currentMode: DecisionMode = DecisionMode.SINGLE;
   private modeSwitchTime: number = 0;
-  private lastMode: DecisionMode = DecisionMode.SINGLE;
   private modeSwitchCount: number = 0;
   private primaryFaceId: number | null = null;
   private secondaryFaceId: number | null = null;
+  private tertiaryFaceId: number | null = null;
+  private quaternaryFaceId: number | null = null;
 
   constructor(config?: Partial<DecisionEngineConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.smoother = new EmaCameraSmoother(this.config.emaAlphaDefault, this.config.emaAlphaSprint);
     this.scheduler = new ReactionScheduler();
     this.speakerTracker = new SpeakerActivityTracker(this.config.speakerWindowSec);
+    this.peakDetector = new PeakMomentDetector();
+    this.cutSuppressor = new CutSuppressionTracker();
   }
 
-  /**
-   * Run the decision engine on a sequence of speaker frames.
-   *
-   * @param speakerFrames - Per-frame face tracking + speaker data
-   * @param sourceWidth - Source video width in pixels
-   * @param sourceHeight - Source video height in pixels
-   * @returns DecisionResult with segments suitable for clip-renderer
-   */
   process(
     speakerFrames: SpeakerFrame[],
     sourceWidth: number,
@@ -443,8 +551,8 @@ export class DecisionEngine {
 
     const decisionFrames: DecisionFrame[] = [];
     let modeChangedThisFrame = false;
+    let peakEscalatedMode: DecisionMode | null = null;
 
-    // ── Per-frame processing ──
     for (let fi = 0; fi < speakerFrames.length; fi++) {
       const frame = speakerFrames[fi];
       const t = frame.time;
@@ -457,59 +565,77 @@ export class DecisionEngine {
       // Compute raw crop positions for each distinct face
       const faceCrops = new Map<number, { cx: number; cy: number }>();
       for (const face of frame.faces) {
-        const cx = clamp(face.cx - cropW / 2, 0, sourceWidth - cropW);
+        const isWideContext = this.currentMode === DecisionMode.WIDE_CONTEXT;
+        const effectiveCropW = isWideContext ? cropW * 0.9 : cropW;
+        const cx = clamp(face.cx - effectiveCropW / 2, 0, sourceWidth - effectiveCropW);
         const cy = clamp(face.cy - cropH * 0.35, 0, sourceHeight - cropH);
         faceCrops.set(face.id, { cx: Math.round(cx), cy: Math.round(cy) });
       }
 
-      // ── Determine layout mode ──
-      const { mode, primaryId, secondaryId } = this.decideLayout(frame, t);
+      // Track peak moment
+      this.peakDetector.recordReaction(t, frame.audioEvent, frame.audioEventConfidence);
+      const peakScore = this.peakDetector.tick(t);
+
+      // Determine if peak escalation overrides current layout
+      if (this.peakDetector.isCurrentlyPeaking && !this.scheduler.isActive) {
+        peakEscalatedMode = this.getEscalatedMode(frame, t);
+      } else {
+        peakEscalatedMode = null;
+      }
+
+      // Determine layout mode
+      const { mode, primaryId, secondaryId, tertiaryId, quaternaryId } =
+        this.decideLayout(frame, t, peakEscalatedMode);
 
       modeChangedThisFrame = mode !== this.currentMode;
       if (modeChangedThisFrame) {
         this.modeSwitchCount++;
-        this.lastMode = this.currentMode;
         this.currentMode = mode;
         this.modeSwitchTime = t;
+        this.cutSuppressor.recordCut(t);
       }
 
-      // ── Determine primary/secondary face IDs ──
+      // Update face IDs
       this.primaryFaceId = primaryId ?? this.primaryFaceId;
       this.secondaryFaceId = secondaryId ?? this.secondaryFaceId;
+      this.tertiaryFaceId = tertiaryId ?? this.tertiaryFaceId;
+      this.quaternaryFaceId = quaternaryId ?? this.quaternaryFaceId;
 
-      // ── Compute raw crop targets ──
+      // Compute raw crop targets
+      const allFaceIds = [primaryId, secondaryId, tertiaryId, quaternaryId];
+      const allFaceCrops = allFaceIds.map(fid =>
+        fid !== null && faceCrops.has(fid) ? faceCrops.get(fid)! : null
+      );
+
       let primaryCx = sourceWidth / 2 - cropW / 2;
       let primaryCy = 0;
-
-      if (this.primaryFaceId !== null && faceCrops.has(this.primaryFaceId)) {
-        const crop = faceCrops.get(this.primaryFaceId)!;
-        primaryCx = crop.cx;
-        primaryCy = crop.cy;
+      if (primaryId !== null && faceCrops.has(primaryId)) {
+        primaryCx = faceCrops.get(primaryId)!.cx;
+        primaryCy = faceCrops.get(primaryId)!.cy;
       } else if (frame.faces.length > 0) {
-        // Fallback to first face
         const firstFace = faceCrops.get(frame.faces[0].id);
-        if (firstFace) {
-          primaryCx = firstFace.cx;
-          primaryCy = firstFace.cy;
-        }
+        if (firstFace) { primaryCx = firstFace.cx; primaryCy = firstFace.cy; }
       }
 
-      let secondaryCx = primaryCx;
-      let secondaryCy = primaryCy;
-      if (this.secondaryFaceId !== null && faceCrops.has(this.secondaryFaceId)) {
-        const crop = faceCrops.get(this.secondaryFaceId)!;
-        secondaryCx = crop.cx;
-        secondaryCy = crop.cy;
-      }
+      const secondaryCx = secondaryId !== null && faceCrops.has(secondaryId) ? faceCrops.get(secondaryId)!.cx : primaryCx;
+      const secondaryCy = secondaryId !== null && faceCrops.has(secondaryId) ? faceCrops.get(secondaryId)!.cy : primaryCy;
+      const tertiaryCx = tertiaryId !== null && faceCrops.has(tertiaryId) ? faceCrops.get(tertiaryId)!.cx : primaryCx;
+      const tertiaryCy = tertiaryId !== null && faceCrops.has(tertiaryId) ? faceCrops.get(tertiaryId)!.cy : primaryCy;
+      const quaternaryCx = quaternaryId !== null && faceCrops.has(quaternaryId) ? faceCrops.get(quaternaryId)!.cx : primaryCx;
+      const quaternaryCy = quaternaryId !== null && faceCrops.has(quaternaryId) ? faceCrops.get(quaternaryId)!.cy : primaryCy;
 
-      // ── Apply EMA smoothing ──
-      const needsSprint = modeChangedThisFrame || this.scheduler.isActive;
+      // Apply EMA smoothing (primary only)
+      const needsSprint = modeChangedThisFrame || this.scheduler.isActive || peakEscalatedMode !== null;
       const smooth = this.smoother.push(primaryCx, primaryCy, needsSprint);
 
-      // ── Tick reaction scheduler ──
-      const reactionTick = this.tickReactionScheduler(frame, t);
+      // Tick reaction scheduler
+      this.tickReactionScheduler(frame, t);
 
-      // ── Build decision frame ──
+      // Tick turn detection for peak detector
+      if (frame.turnDetected && frame.activeSpeakerId !== null) {
+        this.peakDetector.recordTurn(t);
+      }
+
       decisionFrames.push({
         time: t,
         mode: this.currentMode,
@@ -521,180 +647,315 @@ export class DecisionEngine {
         secondaryFaceId: this.secondaryFaceId,
         secondaryCropX: Math.round(secondaryCx),
         secondaryCropY: Math.round(secondaryCy),
+        tertiaryFaceId: this.tertiaryFaceId,
+        tertiaryCropX: Math.round(tertiaryCx),
+        tertiaryCropY: Math.round(tertiaryCy),
+        quaternaryFaceId: this.quaternaryFaceId,
+        quaternaryCropX: Math.round(quaternaryCx),
+        quaternaryCropY: Math.round(quaternaryCy),
         audioEvent: frame.audioEvent,
         eventConfidence: frame.audioEventConfidence,
         transitionAlpha: this.smoother.getCurrentAlpha(),
+        peakScore,
       });
     }
 
-    // ── Build segments from decision frames ──
     const segments = this.buildSegments(decisionFrames, sourceWidth, sourceHeight);
 
-    log('RESULT', `${segments.length} segments, ${this.modeSwitchCount} layout switches, ${this.scheduler.hasHadReaction ? '≥1' : 0} reaction cuts`);
+    log('RESULT', `${segments.length} segments, ${this.modeSwitchCount} switches, ` +
+      `${this.scheduler.hasHadReaction ? '≥1' : 0} reactions`);
 
-    // Count reaction cuts
-    let totalReactionCuts = 0;
-    for (const seg of segments) {
-      if (seg.mode === DecisionMode.REACTION_CUT) totalReactionCuts++;
-    }
+    const totalReactionCuts = segments.filter(s => s.mode === DecisionMode.REACTION_CUT).length;
 
-    return {
-      segments,
-      decisionFrames,
-      totalReactionCuts,
-      totalLayoutSwitches: this.modeSwitchCount,
-    };
+    return { segments, decisionFrames, totalReactionCuts, totalLayoutSwitches: this.modeSwitchCount };
   }
 
   // ── Private ──
 
   /**
-   * Decide the layout mode for a single frame.
-   * This is the core decision logic:
+   * Get the escalated layout mode during a peak moment.
+   * Based on how many faces are visible.
+   */
+  private getEscalatedMode(
+    frame: SpeakerFrame,
+    currentTime: number,
+  ): DecisionMode {
+    const faceCount = frame.faces.length;
+
+    if (faceCount === 0) return DecisionMode.SINGLE;
+    if (faceCount === 1) return DecisionMode.SINGLE;
+
+    // During peak, escalate to show more participants
+    const current = this.currentMode;
+
+    // If already in a multi-face layout, stay there
+    if (current === DecisionMode.SPLIT_3 || current === DecisionMode.SPLIT_4 ||
+        current === DecisionMode.HERO_REACTION) {
+      return current;
+    }
+
+    // Escalate based on face count
+    if (faceCount >= 4) return DecisionMode.SPLIT_4;
+    if (faceCount >= 3) return DecisionMode.HERO_REACTION;
+    if (faceCount >= 2) return DecisionMode.SPLIT_2;
+
+    return DecisionMode.SINGLE;
+  }
+
+  /**
+   * Core layout decision logic — conversation-aware, not face-count-based.
    *
-   * 1. If reaction scheduler is active → REACTION_CUT (overrides everything)
-   * 2. If 2+ speakers active in window AND 2+ faces visible → SPLIT_2
-   * 3. Single speaker → SINGLE (or PiP if we have a listener)
-   * 4. No faces → SINGLE (center crop)
+   * Decision hierarchy:
+   *   1. REACTION_CUT overrides everything
+   *   2. Peak escalation (if active)
+   *   3. Multi-person layouts (SPLIT_2/3/4, HERO) based on speaker activity
+   *   4. LISTENER_PIP for single speaker with listener
+   *   5. WIDE_CONTEXT for solo speaker with gestures
+   *   6. SINGLE default
    */
   private decideLayout(
     frame: SpeakerFrame,
     currentTime: number,
-  ): { mode: DecisionMode; primaryId: number | null; secondaryId: number | null } {
+    peakEscalatedMode: DecisionMode | null,
+  ): {
+    mode: DecisionMode;
+    primaryId: number | null;
+    secondaryId: number | null;
+    tertiaryId: number | null;
+    quaternaryId: number | null;
+  } {
     // ── REACTION_CUT overrides everything ──
     if (this.scheduler.isActive) {
-      const listenerId = this.scheduler.currentListenerFaceId;
       return {
         mode: DecisionMode.REACTION_CUT,
-        primaryId: listenerId,    // focus on the listener reacting
+        primaryId: this.scheduler.currentListenerFaceId,
         secondaryId: null,
+        tertiaryId: null,
+        quaternaryId: null,
       };
+    }
+
+    // ── Peak escalation ──
+    if (peakEscalatedMode !== null) {
+      return this.assignFacesToMode(frame, currentTime, peakEscalatedMode);
     }
 
     const faceCount = frame.faces.length;
-    const activeSpeakers = this.speakerTracker.getActiveSpeakerCount(currentTime);
+    const activeSpeakerIds = this.speakerTracker.getActiveSpeakers(currentTime);
+    const activeSpeakerCount = activeSpeakerIds.size;
     const timeSinceSwitch = currentTime - this.modeSwitchTime;
+    const current = this.currentMode;
 
-    // ── SPLIT_2: Multiple active speakers, multiple faces visible ──
-    if (
-      faceCount >= 2 &&
-      activeSpeakers >= this.config.splitMinSpeakers &&
-      this.currentMode === DecisionMode.SPLIT_2
-    ) {
-      // Stay in split mode (or activate if coming from single + hold expired)
-      if (timeSinceSwitch >= this.config.layoutHoldSingle || this.currentMode === DecisionMode.SPLIT_2) {
-        // Find two most relevant faces — prefer active speakers
-        const activeSpeakerIds = this.speakerTracker.getActiveSpeakers(currentTime);
-        const sortedFaces = [...frame.faces].sort((a, b) => {
-          const aIsActive = activeSpeakerIds.has(a.id) ? 1 : 0;
-          const bIsActive = activeSpeakerIds.has(b.id) ? 1 : 0;
-          // Active speakers first, then by confidence
-          if (aIsActive !== bIsActive) return bIsActive - aIsActive;
-          return b.confidence - a.confidence;
-        });
+    // Check cut suppression
+    if (this.cutSuppressor.isSuppressed(currentTime) && timeSinceSwitch < MAX_SHOT_DURATION) {
+      // Stay in current mode — too many cuts
+      return this.stayInCurrentMode(frame);
+    }
 
-        return {
-          mode: DecisionMode.SPLIT_2,
-          primaryId: sortedFaces[0]?.id ?? null,
-          secondaryId: sortedFaces[1]?.id ?? null,
-        };
+    // ── SPLIT_2: Two active speakers ──
+    if (faceCount >= 2 && activeSpeakerCount >= 2) {
+      if (current === DecisionMode.SPLIT_2 || current === DecisionMode.SINGLE) {
+        if (timeSinceSwitch >= this.config.layoutHoldSingle) {
+          return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_2);
+        }
       }
     }
 
-    // Check if we should enter split mode (from single)
-    if (
-      faceCount >= 2 &&
-      activeSpeakers >= this.config.splitMinSpeakers &&
-      this.currentMode !== DecisionMode.SPLIT_2
-    ) {
-      if (timeSinceSwitch >= this.config.layoutHoldSingle) {
-        const activeSpeakerIds = this.speakerTracker.getActiveSpeakers(currentTime);
-        const sortedFaces = [...frame.faces].sort((a, b) => {
-          const aIsActive = activeSpeakerIds.has(a.id) ? 1 : 0;
-          const bIsActive = activeSpeakerIds.has(b.id) ? 1 : 0;
-          if (aIsActive !== bIsActive) return bIsActive - aIsActive;
-          return b.confidence - a.confidence;
-        });
-
-        return {
-          mode: DecisionMode.SPLIT_2,
-          primaryId: sortedFaces[0]?.id ?? null,
-          secondaryId: sortedFaces[1]?.id ?? null,
-        };
+    // ── SPLIT_3: Three active speakers ──
+    if (faceCount >= 3 && activeSpeakerCount >= 3) {
+      if (current === DecisionMode.SPLIT_3 ||
+          (current === DecisionMode.SINGLE && timeSinceSwitch >= LAYOUT_HOLD_SPLIT_3) ||
+          (current === DecisionMode.SPLIT_2 && timeSinceSwitch >= LAYOUT_HOLD_SPLIT_3)) {
+        return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_3);
       }
     }
 
-    // ── SINGLE: Default mode ──
-    // If we were in split, check hold timer before switching back
-    if (this.currentMode === DecisionMode.SPLIT_2 && timeSinceSwitch < this.config.layoutHoldSplit) {
-      return {
-        mode: DecisionMode.SPLIT_2,
-        primaryId: this.primaryFaceId ?? frame.faces[0]?.id ?? null,
-        secondaryId: this.secondaryFaceId ?? frame.faces[1]?.id ?? null,
-      };
+    // ── SPLIT_4: Four active speakers ──
+    if (faceCount >= 4 && activeSpeakerCount >= 3) {
+      if (current === DecisionMode.SPLIT_4 || timeSinceSwitch >= LAYOUT_HOLD_SPLIT_4) {
+        return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_4);
+      }
     }
 
-    // ── LISTENER_PIP: Single speaker with visible listener ──
-    // Activate after sufficient hold in SINGLE mode
-    if (
-      faceCount >= 2 &&
-      frame.activeSpeakerId !== null &&
-      this.currentMode === DecisionMode.SINGLE &&
-      timeSinceSwitch >= LAYOUT_HOLD_PIP_ACTIVATE
-    ) {
-      // Find a listener (face that is not the active speaker)
+    // ── Hold current multi-face modes ──
+    if (current === DecisionMode.SPLIT_2 && timeSinceSwitch < this.config.layoutHoldSplit) {
+      return this.stayInCurrentMode(frame);
+    }
+    if (current === DecisionMode.SPLIT_3 && timeSinceSwitch < LAYOUT_HOLD_SPLIT_3) {
+      return this.stayInCurrentMode(frame);
+    }
+    if (current === DecisionMode.SPLIT_4 && timeSinceSwitch < LAYOUT_HOLD_SPLIT_4) {
+      return this.stayInCurrentMode(frame);
+    }
+    if (current === DecisionMode.HERO_REACTION && timeSinceSwitch < LAYOUT_HOLD_HERO) {
+      return this.stayInCurrentMode(frame);
+    }
+    if (current === DecisionMode.LISTENER_PIP && timeSinceSwitch < LAYOUT_HOLD_PIP) {
+      return this.stayInCurrentMode(frame);
+    }
+
+    // ── HERO_REACTION: Single speaker with 2+ reacting listeners ──
+    if (faceCount >= 3 && activeSpeakerCount === 1 && this.shouldUseHeroReaction(frame, currentTime)) {
+      return this.assignFacesToMode(frame, currentTime, DecisionMode.HERO_REACTION);
+    }
+
+    // ── LISTENER_PIP: Single speaker with reacting listener ──
+    if (faceCount >= 2 && activeSpeakerCount === 1 &&
+        this.currentMode === DecisionMode.SINGLE && timeSinceSwitch >= LAYOUT_HOLD_PIP_ACTIVATE) {
       const listeners = frame.faces.filter(f => f.id !== frame.activeSpeakerId);
       if (listeners.length > 0 && listeners[0].confidence > 0.1) {
-        log('PIP', `PiP activate: speaker=${frame.activeSpeakerId}, listener=${listeners[0].id} at ${currentTime.toFixed(1)}s`);
+        log('PIP', `PiP activate: speaker=${frame.activeSpeakerId}, listener=${listeners[0].id}`);
         return {
           mode: DecisionMode.LISTENER_PIP,
           primaryId: frame.activeSpeakerId,
           secondaryId: listeners[0].id,
+          tertiaryId: null,
+          quaternaryId: null,
         };
       }
     }
 
-    // If currently in PiP, hold for minimum duration
-    if (this.currentMode === DecisionMode.LISTENER_PIP) {
-      const activeSpeakerStillExists = frame.activeSpeakerId !== null &&
-        frame.faces.some(f => f.id === frame.activeSpeakerId);
-      const listenerStillExists = this.secondaryFaceId !== null &&
-        frame.faces.some(f => f.id === this.secondaryFaceId);
-
-      if (timeSinceSwitch < this.config.layoutHoldPip && activeSpeakerStillExists && listenerStillExists) {
+    // ── WIDE_CONTEXT: Solo speaker with gestures ──
+    if (activeSpeakerCount === 1 && current === DecisionMode.SINGLE && timeSinceSwitch >= LAYOUT_HOLD_WIDE) {
+      // Check if speaker seems to be gesturing (we can't detect gestures well, but
+      // we can use speaker duration as heuristic: if same speaker > 3s, try wide)
+      if (timeSinceSwitch > 3.0 && faceCount === 1) {
         return {
-          mode: DecisionMode.LISTENER_PIP,
-          primaryId: frame.activeSpeakerId ?? this.primaryFaceId ?? frame.faces[0]?.id ?? null,
-          secondaryId: this.secondaryFaceId!,
+          mode: DecisionMode.WIDE_CONTEXT,
+          primaryId: frame.activeSpeakerId ?? frame.faces[0]?.id ?? null,
+          secondaryId: null,
+          tertiaryId: null,
+          quaternaryId: null,
         };
       }
     }
 
-    // Single mode — pick primary face
-    let primaryId: number | null = null;
-    if (frame.activeSpeakerId !== null) {
-      primaryId = frame.activeSpeakerId;
-    } else if (frame.faces.length > 0) {
-      const sorted = [...frame.faces].sort((a, b) => b.confidence - a.confidence);
-      primaryId = sorted[0].id;
-    }
+    // ── SINGLE: Default ──
+    const primaryId = frame.activeSpeakerId ??
+      (frame.faces.length > 0
+        ? [...frame.faces].sort((a, b) => b.confidence - a.confidence)[0].id
+        : null);
 
     return {
       mode: DecisionMode.SINGLE,
       primaryId,
       secondaryId: null,
+      tertiaryId: null,
+      quaternaryId: null,
     };
   }
 
   /**
-   * Offer audio events to the reaction scheduler every frame.
-   * Returns the scheduler tick result.
+   * Check if hero reaction layout should be used.
+   * Activated when one speaker dominates and there are 2+ visible listeners.
    */
+  private shouldUseHeroReaction(frame: SpeakerFrame, currentTime: number): boolean {
+    if (!frame.activeSpeakerId) return false;
+    const listeners = frame.faces.filter(f => f.id !== frame.activeSpeakerId);
+    if (listeners.length < 2) return false;
+
+    // Hero is good when listeners have been recently active (reacted)
+    const recentlyActiveCount = listeners.filter(
+      l => this.speakerTracker.isRecentlyActive(l.id, currentTime)
+    ).length;
+
+    return recentlyActiveCount >= 1;
+  }
+
+  /**
+   * Assign face IDs to a layout mode, sorted by speaker activity then confidence.
+   */
+  private assignFacesToMode(
+    frame: SpeakerFrame,
+    currentTime: number,
+    mode: DecisionMode,
+  ): {
+    mode: DecisionMode;
+    primaryId: number | null;
+    secondaryId: number | null;
+    tertiaryId: number | null;
+    quaternaryId: number | null;
+  } {
+    const maxFaces = mode === DecisionMode.SPLIT_4 ? 4 :
+                     mode === DecisionMode.SPLIT_3 ? 3 :
+                     mode === DecisionMode.HERO_REACTION ? 3 :
+                     mode === DecisionMode.SPLIT_2 ? 2 : 1;
+
+    const activeSpeakerIds = this.speakerTracker.getActiveSpeakers(currentTime);
+
+    // Sort: active speakers first, then by confidence
+    const sortedFaces = [...frame.faces].sort((a, b) => {
+      const aIsActive = activeSpeakerIds.has(a.id) ? 1 : 0;
+      const bIsActive = activeSpeakerIds.has(b.id) ? 1 : 0;
+      if (aIsActive !== bIsActive) return bIsActive - aIsActive;
+      return b.confidence - a.confidence;
+    });
+
+    const selected = sortedFaces.slice(0, maxFaces);
+
+    return {
+      mode,
+      primaryId: selected[0]?.id ?? null,
+      secondaryId: selected[1]?.id ?? null,
+      tertiaryId: selected[2]?.id ?? null,
+      quaternaryId: selected[3]?.id ?? null,
+    };
+  }
+
+  /**
+   * Stay in the current mode, keeping existing face assignments.
+   */
+  private stayInCurrentMode(frame: SpeakerFrame): {
+    mode: DecisionMode;
+    primaryId: number | null;
+    secondaryId: number | null;
+    tertiaryId: number | null;
+    quaternaryId: number | null;
+  } {
+    const count = this.currentMode === DecisionMode.SPLIT_4 ? 4 :
+                  this.currentMode === DecisionMode.SPLIT_3 ? 3 :
+                  this.currentMode === DecisionMode.HERO_REACTION ? 3 :
+                  this.currentMode === DecisionMode.SPLIT_2 ? 2 : 1;
+
+    const ids = [this.primaryFaceId, this.secondaryFaceId, this.tertiaryFaceId, this.quaternaryFaceId];
+
+    // Verify each face still exists in current frame
+    const validIds = ids.map(id =>
+      id !== null && frame.faces.some(f => f.id === id) ? id : null
+    );
+
+    // If primary is missing, find a replacement
+    if (validIds[0] === null && frame.faces.length > 0) {
+      const activeSpeakerIds = this.speakerTracker.getActiveSpeakers(frame.time);
+      const sorted = [...frame.faces].sort((a, b) => {
+        const aIsActive = activeSpeakerIds.has(a.id) ? 1 : 0;
+        const bIsActive = activeSpeakerIds.has(b.id) ? 1 : 0;
+        if (aIsActive !== bIsActive) return bIsActive - aIsActive;
+        return b.confidence - a.confidence;
+      });
+
+      for (let i = 0; i < Math.min(count, sorted.length); i++) {
+        validIds[i] = sorted[i].id;
+      }
+      // Clear remaining slots
+      for (let i = sorted.length; i < count; i++) {
+        validIds[i] = null;
+      }
+    }
+
+    return {
+      mode: this.currentMode,
+      primaryId: validIds[0],
+      secondaryId: count >= 2 ? validIds[1] : null,
+      tertiaryId: count >= 3 ? validIds[2] : null,
+      quaternaryId: count >= 4 ? validIds[3] : null,
+    };
+  }
+
   private tickReactionScheduler(
     frame: SpeakerFrame,
     currentTime: number,
   ): 'activate' | 'continue' | 'end' | null {
-    // Offer event if non-normal
     if (frame.audioEvent !== 'normal' && frame.audioEvent !== 'silence') {
       const activeSpeakerIds = frame.activeSpeakerId !== null
         ? new Set([frame.activeSpeakerId])
@@ -712,12 +973,6 @@ export class DecisionEngine {
     return this.scheduler.tick(currentTime);
   }
 
-  /**
-   * Build final segments from decision frames.
-   *
-   * Groups contiguous frames with the same mode into segments.
-   * Each segment has averaged crop coordinates per face.
-   */
   private buildSegments(
     decisionFrames: DecisionFrame[],
     sourceWidth: number,
@@ -725,9 +980,7 @@ export class DecisionEngine {
   ): DecisionSegment[] {
     if (decisionFrames.length === 0) return [];
 
-    const cropH = sourceHeight;
     const cropW = sourceHeight * (this.config.verticalWidth / this.config.verticalHeight);
-    const minSegmentDuration = 0.5; // discard sub-500ms segments
 
     interface SegBuilder {
       mode: DecisionMode;
@@ -744,35 +997,47 @@ export class DecisionEngine {
         ? rawSegments[rawSegments.length - 1]
         : undefined;
 
+      const maxFaces = df.mode === DecisionMode.SPLIT_4 ? 4 :
+                       df.mode === DecisionMode.SPLIT_3 ? 3 :
+                       df.mode === DecisionMode.HERO_REACTION ? 3 :
+                       df.mode === DecisionMode.SPLIT_2 ? 2 :
+                       df.mode === DecisionMode.LISTENER_PIP ? 2 : 1;
+
       if (current && current.mode === df.mode) {
-        // Extend current segment
         current.endTime = df.time;
 
-        // Accumulate face crops
-        if (df.primaryFaceId !== null) {
-          const entry = current.faceCrops.get(df.primaryFaceId) || { sumX: 0, sumY: 0, sumConf: 0, count: 0 };
-          entry.sumX += df.smoothCropX;
-          entry.sumY += df.smoothCropY;
-          entry.sumConf += 0.8;
-          entry.count++;
-          current.faceCrops.set(df.primaryFaceId, entry);
-        }
-        if (df.secondaryFaceId !== null && (df.mode === DecisionMode.SPLIT_2 || df.mode === DecisionMode.LISTENER_PIP)) {
-          const entry = current.faceCrops.get(df.secondaryFaceId) || { sumX: 0, sumY: 0, sumConf: 0, count: 0 };
-          entry.sumX += df.secondaryCropX;
-          entry.sumY += df.secondaryCropY;
-          entry.sumConf += 0.6;
-          entry.count++;
-          current.faceCrops.set(df.secondaryFaceId, entry);
+        const cropPairs: Array<{ id: number | null; x: number; y: number }> = [
+          { id: df.primaryFaceId, x: df.smoothCropX, y: df.smoothCropY },
+          { id: df.secondaryFaceId, x: df.secondaryCropX, y: df.secondaryCropY },
+          { id: df.tertiaryFaceId, x: df.tertiaryCropX, y: df.tertiaryCropY },
+          { id: df.quaternaryFaceId, x: df.quaternaryCropX, y: df.quaternaryCropY },
+        ];
+
+        for (let i = 0; i < Math.min(maxFaces, 4); i++) {
+          const cp = cropPairs[i];
+          if (cp.id !== null) {
+            const entry = current.faceCrops.get(cp.id) || { sumX: 0, sumY: 0, sumConf: 0, count: 0 };
+            entry.sumX += cp.x;
+            entry.sumY += cp.y;
+            entry.sumConf += i === 0 ? 0.8 : i === 1 ? 0.6 : 0.4;
+            entry.count++;
+            current.faceCrops.set(cp.id, entry);
+          }
         }
       } else {
-        // New segment
-        const faceCrops = new Map();
-        if (df.primaryFaceId !== null) {
-          faceCrops.set(df.primaryFaceId, { sumX: df.smoothCropX, sumY: df.smoothCropY, sumConf: 0.8, count: 1 });
-        }
-        if (df.secondaryFaceId !== null && (df.mode === DecisionMode.SPLIT_2 || df.mode === DecisionMode.LISTENER_PIP)) {
-          faceCrops.set(df.secondaryFaceId, { sumX: df.secondaryCropX, sumY: df.secondaryCropY, sumConf: 0.6, count: 1 });
+        const faceCrops = new Map<number, { sumX: number; sumY: number; sumConf: number; count: number }>();
+        const cropPairs: Array<{ id: number | null; x: number; y: number }> = [
+          { id: df.primaryFaceId, x: df.smoothCropX, y: df.smoothCropY },
+          { id: df.secondaryFaceId, x: df.secondaryCropX, y: df.secondaryCropY },
+          { id: df.tertiaryFaceId, x: df.tertiaryCropX, y: df.tertiaryCropY },
+          { id: df.quaternaryFaceId, x: df.quaternaryCropX, y: df.quaternaryCropY },
+        ];
+
+        for (let i = 0; i < Math.min(maxFaces, 4); i++) {
+          const cp = cropPairs[i];
+          if (cp.id !== null) {
+            faceCrops.set(cp.id, { sumX: cp.x, sumY: cp.y, sumConf: i === 0 ? 0.8 : i === 1 ? 0.6 : 0.4, count: 1 });
+          }
         }
 
         rawSegments.push({
@@ -785,24 +1050,27 @@ export class DecisionEngine {
       }
     }
 
-    // Filter short segments and convert to DecisionSegment[]
+    // Filter short segments and convert
     const filtered: DecisionSegment[] = [];
     for (let i = 0; i < rawSegments.length; i++) {
       const seg = rawSegments[i];
       const duration = seg.endTime - seg.startTime;
 
-      if (duration < minSegmentDuration && i < rawSegments.length - 1) {
-        // Merge with next segment
+      if (duration < MIN_SHOT_DURATION && i < rawSegments.length - 1) {
         const next = rawSegments[i + 1];
-        // Extend next segment backward
         next.startTime = seg.startTime;
         continue;
       }
 
-      // Convert faceCrops to array
+      const maxCrops = seg.mode === DecisionMode.SPLIT_4 ? 4 :
+                       seg.mode === DecisionMode.SPLIT_3 ? 3 :
+                       seg.mode === DecisionMode.HERO_REACTION ? 3 :
+                       seg.mode === DecisionMode.SPLIT_2 ? 2 :
+                       seg.mode === DecisionMode.LISTENER_PIP ? 2 : 1;
+
       const crops = Array.from(seg.faceCrops.entries())
         .sort((a, b) => b[1].sumConf / b[1].count - a[1].sumConf / a[1].count)
-        .slice(0, seg.mode === DecisionMode.SINGLE || seg.mode === DecisionMode.REACTION_CUT ? 1 : 2)
+        .slice(0, maxCrops)
         .map(([faceId, data]) => ({
           cropX: Math.round(data.sumX / data.count),
           cropY: Math.round(data.sumY / data.count),
@@ -825,17 +1093,19 @@ export class DecisionEngine {
     return filtered;
   }
 
-  /** Reset all internal state. */
   private reset(): void {
     this.smoother.reset();
     this.scheduler.reset();
     this.speakerTracker.reset();
+    this.peakDetector.reset();
+    this.cutSuppressor.reset();
     this.currentMode = DecisionMode.SINGLE;
     this.modeSwitchTime = 0;
-    this.lastMode = DecisionMode.SINGLE;
     this.modeSwitchCount = 0;
     this.primaryFaceId = null;
     this.secondaryFaceId = null;
+    this.tertiaryFaceId = null;
+    this.quaternaryFaceId = null;
   }
 }
 
@@ -843,17 +1113,6 @@ export class DecisionEngine {
 // Convenience Function
 // ===========================================================================
 
-/**
- * One-shot convenience wrapper: process speaker frames into decision segments.
- *
- * This is the main entry point used by face-tracker.ts and clip-renderer.ts.
- *
- * @param speakerFrames - Per-frame face tracking + speaker data from speaker-detector
- * @param sourceWidth - Source video width
- * @param sourceHeight - Source video height
- * @param config - Optional engine configuration overrides
- * @returns DecisionResult suitable for rendering
- */
 export function processDecisionEngine(
   speakerFrames: SpeakerFrame[],
   sourceWidth: number,

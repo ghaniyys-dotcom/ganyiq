@@ -1,18 +1,26 @@
 /**
- * worker/speaker-detector.ts — Audio-Visual Active Speaker Detection for GANYIQ V2.
+ * worker/speaker-detector.ts — Audio-Visual Active Speaker Detection for GANYIQ V3.
  *
  * Fuses audio diarization with visual face tracking to determine:
  *   - Active speaker per frame
  *   - Listener faces
- *   - Audio events (laughter, gasp, emotional peak)
+ *   - Audio events (laughter, gasp, applause, silence) — REALTIME AUDIO ANALYSIS
  *   - Speaker turn detection
+ *
+ * V3 Upgrade:
+ *   REPLACED text-only keyword matching (detectAudioEventFromWords) with
+ *   librosa-based audio reaction detection (reaction-detector.py).
+ *   This detects ACTUAL acoustic events (laughter waveform, applause
+ *   spectral pattern, gasp energy burst) rather than relying on people
+ *   SAYING "haha" or "wow".
  *
  * Flow:
  *   1. Run diarize.py (Python) → speaker segments
  *   2. Run transcribe.py (Python) → word-level timestamps
- *   3. For each tracked face, compute lip motion energy from landmarks
- *   4. Align audio speaker labels with visual data
- *   5. Detect audio events from energy/transcript analysis
+ *   3. Run reaction-detector.py (Python) → audio events (NEW V3)
+ *   4. For each tracked face, compute lip motion energy from landmarks
+ *   5. Align audio speaker labels with visual data
+ *   6. Merge reaction-detector events into SpeakerFrames (replaces keyword matching)
  */
 
 import { execSync, ExecSyncOptions } from 'child_process';
@@ -26,6 +34,33 @@ import type { TrackedFrame, TrackedFace, FaceLandmarks } from './tracker';
 // ---------------------------------------------------------------------------
 
 export type AudioEventType = 'normal' | 'laughter' | 'gasp' | 'silence' | 'emotion_peak' | 'applause';
+export type VisualEventType = 'normal' | 'smile' | 'laugh_visual' | 'surprise_visual' | 'head_nod' | 'head_shake' | 'no_face';
+
+/** Audio event from reaction-detector.py. */
+export interface ReactionEvent {
+  time: number;
+  event_type: AudioEventType;
+  confidence: number;
+  duration: number;
+  end_time: number;
+}
+
+/** Time series point from reaction-detector.py for frame-level lookup. */
+interface ReactionTimeSeries {
+  times: number[];
+  energy: number[];
+  spectral_centroid?: number[];
+  zero_crossing_rate: number[];
+  event_labels: number[];
+}
+
+/** Full reaction detector output. */
+interface ReactionDetectorResult {
+  source: string;
+  sample_rate_hz: number;
+  events: ReactionEvent[];
+  time_series: ReactionTimeSeries;
+}
 
 export interface SpeakerLabel {
   speaker: string;
@@ -45,6 +80,10 @@ export interface SpeakerFrame extends TrackedFrame {
   listenerIds: number[];                // face IDs of listeners
   audioEvent: AudioEventType;
   audioEventConfidence: number;
+  /** Visual reaction event from face landmark analysis (MAR, smile, surprise, head pose). */
+  visualEvent: VisualEventType;
+  /** Confidence of the visual reaction event. */
+  visualEventConfidence: number;
   speakerLabel?: string;               // from diarization (e.g., "SPEAKER_00")
   turnDetected: boolean;               // speaker just changed
 }
@@ -54,6 +93,14 @@ export interface SpeakerDetectionResult {
   speakerSegments: SpeakerLabel[];
   wordTimestamps: WordTimestamp[];
   totalSpeakers: number;
+  /** Audio reaction events detected by librosa/energy analysis (V3). */
+  reactionEvents: ReactionEvent[];
+  /** Source of reaction detection ('librosa' | 'energy' | 'none') */
+  reactionSource: string;
+  /** Visual reaction events detected from face landmarks (P0.2). */
+  visualEvents: VisualReactionEvent[];
+  /** Source of visual detection ('visual' | 'none') */
+  visualSource: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,9 +115,656 @@ const EXEC_OPTS: ExecSyncOptions = {
   encoding: 'utf-8',
 } as const;
 
+/** Map from reaction-detector.py event label integers to AudioEventType. */
+const EVENT_LABEL_MAP: Record<number, AudioEventType> = {
+  0: 'normal',
+  1: 'laughter',
+  2: 'gasp',
+  3: 'applause',
+  4: 'emotion_peak',
+  [-1]: 'silence',
+};
+
 function log(tag: string, message: string): void {
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
   console.log(`[${ts}] [SPEAKER${tag.padEnd(4)}] ${message}`);
+}
+
+// ============================================================================
+// P0.2: Visual Reaction Detection (from Face Landmarks)
+// ============================================================================
+
+/**
+ * Visual event from face landmark analysis.
+ * Mirrors the event structure from visual-reaction-detector.py.
+ */
+export interface VisualReactionEvent {
+  time: number;
+  event_type: VisualEventType;
+  confidence: number;
+  duration: number;
+  end_time: number;
+  face_id: number | null;
+}
+
+/** Time series data from visual reaction analysis. */
+interface VisualTimeSeries {
+  times: number[];
+  mar: number[];
+  smile_score: number[];
+  surprise_score: number[];
+  head_nod_score: number[];
+  head_shake_score: number[];
+  event_labels: number[];
+}
+
+interface VisualReactionResult {
+  source: string;
+  analysis_window_hz: number;
+  events: VisualReactionEvent[];
+  time_series: VisualTimeSeries;
+}
+
+/** Visual event label constants matching visual-reaction-detector.py. */
+const VIS_EVENT_NORMAL = 0;
+const VIS_EVENT_SMILE = 1;
+const VIS_EVENT_LAUGH = 2;
+const VIS_EVENT_SURPRISE = 3;
+const VIS_EVENT_NOD = 4;
+const VIS_EVENT_SHAKE = 5;
+const VIS_EVENT_NO_FACE = -1;
+
+const VIS_EVENT_LABEL_MAP: Record<number, VisualEventType> = {
+  [VIS_EVENT_NORMAL]: 'normal',
+  [VIS_EVENT_SMILE]: 'smile',
+  [VIS_EVENT_LAUGH]: 'laugh_visual',
+  [VIS_EVENT_SURPRISE]: 'surprise_visual',
+  [VIS_EVENT_NOD]: 'head_nod',
+  [VIS_EVENT_SHAKE]: 'head_shake',
+  [VIS_EVENT_NO_FACE]: 'no_face',
+};
+
+/**
+ * Map visual event types to audio event types for decision engine compatibility.
+ * The decision engine uses audioEvent to trigger reaction cuts, so we map
+ * visual events to their closest audio counterparts for seamless integration.
+ */
+const VIS_TO_AUDIO_MAP: Record<VisualEventType, AudioEventType> = {
+  'normal': 'normal',
+  'smile': 'emotion_peak',       // positive emotional moment
+  'laugh_visual': 'laughter',    // visual confirmation of laughter
+  'surprise_visual': 'gasp',     // surprise = gasp equivalent
+  'head_nod': 'normal',          // subtle, not reaction-cut worthy
+  'head_shake': 'normal',        // subtle, not reaction-cut worthy
+  'no_face': 'normal',
+};
+
+/** MAR (Mouth Aspect Ratio) thresholds. */
+const MAR_CLOSED = 0.35;
+const MAR_OPEN = 0.55;
+const MAR_LAUGH = 0.70;
+
+/** Smile thresholds. */
+const SMILE_WIDTH_RATIO = 1.12;       // mouth must be 12% wider than sliding average
+const SMILE_RAISE_MIN = 0.015;         // min mouth corner elevation relative to face height
+
+/** Surprise thresholds. */
+const SURPRISE_MULTIPLIER = 1.12;      // inter-eye must be 12% above baseline
+const MAR_SURPRISE_MIN = 0.50;         // min MAR for surprise
+
+/** EMA smoothing for feature signals. */
+const VIS_EMA_ALPHA = 0.15;
+const VIS_BASELINE_ADAPT_RATE = 0.02;
+
+/** Head movement detection. */
+const NOD_WINDOW_FRAMES = 12;
+const SHAKE_WINDOW_FRAMES = 10;
+const OSC_AMPLITUDE_MIN = 0.02;
+
+// ---------------------------------------------------------------------------
+// Helpers for visual detection
+// ---------------------------------------------------------------------------
+
+function vdist(a: [number, number], b: [number, number]): number {
+  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2);
+}
+
+interface FaceFeatures {
+  mouthWidth: number;
+  mouthHeight: number;
+  mar: number;
+  interEyeDist: number;
+  noseOffsetX: number;
+  noseOffsetY: number;
+  mouthCornerElevation: number;
+  headAngle: number;
+  faceHeight: number;
+}
+
+function computeFaceFeatures(landmarks: FaceLandmarks): FaceFeatures {
+  const le: [number, number] = landmarks.le;
+  const re: [number, number] = landmarks.re;
+  const n: [number, number] = landmarks.n;
+  const lm: [number, number] = landmarks.lm;
+  const rm: [number, number] = landmarks.rm;
+
+  const mouthWidth = vdist(lm, rm);
+  const mouthCenterY = (lm[1] + rm[1]) / 2;
+  const mouthHeight = Math.abs(mouthCenterY - n[1]);
+  const mar = mouthWidth > 0 ? mouthHeight / mouthWidth : 0;
+
+  const interEyeDist = vdist(le, re);
+
+  const eyeMidX = (le[0] + re[0]) / 2;
+  const eyeMidY = (le[1] + re[1]) / 2;
+
+  const noseOffsetX = n[0] - eyeMidX;
+  const noseOffsetY = n[1] - eyeMidY;
+
+  const mouthCornerY = (lm[1] + rm[1]) / 2;
+  const mouthCornerElevation = eyeMidY - mouthCornerY;
+
+  const headAngle = Math.atan2(re[1] - le[1], re[0] - le[0]);
+  const faceHeight = interEyeDist * 3.0;
+
+  return { mouthWidth, mouthHeight, mar, interEyeDist,
+    noseOffsetX, noseOffsetY, mouthCornerElevation, headAngle, faceHeight };
+}
+
+// ---------------------------------------------------------------------------
+// Baseline Tracker
+// ---------------------------------------------------------------------------
+
+class VisBaselineTracker {
+  private baseline: number | null = null;
+  private std: number = 0;
+  private readonly alpha: number;
+
+  constructor(alpha: number = VIS_BASELINE_ADAPT_RATE) {
+    this.alpha = alpha;
+  }
+
+  update(value: number): number {
+    if (this.baseline === null) {
+      this.baseline = value;
+      return 0;
+    }
+    const deviation = value - this.baseline;
+    this.baseline += this.alpha * deviation;
+    this.std = 0.9 * this.std + 0.1 * Math.abs(deviation);
+    return deviation;
+  }
+
+  getBaseline(): number | null { return this.baseline; }
+}
+
+// ---------------------------------------------------------------------------
+// Oscillation Detector (for head nods/shakes)
+// ---------------------------------------------------------------------------
+
+class VisOscillationDetector {
+  private buffer: Array<{ value: number; time: number }> = [];
+  private readonly maxSize: number;
+  private readonly amplitudeMin: number;
+  private lastZc: number | null = null;
+  private zcSign: number = 0;
+  private zcPeriods: number[] = [];
+  public score: number = 0;
+  public active: boolean = false;
+
+  constructor(maxSize: number, amplitudeMin: number) {
+    this.maxSize = maxSize;
+    this.amplitudeMin = amplitudeMin;
+  }
+
+  push(value: number, time: number): number {
+    this.buffer.push({ value, time });
+    if (this.buffer.length > this.maxSize) this.buffer.shift();
+
+    if (this.buffer.length < 3) return 0;
+
+    // Detect zero crossing
+    const prev = this.buffer[this.buffer.length - 2];
+    const curr = this.buffer[this.buffer.length - 1];
+
+    if (prev.value * curr.value < 0) {
+      const currentSign = curr.value > 0 ? 1 : -1;
+      if (this.zcSign !== 0 && currentSign !== this.zcSign) {
+        // Valid crossing
+        const zcTime = this.interpolateZc(prev, curr);
+        if (this.lastZc !== null) {
+          const period = zcTime - this.lastZc;
+          this.zcPeriods.push(period);
+          if (this.zcPeriods.length > 5) this.zcPeriods.shift();
+        }
+        this.lastZc = zcTime;
+      }
+      this.zcSign = currentSign;
+    }
+
+    // Compute oscillation score
+    if (this.zcPeriods.length >= 2) {
+      const avgPeriod = this.zcPeriods.reduce((a, b) => a + b, 0) / this.zcPeriods.length;
+      const periodVariance = this.zcPeriods.reduce((sum, p) => sum + (p - avgPeriod) ** 2, 0) / this.zcPeriods.length;
+      const periodConsistency = Math.max(0, 1 - Math.min(1, Math.sqrt(periodVariance) / Math.max(avgPeriod, 0.01)));
+
+      const values = this.buffer.map(b => b.value);
+      const amplitude = Math.max(...values) - Math.min(...values);
+
+      if (amplitude >= this.amplitudeMin && avgPeriod < 2.0) {
+        this.score = Math.min(1, (amplitude / this.amplitudeMin) * 0.5 + periodConsistency * 0.5);
+        this.active = this.score > 0.4;
+      } else {
+        this.score *= 0.9;
+        if (this.score < 0.1) this.active = false;
+      }
+    }
+
+    return this.score;
+  }
+
+  private interpolateZc(a: { value: number; time: number }, b: { value: number; time: number }): number {
+    if (Math.abs(b.value - a.value) < 1e-10) return (a.time + b.time) / 2;
+    const t = -a.value / (b.value - a.value);
+    return a.time + t * (b.time - a.time);
+  }
+
+  reset(): void {
+    this.buffer = [];
+    this.lastZc = null;
+    this.zcSign = 0;
+    this.zcPeriods = [];
+    this.score = 0;
+    this.active = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Visual Reaction Detector
+// ---------------------------------------------------------------------------
+
+/**
+ * Run visual reaction detection on tracked face frames with landmarks.
+ *
+ * Processes each frame's face landmarks to detect:
+ *   - Smile (mouth corners raised + mouth wider)
+ *   - Laugh visual (high MAR = jaw dropped open)
+ *   - Surprise visual (high MAR + wide eyes + head tilt back)
+ *   - Head nod (rhythmic vertical oscillation)
+ *   - Head shake (rhythmic horizontal oscillation)
+ *
+ * @param trackedFrames - Array of tracked frames with face landmarks
+ * @returns VisualReactionResult with events and time-series data
+ */
+function detectVisualReactions(
+  trackedFrames: TrackedFrame[],
+): VisualReactionResult {
+  if (!trackedFrames || trackedFrames.length === 0) {
+    return { source: 'none', analysis_window_hz: 0, events: [], time_series: { times: [], mar: [], smile_score: [], surprise_score: [], head_nod_score: [], head_shake_score: [], event_labels: [] } };
+  }
+
+  // Per-face state
+  const baselines: Map<number, {
+    mar: VisBaselineTracker;
+    mouthWidth: VisBaselineTracker;
+    interEye: VisBaselineTracker;
+    mouthElevation: VisBaselineTracker;
+    noseOffsetX: VisBaselineTracker;
+    noseOffsetY: VisBaselineTracker;
+  }> = new Map();
+
+  const smoothFeatures: Map<number, {
+    marSmooth: number;
+    smileScoreSmooth: number;
+    surpriseScoreSmooth: number;
+  }> = new Map();
+
+  const oscillators: Map<number, {
+    nod: VisOscillationDetector;
+    shake: VisOscillationDetector;
+  }> = new Map();
+
+  const smoothMouthWidth: Map<number, number> = new Map();
+  const smoothInterEye: Map<number, number> = new Map();
+
+  // Calibration period
+  const calibrationFrames = Math.max(5, Math.floor(trackedFrames.length / 4));
+
+  // Per-frame data
+  const times: number[] = [];
+  const marValues: number[] = [];
+  const smileScores: number[] = [];
+  const surpriseScores: number[] = [];
+  const nodScores: number[] = [];
+  const shakeScores: number[] = [];
+  const frameLabels: number[] = [];
+  const frameConfidences: number[] = [];
+
+  for (let fi = 0; fi < trackedFrames.length; fi++) {
+    const frame = trackedFrames[fi];
+    const t = frame.time;
+    times.push(t);
+
+    if (!frame.faces || frame.faces.length === 0) {
+      frameLabels.push(VIS_EVENT_NO_FACE);
+      frameConfidences.push(1.0);
+      marValues.push(0);
+      smileScores.push(0);
+      surpriseScores.push(0);
+      nodScores.push(0);
+      shakeScores.push(0);
+      continue;
+    }
+
+    // Process primary face (highest confidence)
+    const primaryFace = frame.faces.reduce((best, f) =>
+      (f.confidence || 0) > (best.confidence || 0) ? f : best
+    );
+    const faceId = primaryFace.id;
+    const landmarks = primaryFace.landmarks;
+
+    if (!landmarks) {
+      frameLabels.push(VIS_EVENT_NORMAL);
+      frameConfidences.push(0);
+      marValues.push(0);
+      smileScores.push(0);
+      surpriseScores.push(0);
+      nodScores.push(0);
+      shakeScores.push(0);
+      continue;
+    }
+
+    const features = computeFaceFeatures(landmarks);
+
+    // Initialize per-face trackers
+    if (!baselines.has(faceId)) {
+      baselines.set(faceId, {
+        mar: new VisBaselineTracker(),
+        mouthWidth: new VisBaselineTracker(),
+        interEye: new VisBaselineTracker(),
+        mouthElevation: new VisBaselineTracker(),
+        noseOffsetX: new VisBaselineTracker(),
+        noseOffsetY: new VisBaselineTracker(),
+      });
+      smoothFeatures.set(faceId, { marSmooth: features.mar, smileScoreSmooth: 0, surpriseScoreSmooth: 0 });
+      oscillators.set(faceId, { nod: new VisOscillationDetector(NOD_WINDOW_FRAMES, OSC_AMPLITUDE_MIN), shake: new VisOscillationDetector(SHAKE_WINDOW_FRAMES, OSC_AMPLITUDE_MIN) });
+      smoothMouthWidth.set(faceId, features.mouthWidth);
+      smoothInterEye.set(faceId, features.interEyeDist);
+    }
+
+    const bl = baselines.get(faceId)!;
+    const sf = smoothFeatures.get(faceId)!;
+
+    // Update baselines
+    const marDev = bl.mar.update(features.mar);
+    const mwDev = bl.mouthWidth.update(features.mouthWidth);
+    const ieDev = bl.interEye.update(features.interEyeDist);
+    const meDev = bl.mouthElevation.update(features.mouthCornerElevation);
+    const noxDev = bl.noseOffsetX.update(features.noseOffsetX);
+    const noyDev = bl.noseOffsetY.update(features.noseOffsetY);
+
+    // --- Smile detection ---
+    const smileMouthRaised = meDev > SMILE_RAISE_MIN * features.faceHeight;
+    const smileMouthWider = features.mouthWidth > (smoothMouthWidth.get(faceId) || 1) * SMILE_WIDTH_RATIO;
+    const smileMarOk = features.mar < MAR_OPEN;
+
+    let smileScore = 0;
+    if (smileMouthRaised && smileMouthWider && smileMarOk) {
+      const widthRatio = features.mouthWidth / Math.max(smoothMouthWidth.get(faceId) || 1, 1);
+      const raiseAmount = meDev / Math.max(features.faceHeight, 1);
+      smileScore = Math.min(1, (widthRatio - 1) * 3 + raiseAmount * 20);
+    }
+    sf.smileScoreSmooth += VIS_EMA_ALPHA * (smileScore - sf.smileScoreSmooth);
+    smileScores.push(Number(sf.smileScoreSmooth.toFixed(4)));
+
+    // --- MAR / Laugh ---
+    const marSmooth = sf.marSmooth + VIS_EMA_ALPHA * (features.mar - sf.marSmooth);
+    sf.marSmooth = marSmooth;
+    marValues.push(Number(marSmooth.toFixed(4)));
+
+    // --- Surprise detection ---
+    const interEyeRatio = features.interEyeDist / Math.max(smoothInterEye.get(faceId) || 1, 1);
+    const surpriseMarOk = features.mar > MAR_SURPRISE_MIN;
+    const surpriseEyesWide = interEyeRatio > SURPRISE_MULTIPLIER;
+    const headTiltBack = noyDev > 0 && Math.abs(noyDev) > 0.01 * features.faceHeight;
+
+    let surpriseScore = 0;
+    if (surpriseMarOk && (surpriseEyesWide || headTiltBack)) {
+      surpriseScore = (
+        Math.min(1, Math.max(0, features.mar - MAR_SURPRISE_MIN) * 2) * 0.4 +
+        Math.min(1, Math.max(0, interEyeRatio - 1) * 5) * 0.3 +
+        (headTiltBack ? 0.3 : 0)
+      );
+    }
+    sf.surpriseScoreSmooth += VIS_EMA_ALPHA * (surpriseScore - sf.surpriseScoreSmooth);
+    surpriseScores.push(Number(sf.surpriseScoreSmooth.toFixed(4)));
+
+    // --- Head nod/shake detection ---
+    const nodVal = noyDev / Math.max(features.faceHeight, 1);
+    const shakeVal = noxDev / Math.max(features.interEyeDist, 1);
+
+    const nodOsc = oscillators.get(faceId)!.nod.push(nodVal, t);
+    const shakeOsc = oscillators.get(faceId)!.shake.push(shakeVal, t);
+    nodScores.push(Number(nodOsc.toFixed(4)));
+    shakeScores.push(Number(shakeOsc.toFixed(4)));
+
+    // Update smoothing baselines
+    const currMw = smoothMouthWidth.get(faceId) || features.mouthWidth;
+    smoothMouthWidth.set(faceId, currMw + VIS_EMA_ALPHA * (features.mouthWidth - currMw));
+    const currIe = smoothInterEye.get(faceId) || features.interEyeDist;
+    smoothInterEye.set(faceId, currIe + VIS_EMA_ALPHA * (features.interEyeDist - currIe));
+
+    // --- Classify frame ---
+    if (fi < calibrationFrames) {
+      frameLabels.push(VIS_EVENT_NORMAL);
+      frameConfidences.push(0);
+      continue;
+    }
+
+    // Build scored event candidates
+    const candidates: Array<{ label: number; confidence: number }> = [];
+
+    // Laugh visual: very high MAR
+    if (features.mar > MAR_LAUGH || (marSmooth > MAR_LAUGH && sf.smileScoreSmooth > 0.3)) {
+      const conf = Math.min(0.95, (features.mar - MAR_LAUGH) * 2 + sf.smileScoreSmooth * 0.3);
+      candidates.push({ label: VIS_EVENT_LAUGH, confidence: conf });
+    }
+
+    // Surprise: high MAR + wide eyes + head tilt
+    if (sf.surpriseScoreSmooth > 0.4) {
+      candidates.push({ label: VIS_EVENT_SURPRISE, confidence: sf.surpriseScoreSmooth });
+    }
+
+    // Smile: raised + wide mouth corners
+    if (sf.smileScoreSmooth > 0.4 && features.mar < MAR_OPEN) {
+      candidates.push({ label: VIS_EVENT_SMILE, confidence: sf.smileScoreSmooth });
+    }
+
+    // Head nod
+    if (nodOsc > 0.5) {
+      candidates.push({ label: VIS_EVENT_NOD, confidence: nodOsc });
+    }
+
+    // Head shake
+    if (shakeOsc > 0.5) {
+      candidates.push({ label: VIS_EVENT_SHAKE, confidence: shakeOsc });
+    }
+
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => b.confidence - a.confidence);
+      frameLabels.push(candidates[0].label);
+      frameConfidences.push(candidates[0].confidence);
+    } else {
+      frameLabels.push(VIS_EVENT_NORMAL);
+      frameConfidences.push(0);
+    }
+  }
+
+  // Merge contiguous events
+  const events = mergeVisualEvents(frameLabels, frameConfidences, times, trackedFrames);
+
+  if (events.length > 0) {
+    const typeCounts: Record<string, number> = {};
+    for (const evt of events) {
+      typeCounts[evt.event_type] = (typeCounts[evt.event_type] || 0) + 1;
+    }
+    log('VISUAL', `Events: ${JSON.stringify(typeCounts)}`);
+  }
+
+  return {
+    source: 'visual',
+    analysis_window_hz: 0,
+    events,
+    time_series: {
+      times: times.map(t => Number(t.toFixed(2))),
+      mar: marValues,
+      smile_score: smileScores,
+      surprise_score: surpriseScores,
+      head_nod_score: nodScores,
+      head_shake_score: shakeScores,
+      event_labels: frameLabels,
+    },
+  };
+}
+
+/**
+ * Merge contiguous frames with the same visual event label into events.
+ */
+function mergeVisualEvents(
+  labels: number[],
+  confidences: number[],
+  times: number[],
+  trackedFrames: TrackedFrame[],
+): VisualReactionEvent[] {
+  const events: VisualReactionEvent[] = [];
+  const minDuration = 0.3;
+  const maxGapFrames = 2;
+
+  let i = 0;
+  while (i < labels.length) {
+    const label = labels[i];
+    if (label === VIS_EVENT_NORMAL || label === VIS_EVENT_NO_FACE) { i++; continue; }
+
+    let eventStart = i;
+    let eventEnd = i;
+    let confSum = 0;
+    let confCount = 0;
+    const faceIds = new Set<number>();
+
+    let gapCount = 0;
+    let j = i + 1;
+    while (j < labels.length) {
+      if (labels[j] === label) {
+        eventEnd = j;
+        confSum += confidences[j];
+        confCount++;
+        gapCount = 0;
+        if (j < trackedFrames.length) {
+          for (const face of trackedFrames[j].faces) {
+            faceIds.add(face.id);
+          }
+        }
+      } else if (labels[j] === VIS_EVENT_NORMAL) {
+        gapCount++;
+        if (gapCount > maxGapFrames) break;
+      } else {
+        break;
+      }
+      j++;
+    }
+
+    const duration = times[Math.min(eventEnd + 1, times.length - 1)] - times[eventStart];
+    if (duration >= minDuration) {
+      const avgConf = Math.min(0.95, Math.max(0.1, confSum / Math.max(confCount, 1)));
+      const eventType = VIS_EVENT_LABEL_MAP[label] || 'normal';
+      events.push({
+        time: Number(times[eventStart].toFixed(2)),
+        event_type: eventType,
+        confidence: Number(avgConf.toFixed(3)),
+        duration: Number(duration.toFixed(2)),
+        end_time: Number(times[Math.min(eventEnd, times.length - 1)].toFixed(2)),
+        face_id: faceIds.size > 0 ? Math.max(...faceIds) : null,
+      });
+    }
+
+    i = eventEnd + 1 > i ? eventEnd + 1 : i + 1;
+  }
+
+  // Deduplicate overlapping events
+  const deduped: VisualReactionEvent[] = [];
+  for (const evt of events) {
+    if (deduped.length > 0 && evt.event_type === deduped[deduped.length - 1].event_type) {
+      const prev = deduped[deduped.length - 1];
+      const gap = evt.time - (prev.time + prev.duration);
+      if (gap < 0.3 && evt.face_id === prev.face_id) {
+        prev.duration = evt.time + evt.duration - prev.time;
+        prev.end_time = evt.end_time;
+        prev.confidence = Math.max(prev.confidence, evt.confidence);
+        continue;
+      }
+    }
+    deduped.push(evt);
+  }
+
+  return deduped;
+}
+
+/**
+ * Look up the visual event at a given time.
+ */
+function lookupVisualEvent(
+  time: number,
+  visualResult: VisualReactionResult | null,
+): { event: VisualEventType; confidence: number } {
+  if (!visualResult || !visualResult.events) {
+    return { event: 'normal', confidence: 0 };
+  }
+
+  for (const evt of visualResult.events) {
+    if (time >= evt.time && time <= evt.end_time) {
+      return { event: evt.event_type, confidence: evt.confidence };
+    }
+  }
+
+  return { event: 'normal', confidence: 0 };
+}
+
+/**
+ * Merge a visual event into the audio event for decision engine consumption.
+ * Visual events can reinforce or override audio events when the visual signal
+ * is stronger (e.g., silent laughter, off-mic surprise).
+ */
+function mergeAudioAndVisualEvents(
+  audioEvent: AudioEventType,
+  audioConfidence: number,
+  visualEvent: VisualEventType,
+  visualConfidence: number,
+): { event: AudioEventType; confidence: number } {
+  // Map visual to audio equivalent
+  const mappedVisual = VIS_TO_AUDIO_MAP[visualEvent] || 'normal';
+
+  // If visual is normal or no_face, use audio as-is
+  if (visualEvent === 'normal' || visualEvent === 'no_face') {
+    return { event: audioEvent, confidence: audioConfidence };
+  }
+
+  // If audio is also normal but visual detects something → use visual
+  if ((audioEvent === 'normal' || audioEvent === 'silence') && visualConfidence > 0.4) {
+    return { event: mappedVisual, confidence: visualConfidence };
+  }
+
+  // Both detect events → reinforce (use higher confidence)
+  if (mappedVisual === audioEvent) {
+    // Same event type → boost confidence
+    return { event: audioEvent, confidence: Math.min(1, audioConfidence + visualConfidence * 0.3) };
+  }
+
+  // Different events → use whichever has higher confidence
+  if (visualConfidence > audioConfidence * 1.2) {
+    return { event: mappedVisual, confidence: visualConfidence };
+  }
+
+  return { event: audioEvent, confidence: audioConfidence };
 }
 
 // ============================================================================
@@ -111,58 +805,146 @@ function computeLipMotionEnergy(
 }
 
 // ============================================================================
-// Audio Energy Detection
+// V3: Audio Reaction Detection via librosa
 // ============================================================================
 
 /**
- * Simple keyword/event detection from transcript words.
+ * Run reaction-detector.py (librosa/energy-based audio event analysis).
+ *
+ * Replaces the text-only keyword matching with real audio signal processing.
+ * Detects: laughter, gasp, applause, silence, emotion_peak.
+ *
+ * @returns ReactionDetectorResult with events and time-series data, or null.
  */
-function detectAudioEventFromWords(
-  words: WordTimestamp[],
-  currentTime: number,
-  timeWindow: number = 2.0,
-): { event: AudioEventType; confidence: number } {
-  const nearbyWords = words.filter(
-    w => Math.abs(w.start - currentTime) < timeWindow || Math.abs(w.end - currentTime) < timeWindow
-  );
+/**
+ * Run visual reaction detection on tracked face frames.
+ * Processes landmarks in-memory (no Python subprocess needed).
+ * Produces face events: smile, laugh_visual, surprise_visual, head_nod, head_shake.
+ */
+function runVisualReactionDetection(
+  trackedFrames: TrackedFrame[],
+): VisualReactionResult | null {
+  if (!trackedFrames || trackedFrames.length === 0) {
+    log('VISUAL', 'No tracked frames — skipping visual detection');
+    return null;
+  }
 
-  const text = nearbyWords.map(w => w.word.toLowerCase()).join(' ');
+  // Check if frames have landmarks
+  let hasLandmarks = false;
+  for (const frame of trackedFrames) {
+    for (const face of frame.faces) {
+      if (face.landmarks && face.landmarks.le) {
+        hasLandmarks = true;
+        break;
+      }
+    }
+    if (hasLandmarks) break;
+  }
 
-  // Laughter indicators
-  const laughterPatterns = [
-    /haha/i, /hehe/i, /lol/i, /😂/, /hahaha/i,
-    /(?:that'?s|it'?s|this is) (?:funny|hilarious)/i,
-    /(?:laugh|giggle|chuckle)/i,
-  ];
-  for (const pat of laughterPatterns) {
-    if (pat.test(text)) {
-      return { event: 'laughter', confidence: 0.7 };
+  if (!hasLandmarks) {
+    log('VISUAL', 'No face landmarks available — skipping visual detection');
+    return null;
+  }
+
+  log('VISUAL', 'Running visual reaction detection (MAR, smile, surprise, head pose)...');
+  const result = detectVisualReactions(trackedFrames);
+
+  log('VISUAL', `Complete: ${result.events.length} visual events`);
+  return result;
+}
+
+function runReactionDetection(
+  videoPath: string,
+  tempDir: string,
+): ReactionDetectorResult | null {
+  const pythonBin = resolvePython();
+  if (!pythonBin) {
+    log('REACT', 'Python not found for reaction detection — skipping');
+    return null;
+  }
+
+  const script = join(resolve(__dirname || '.'), 'reaction-detector.py');
+  if (!existsSync(script)) {
+    log('REACT', 'reaction-detector.py not found — skipping');
+    return null;
+  }
+
+  const outputPath = join(tempDir, 'reaction_events.json');
+
+  try {
+    const cmd = `${pythonBin} "${script}" "${videoPath}" "${outputPath}"`;
+    execSync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
+    log('REACT', `Python reaction detection completed`);
+
+    if (!existsSync(outputPath)) {
+      log('REACT', 'No output file produced');
+      return null;
+    }
+
+    const data: ReactionDetectorResult = JSON.parse(readFileSync(outputPath, 'utf-8'));
+
+    // Count event types for logging
+    const typeCounts: Record<string, number> = {};
+    for (const evt of data.events || []) {
+      typeCounts[evt.event_type] = (typeCounts[evt.event_type] || 0) + 1;
+    }
+
+    log('REACT', `Source: ${data.source}, events: ${JSON.stringify(typeCounts)}`);
+    return data;
+  } catch (err) {
+    log('WARN', `Reaction detection failed: ${(err as Error).message?.slice(0, 120)}`);
+    return null;
+  }
+}
+
+/**
+ * Look up the audio event at a given time from the reaction detector output.
+ *
+ * First tries the events list (higher-level, merged events), then falls back
+ * to the time_series event_labels for frame-level granularity.
+ */
+function lookupAudioEvent(
+  time: number,
+  reactionResult: ReactionDetectorResult | null,
+): { event: AudioEventType; confidence: number; energy: number } {
+  if (!reactionResult || !reactionResult.events) {
+    return { event: 'normal', confidence: 1.0, energy: 0 };
+  }
+
+  // Strategy 1: Check merged events
+  for (const evt of reactionResult.events) {
+    if (time >= evt.time && time <= evt.end_time) {
+      return {
+        event: evt.event_type,
+        confidence: evt.confidence,
+        energy: 0,
+      };
     }
   }
 
-  // Gasp/surprise indicators
-  const gaspPatterns = [
-    /(?:oh my god|oh my|wow|really|seriously|no way|are you kidding|what the|holy)/i,
-    /(?:gasp|shock|surprised|unbelievable)/i,
-  ];
-  for (const pat of gaspPatterns) {
-    if (pat.test(text)) {
-      return { event: 'gasp', confidence: 0.6 };
+  // Strategy 2: Check time_series for frame-level labels
+  const ts = reactionResult.time_series;
+  if (ts && ts.times && ts.times.length > 0 && ts.event_labels && ts.event_labels.length > 0) {
+    // Binary search for closest time
+    let lo = 0;
+    let hi = ts.times.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (ts.times[mid] < time) lo = mid + 1;
+      else hi = mid;
+    }
+
+    const idx = Math.min(lo, ts.event_labels.length - 1);
+    const label = ts.event_labels[idx];
+    const eventType = EVENT_LABEL_MAP[label] || 'normal';
+    const energy = ts.energy && idx < ts.energy.length ? ts.energy[idx] : 0;
+
+    if (eventType !== 'normal') {
+      return { event: eventType, confidence: 0.6, energy };
     }
   }
 
-  // Emotional indicators
-  const emotionPatterns = [
-    /(?:i'?m sorry|i'?m crying|this is so|that'?s so|i can'?t|unbelievable|incredible)/i,
-    /(?:beautiful|heartbreaking|touching|emotional|crying|tears)/i,
-  ];
-  for (const pat of emotionPatterns) {
-    if (pat.test(text)) {
-      return { event: 'emotion_peak', confidence: 0.5 };
-    }
-  }
-
-  return { event: 'normal', confidence: 1.0 };
+  return { event: 'normal', confidence: 1.0, energy: 0 };
 }
 
 // ============================================================================
@@ -170,7 +952,7 @@ function detectAudioEventFromWords(
 // ============================================================================
 
 /**
- * Run full AV-ASD pipeline.
+ * Run full AV-ASD pipeline with V3 audio reaction detection.
  *
  * @param videoPath - Path to the source video file
  * @param trackedFrames - Tracked face frames from tracker
@@ -192,9 +974,29 @@ export function detectSpeakers(
 
   // Step 2: Run word-level transcription (Whisper → Deepgram fallback)
   const wordTimestamps = runTranscription(videoPath, tempDir, deepgramKey);
-  log('TRANSCRIBE', `${wordTimestamps.length} words`);
+  log('TRANSCRIBE', `${wordTimestamps.length} words`);    // Step 3 [V3]: Run AUDIO-BASED reaction detection (replaces text keyword matching)
+    const reactionResult = runReactionDetection(videoPath, tempDir);
+    const reactionSource = reactionResult?.source || 'none';
+    if (reactionResult && reactionResult.events.length > 0) {
+      const eventTypes = [...new Set(reactionResult.events.map(e => e.event_type))];
+      log('AUDIO_EVENT', `V3 audio detection: ${reactionResult.events.length} events ` +
+        `(types: ${eventTypes.join(', ')}), source=${reactionResult.source}`);
+    } else {
+      log('AUDIO_EVENT', 'No audio events detected (clip may be silent or reaction-detector unavailable)');
+    }
 
-  // Step 3: Fuse speaker + face tracking data
+    // Step 3b [P0.2]: Run VISUAL-BASED reaction detection from face landmarks
+    const visualResult = runVisualReactionDetection(trackedFrames);
+    const visualSource = visualResult?.source || 'none';
+    if (visualResult && visualResult.events.length > 0) {
+      const eventTypes = [...new Set(visualResult.events.map(e => e.event_type))];
+      log('VISUAL', `P0.2 visual detection: ${visualResult.events.length} events ` +
+        `(types: ${eventTypes.join(', ')}), source=${visualResult.source}`);
+    } else {
+      log('VISUAL', 'No visual events detected (no landmarks or no faces)');
+    }
+
+    // Step 4: Fuse speaker + face tracking data
   const speakerFrames: SpeakerFrame[] = [];
   let lastActiveSpeakerId: number | null = null;
   let turnDetected = false;
@@ -264,15 +1066,26 @@ export function detectSpeakers(
     }
     lastActiveSpeakerId = activeSpeakerId ?? lastActiveSpeakerId;
 
-    // Detect audio event from words
-    const audioEvent = detectAudioEventFromWords(wordTimestamps, t);
+    // V3: Detect audio event from librosa/energy analysis (replaces keyword matching)
+    const audioEvent = lookupAudioEvent(t, reactionResult);
+
+    // P0.2: Detect visual event from face landmarks
+    const visualEvent = lookupVisualEvent(t, visualResult);
+
+    // Merge visual + audio events: visual can reinforce or override audio
+    const mergedEvent = mergeAudioAndVisualEvents(
+      audioEvent.event, audioEvent.confidence,
+      visualEvent.event, visualEvent.confidence,
+    );
 
     speakerFrames.push({
       ...frame,
       activeSpeakerId,
       listenerIds,
-      audioEvent: audioEvent.event,
-      audioEventConfidence: audioEvent.confidence,
+      audioEvent: mergedEvent.event,
+      audioEventConfidence: mergedEvent.confidence,
+      visualEvent: visualEvent.event,
+      visualEventConfidence: visualEvent.confidence,
       speakerLabel: activeSegment?.speaker,
       turnDetected,
     });
@@ -289,6 +1102,10 @@ export function detectSpeakers(
     speakerSegments,
     wordTimestamps,
     totalSpeakers: countSpeakers(speakerSegments),
+    reactionEvents: reactionResult?.events || [],
+    reactionSource,
+    visualEvents: visualResult?.events || [],
+    visualSource,
   };
 }
 
