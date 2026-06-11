@@ -336,6 +336,7 @@ export async function renderClip(
         startTime, endTime,
         splitSegments,
         sourceWidth, sourceHeight,
+        videoId,
         subtitleFilter,
         heartbeatFn,
       );
@@ -801,6 +802,7 @@ async function renderVerticalSplit(
   segments: MultiCropSegment[],
   sourceWidth: number,
   sourceHeight: number,
+  videoId: string,
   subtitleFilter: string = '',
   heartbeatFn?: HeartbeatFn,
 ): Promise<void> {
@@ -1159,7 +1161,7 @@ async function renderVerticalSplit(
 
     // Use filter_complex_script when the filter is long (Windows cmd.exe 8191 char limit)
     if (filterComplex.length > 4000) {
-      const filterScriptPath = join(TEMP_DIR, `filter_${videoId}_${Math.round(startTime)}s.txt`);
+      const filterScriptPath = join(TEMP_DIR, `filter_${videoId}_${Math.round(jobStartTime)}s.txt`);
       writeFileSync(filterScriptPath, filterComplex, "utf-8");
       log("SPLIT", `Using filter_script (${filterComplex.length} chars → ${filterScriptPath})`);
       cmd = `${ffmpegPath} -y -i "${sourceVideo}"`
