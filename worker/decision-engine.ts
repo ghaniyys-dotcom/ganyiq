@@ -752,7 +752,7 @@ export class DecisionEngine {
       return this.stayInCurrentMode(frame);
     }
 
-    // ── SPLIT_2: Two active speakers ──
+    // ── SPLIT_2: Two active speakers — OR two faces visible for 3s+ ──
     if (faceCount >= 2 && activeSpeakerCount >= 2) {
       if (current === DecisionMode.SPLIT_2 || current === DecisionMode.SINGLE) {
         if (timeSinceSwitch >= this.config.layoutHoldSingle) {
@@ -760,8 +760,15 @@ export class DecisionEngine {
         }
       }
     }
+    // FACE-COUNT FALLBACK: 2 faces visible for 5s+ even if speaker count uncertain
+    if (faceCount >= 2 && activeSpeakerCount < 2 && current === DecisionMode.SINGLE) {
+      if (timeSinceSwitch >= 5.0) {
+        log('LAYOUT', `Face-count fallback: ${faceCount} faces → SPLIT_2 (activeSpeakers=${activeSpeakerCount})`);
+        return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_2);
+      }
+    }
 
-    // ── SPLIT_3: Three active speakers ──
+    // ── SPLIT_3: Three active speakers — OR three faces visible ──
     if (faceCount >= 3 && activeSpeakerCount >= 3) {
       if (current === DecisionMode.SPLIT_3 ||
           (current === DecisionMode.SINGLE && timeSinceSwitch >= LAYOUT_HOLD_SPLIT_3) ||
@@ -769,10 +776,26 @@ export class DecisionEngine {
         return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_3);
       }
     }
+    // FACE-COUNT FALLBACK: 3+ faces visible for 6s+
+    if (faceCount >= 3 && activeSpeakerCount < 3 && 
+        (current === DecisionMode.SINGLE || current === DecisionMode.SPLIT_2)) {
+      if (timeSinceSwitch >= 6.0) {
+        log('LAYOUT', `Face-count fallback: ${faceCount} faces → SPLIT_3 (activeSpeakers=${activeSpeakerCount})`);
+        return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_3);
+      }
+    }
 
-    // ── SPLIT_4: Four active speakers ──
+    // ── SPLIT_4: Four active speakers — OR four faces visible ──
     if (faceCount >= 4 && activeSpeakerCount >= 3) {
       if (current === DecisionMode.SPLIT_4 || timeSinceSwitch >= LAYOUT_HOLD_SPLIT_4) {
+        return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_4);
+      }
+    }
+    // FACE-COUNT FALLBACK: 4+ faces visible for 7s+
+    if (faceCount >= 4 && activeSpeakerCount < 3 &&
+        (current === DecisionMode.SINGLE || current === DecisionMode.SPLIT_2 || current === DecisionMode.SPLIT_3)) {
+      if (timeSinceSwitch >= 7.0) {
+        log('LAYOUT', `Face-count fallback: ${faceCount} faces → SPLIT_4 (activeSpeakers=${activeSpeakerCount})`);
         return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_4);
       }
     }

@@ -968,8 +968,18 @@ export function detectSpeakers(
   hfToken?: string,
   deepgramKey?: string,
 ): SpeakerDetectionResult {
-  // Step 1: Run diarization
-  const speakerSegments = runDiarization(videoPath, tempDir, hfToken);
+  // Estimate speaker count from tracked faces (unique face IDs)
+  const uniqueFaceIds = new Set<number>();
+  for (const frame of trackedFrames) {
+    for (const face of frame.faces) {
+      uniqueFaceIds.add(face.id);
+    }
+  }
+  const estimatedSpeakers = Math.max(2, Math.min(uniqueFaceIds.size, 6));
+  log('DIARIZE', `Face detection found ${uniqueFaceIds.size} unique faces — estimating ${estimatedSpeakers} speakers`);
+
+  // Step 1: Run diarization with estimated speaker count
+  const speakerSegments = runDiarization(videoPath, tempDir, hfToken, estimatedSpeakers);
   log('DIARIZE', `${speakerSegments.length} segments, ${countSpeakers(speakerSegments)} speakers`);
 
   // Step 2: Run word-level transcription (Whisper → Deepgram fallback)
@@ -1117,6 +1127,7 @@ function runDiarization(
   videoPath: string,
   tempDir: string,
   hfToken?: string,
+  estimatedSpeakers?: number,
 ): SpeakerLabel[] {
   const pythonBin = resolvePython();
   if (!pythonBin) {
@@ -1134,13 +1145,35 @@ function runDiarization(
 
   try {
     let cmd = `${pythonBin} "${script}" "${videoPath}" "${outputPath}"`;
-    if (hfToken) cmd += ` --hf-token "${hfToken}"`;
+    if (hfToken) {
+      cmd += ` --hf-token "${hfToken}"`;
+      log('HF', `HF_TOKEN provided (length=${hfToken.length}) — PyAnnote enabled`);
+    } else {
+      log('HF', 'HF_TOKEN not provided — PyAnnote skipped, using clustering');
+    }
+    if (estimatedSpeakers && estimatedSpeakers > 1) {
+      cmd += ` --num-speakers ${estimatedSpeakers}`;
+      log('SPEAKERS', `Estimated ${estimatedSpeakers} speakers from face data`);
+    }
     execSync(cmd, { ...EXEC_OPTS, timeout: 300_000 });
     log('DIARIZE', `Python diarization completed`);
 
-    if (!existsSync(outputPath)) return [];
+    if (!existsSync(outputPath)) {
+      log('WARN', 'diarize.py produced no output file');
+      return [];
+    }
 
-    return JSON.parse(readFileSync(outputPath, 'utf-8'));
+    const raw = JSON.parse(readFileSync(outputPath, 'utf-8'));
+
+    // New format: { segments: [...], metadata: { strategy, num_speakers, ... } }
+    if (raw.metadata) {
+      log('DIARIZE', `strategy=${raw.metadata.strategy} speakers=${raw.metadata.num_speakers} segments=${raw.metadata.num_segments}`);
+      return raw.segments || [];
+    }
+
+    // Legacy format: direct array
+    log('DIARIZE', `Legacy format: ${raw.length} segments`);
+    return Array.isArray(raw) ? raw : [];
   } catch (err) {
     log('WARN', `Diarization failed: ${(err as Error).message?.slice(0, 120)}`);
     return [];

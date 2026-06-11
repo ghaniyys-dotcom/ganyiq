@@ -338,6 +338,7 @@ export async function renderClip(
         sourceWidth, sourceHeight,
         subtitleFilter,
         heartbeatFn,
+        videoId,
       );
       ffmpegCmd = ''; // marker: already rendered
     } else {
@@ -803,6 +804,8 @@ async function renderVerticalSplit(
   sourceHeight: number,
   subtitleFilter: string = '',
   heartbeatFn?: HeartbeatFn,
+  /** Unique identifier for temp file naming (e.g. videoId). */
+  renderId?: string,
 ): Promise<void> {
   if (segments.length === 0) {
     throw new Error('No split segments provided');
@@ -1159,7 +1162,8 @@ async function renderVerticalSplit(
 
     // Use filter_complex_script when the filter is long (Windows cmd.exe 8191 char limit)
     if (filterComplex.length > 4000) {
-      const filterScriptPath = join(TEMP_DIR, `filter_${videoId}_${Math.round(startTime)}s.txt`);
+      const effectiveRenderId = renderId || `render_${Math.round(jobStartTime)}s`;
+      const filterScriptPath = join(TEMP_DIR, `filter_${effectiveRenderId}.txt`);
       writeFileSync(filterScriptPath, filterComplex, 'utf-8');
       log('SPLIT', `Using filter_script (${filterComplex.length} chars → ${filterScriptPath})`);
       cmd = `${ffmpegPath} -y -i "${sourceVideo}"`

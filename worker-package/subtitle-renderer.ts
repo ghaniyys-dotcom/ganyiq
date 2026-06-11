@@ -148,8 +148,36 @@ export function generateAssSubtitle(
   // Filter words within clip range
   const clipWords = words.filter(w => w.start >= clipStart && w.end <= clipEnd);
 
+  // ── P0.4: Validate word timestamps ──
+  const wordsPerSecond = clipDuration > 0 ? (clipWords.length / clipDuration) : 0;
+  log('TIMING', `Raw input: ${words.length} words total, ${clipWords.length} within clip (${clipDuration.toFixed(1)}s clip, ${wordsPerSecond.toFixed(1)} words/sec)`);
+
+  // Validate: human speech is ~1.5-4 words/second
+  if (wordsPerSecond > 6) {
+    log('WARN', `ABNORMAL word density: ${wordsPerSecond.toFixed(1)} words/sec (expected 1.5-4). Timestamps may be corrupted.`);
+    log('WARN', `First 5 word timestamps: ${clipWords.slice(0, 5).map(w => `${w.word}@${w.start}-${w.end}`).join(', ')}`);
+  }
+
+  // Clamp word count: filter out zero-duration and super-short words
+  const validWords = clipWords.filter(w => {
+    const duration = w.end - w.start;
+    return duration > 0.01 && duration < 5.0; // skip corrupt timestamps
+  });
+
+  if (validWords.length < clipWords.length) {
+    log('TIMING', `Filtered ${clipWords.length - validWords.length} corrupt word timestamps (zero/negative/super-long duration)`);
+  }
+
+  // ── P0.4: Detect timestamp source ──
+  // Deepgram returns confidence per word; Whisper returns 1.0 for all
+  const avgConfidence = validWords.length > 0
+    ? validWords.reduce((s, w) => s + w.confidence, 0) / validWords.length
+    : 0;
+  const sourceHint = avgConfidence > 0 && avgConfidence < 0.99 ? 'deepgram' : 'whisper/unknown';
+  log('TIMING', `Word timestamp source hint: ${sourceHint} (avg confidence: ${avgConfidence.toFixed(3)})`);
+
   // P0.4: Run emphasis analysis on the words
-  const emphasis = analyzeWordEmphasis(clipWords, speakerSegments);
+  const emphasis = analyzeWordEmphasis(validWords, speakerSegments);
   if (emphasis.stats.highlighted > 0 || emphasis.stats.dimmed > 0) {
     log('EMPHASIS', `${emphasis.stats.highlighted}/${emphasis.stats.totalWords} highlighted (${emphasis.stats.percentageHighlighted}%), ${emphasis.stats.dimmed} dimmed`);
   }
@@ -159,7 +187,19 @@ export function generateAssSubtitle(
   log('TEMPLATE', `Using template: ${template.name} (${template.wordRenderMode})`);
 
   // Group words into lines with emphasis coloring
-  const lines = groupWordsIntoLines(clipWords, speakerSegments, clipStart, clipEnd, emphasis, template);
+  const lines = groupWordsIntoLines(validWords, speakerSegments, clipStart, clipEnd, emphasis, template);
+
+  // P0.4: Validate output timing
+  if (lines.length > 0) {
+    const lastLineEnd = lines[lines.length - 1].end;
+    const totalSubtitleDuration = lastLineEnd;
+    log('TIMING', `Generated: ${lines.length} subtitle lines, total duration ${totalSubtitleDuration.toFixed(1)}s (clip: ${clipDuration.toFixed(1)}s)`);
+    if (Math.abs(totalSubtitleDuration - clipDuration) > 5.0) {
+      log('WARN', `TIMING MISMATCH: subtitle duration (${totalSubtitleDuration.toFixed(1)}s) != clip duration (${clipDuration.toFixed(1)}s)`);
+    }
+  } else {
+    log('WARN', 'No subtitle lines generated — speech may be silent or timestamps empty');
+  }
 
   // Build ASS file
   const assContent = buildAssFile(lines, config, clipDuration, template);
@@ -363,35 +403,74 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       }
       events += `Dialogue: 0,${lineStartTime},${lineEndTime},${style},,0,0,0,,${lineText}\n`;
     }
-    // P0.5: Word-by-word mode — each word gets its own Dialogue event
+    // P0.5: Opus-style word-by-word pop — words accumulate, current word highlighted
     else if (template && template.wordByWordEvents && line.words.length > 1) {
-      // Each word appears sequentially with pop duration
-      const popDurationCs = template.wordPopDurationCs;
-      const totalLineDurationMs = (line.end - line.start) * 1000;
       const wordCount = line.words.length;
-      // Spread words evenly across the line duration
-      const wordIntervalCs = Math.max(1, Math.round(totalLineDurationMs / 10 / wordCount));
+      const totalLineDurationMs = (line.end - line.start) * 1000;
 
-      for (let wi = 0; wi < line.words.length; wi++) {
-        const word = line.words[wi];
-        const wordStart = line.start + (wi / wordCount) * (line.end - line.start);
-        // Each word is visible from its start time to the next word's start
-        const wordEnd = wi < wordCount - 1
-          ? line.start + ((wi + 1) / wordCount) * (line.end - line.start)
+      // Calculate per-word timing (spread evenly across line duration by actual word timestamps)
+      const wordTimings: Array<{ start: number; end: number }> = [];
+      for (let wi = 0; wi < wordCount; wi++) {
+        const wordRelStart = (line.words[wi].start / line.end) * line.end;
+        const wordRelEnd = wi < wordCount - 1
+          ? (line.words[wi + 1].start / line.end) * line.end
           : line.end;
+        // Clamp to line boundaries
+        const wStart = Math.max(line.start, Math.min(line.end, line.words[wi].start));
+        const wEnd = wi < wordCount - 1
+          ? Math.max(line.start, Math.min(line.end, line.words[wi + 1].start))
+          : line.end;
+        wordTimings.push({ start: wStart, end: wEnd });
+      }
 
-        const wStartTime = formatAssTime(wordStart);
-        const wEndTime = formatAssTime(wordEnd);
-        const effectiveColor = word.emphasisColor || baseColor;
+      // OpusClip-style word-by-word rendering:
+      // Event i shows words 0..i where word i is highlighted (gold) and previous words are dim.
+      // Words after i are not shown yet.
+      // This creates the effect: words accumulate, only the current word is bright.
+      const DIM_COLOR = '&H00888888';  // gray for consumed words
+      const ACCENT_COLOR = template.colors.accent;  // gold for current word
 
-        // Use \K for timed reveal of this single word
-        const wordDurationCs = Math.max(1, Math.round((wordEnd - wordStart) * 100));
-        const wordText = `{\\K${wordDurationCs}\\c${effectiveColor}}${escapeAssText(word.text)}`;
+      for (let wi = 0; wi < wordCount; wi++) {
+        const wStart = wordTimings[wi].start;
+        const wEnd = wi < wordCount - 1 ? wordTimings[wi + 1].start : line.end;
 
-        events += `Dialogue: 0,${wStartTime},${wEndTime},${style},,0,0,0,,${wordText}\n`;
+        // Build accumulated text: words 0..wi
+        // Word j < wi: dim, Word j == wi: accent
+        let accText = '';
+        for (let ji = 0; ji <= wi; ji++) {
+          const w = line.words[ji];
+          const isCurrent = (ji === wi);
+          const wordColor = isCurrent ? ACCENT_COLOR : DIM_COLOR;
+          const effectiveWordColor = w.emphasisColor || wordColor;
+          if (ji > 0) accText += ' ';
+          accText += `{\\c${effectiveWordColor}}${escapeAssText(w.text)}`;
+        }
+
+        const wStartTimeFmt = formatAssTime(wStart);
+        // Each event lasts until the next word's start (or line end for last word)
+        const wEndTimeFmt = formatAssTime(Math.max(wStart + 0.05, Math.min(wEnd, line.end)));
+
+        // Short minimum duration to prevent flash
+        if (wEnd > wStart + 0.02) {
+          events += `Dialogue: 0,${wStartTimeFmt},${wEndTimeFmt},${style},,0,0,0,,${accText}\n`;
+        }
+      }
+
+      // Final event: all dim (full line visible after last word)
+      let finalDimText = '';
+      for (let wi = 0; wi < wordCount; wi++) {
+        const w = line.words[wi];
+        if (wi > 0) finalDimText += ' ';
+        finalDimText += `{\\c${DIM_COLOR}}${escapeAssText(w.text)}`;
+      }
+      // Only add if the final dim event is meaningfully long
+      const lastWordStart = wordTimings[wordCount - 1].start;
+      const dimEndTime = line.end;
+      if (dimEndTime - lastWordStart > 0.1) {
+        events += `Dialogue: 0,${formatAssTime(lastWordStart)},${formatAssTime(dimEndTime)},${style},,0,0,0,,${finalDimText}\n`;
       }
     } else {
-      // Standard line-level karaoke with emphasis-aware word coloring
+    // Standard line-level karaoke with emphasis-aware word coloring
       let karaokeText = '';
       for (let wi = 0; wi < line.words.length; wi++) {
         const word = line.words[wi];

@@ -83,7 +83,7 @@ def load_onnx_model(model_path: str):
         return None, None
 
 
-def yolo_detect_faces(session, input_name, frame, conf_threshold=0.3):
+def yolo_detect_faces(session, input_name, frame, conf_threshold=0.15):
     """Run YOLOv8-face inference on a frame."""
     import cv2
     import numpy as np

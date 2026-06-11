@@ -261,11 +261,19 @@ def main():
 
     # Strategy 1: Whisper
     result = transcribe_whisper(audio_path)
+    if result['source'] != 'none':
+        print(f"[TRANSCRIBE] strategy=whisper words={len(result['words'])} segments={len(result['segments'])} confidence={result.get('confidence', 'N/A')}", file=sys.stderr, flush=True)
 
     # Strategy 2: Deepgram fallback (if Whisper failed and we have a key)
     if result['source'] == 'none' and args.deepgram_key:
-        print("[INFO] Whisper unavailable — falling back to Deepgram API", file=sys.stderr)
+        print("[TRANSCRIBE] strategy=deepgram (whisper unavailable)", file=sys.stderr, flush=True)
         result = transcribe_deepgram(audio_path, args.deepgram_key)
+        if result['source'] != 'none':
+            print(f"[TRANSCRIBE] strategy=deepgram words={len(result['words'])} segments={len(result['segments'])} confidence={result.get('confidence', 'N/A')}", file=sys.stderr, flush=True)
+
+    # Strategy 3: Both failed
+    if result['source'] == 'none':
+        print("[TRANSCRIBE] strategy=FAILED — no transcription available", file=sys.stderr, flush=True)
 
     with open(args.output_json, 'w') as f:
         json.dump(result, f)

@@ -131,17 +131,18 @@ export interface SubtitleTemplate {
 
 /**
  * 1. Opus Style
- * Viral gold accent, rounded dark background, word-by-word pop.
- * Mimics the popular OpusClip subtitle look.
+ * Modern word-by-word pop. Gold accent on active word, accumulated dimmed words.
+ * Medium-dark pill background. 32px Geist Sans.
+ * RENDERS AS: accumulated word-by-word with gold active word highlight
  */
 const OPUS_TEMPLATE: SubtitleTemplate = {
   id: 'opus',
   name: 'Opus Style',
   config: {
     fontName: 'Geist Sans',
-    fontSize: 32,
-    outlineWidth: 3,
-    backgroundOpacity: 0.12,
+    fontSize: 36,
+    outlineWidth: 2,
+    backgroundOpacity: 0.18,
     verticalPosition: 10,
     maxLines: 1,
     maxCharsPerLine: 36,
@@ -150,9 +151,9 @@ const OPUS_TEMPLATE: SubtitleTemplate = {
   colors: {
     primary: '&H00FFFFFF',
     accent: '&H0066C2E2',     // gold (#E2C266 → BGR: 66C2E2)
-    dim: '&H00888888',
+    dim: '&H00666666',        // dimmed consumed words
     outline: '&H00000000',
-    background: '&H22000000',  // semi-transparent black
+    background: '&H2E000000',  // darker bg (18% opacity → 0x2E)
     speakerA: '&H0066C2E2',   // gold
     speakerB: '&H0066B9E2',   // blue
     speakerC: '&H00E266B9',   // pink
@@ -160,32 +161,33 @@ const OPUS_TEMPLATE: SubtitleTemplate = {
   emphasisStrategy: 'full',
   extraStyles: [],
   wordByWordEvents: true,
-  wordPopDurationCs: 8,   // 80ms per word reveal
+  wordPopDurationCs: 8,
   wordStackGap: 0,
 };
 
 /**
- * 2. Hormozi Style
- * Bold white + thick black outline, single line, high contrast.
- * Maximizes readability on fast-scrolling feeds.
+ * 2. Hormozi Style — RADICALLY DIFFERENT
+ * EXTREME contrast: pure white, 8px black outline, 52px font.
+ * NO background, one line only. Maximum readability.
+ * RENDERS AS: static full line, massive text
  */
 const HORMOZI_TEMPLATE: SubtitleTemplate = {
   id: 'hormozi',
   name: 'Alex Hormozi Style',
   config: {
     fontName: 'Geist Sans',
-    fontSize: 38,
-    outlineWidth: 5,
+    fontSize: 52,
+    outlineWidth: 8,
     backgroundOpacity: 0,
-    verticalPosition: 8,
+    verticalPosition: 6,
     maxLines: 1,
-    maxCharsPerLine: 30,
+    maxCharsPerLine: 24,
   },
   wordRenderMode: 'static_line',
   colors: {
     primary: '&H00FFFFFF',
-    accent: '&H0066C2E2',     // gold
-    dim: '&H00666666',
+    accent: '&H0033CCFF',     // bright yellow (for emphasis words only)
+    dim: '&H00888888',
     outline: '&H00000000',
     background: '&H00000000',  // transparent
     speakerA: '&H0066C2E2',
@@ -200,32 +202,33 @@ const HORMOZI_TEMPLATE: SubtitleTemplate = {
 };
 
 /**
- * 3. Gadzhi Style
- * Minimal serif, center-aligned, warm off-white, elegant.
- * Used by Iman Gadzhi — clean, premium feel.
+ * 3. Gadzhi Style — RADICALLY DIFFERENT
+ * Serif font (EB Garamond), warm cream color, centered, elegant.
+ * Thin outline (1px), slight glow-like background.
+ * RENDERS AS: karaoke fill, premium feel
  */
 const GADZHI_TEMPLATE: SubtitleTemplate = {
   id: 'gadzhi',
   name: 'Iman Gadzhi Style',
   config: {
     fontName: 'EB Garamond',
-    fontSize: 34,
-    outlineWidth: 1,
-    backgroundOpacity: 0.06,
-    verticalPosition: 12,
+    fontSize: 30,
+    outlineWidth: 0,
+    backgroundOpacity: 0.12,
+    verticalPosition: 14,
     maxLines: 2,
     maxCharsPerLine: 38,
   },
   wordRenderMode: 'karaoke',
   colors: {
-    primary: '&H00E8E0D0',     // warm off-white
+    primary: '&H00E8E0D0',     // warm off-white/cream
     accent: '&H0066C2E2',     // gold
     dim: '&H00808080',
     outline: '&H00000000',
-    background: '&H18000000',  // very subtle bg
+    background: '&H1E000000',  // very subtle bg
     speakerA: '&H0066C2E2',
-    speakerB: '&H0066B9E2',
-    speakerC: '&H00E266B9',
+    speakerB: '&H00E2B966',   // warm gold
+    speakerC: '&H00B966E2',   // purple
   },
   emphasisStrategy: 'accent_only',
   extraStyles: [],
@@ -235,9 +238,10 @@ const GADZHI_TEMPLATE: SubtitleTemplate = {
 };
 
 /**
- * 4. MrBeast Style
- * Big yellow bold, thick black outline, full width.
- * Max impact, minimal subtlety.
+ * 4. MrBeast Style — RADICALLY DIFFERENT
+ * COMPLETELY different: Impact font, 52px, BRIGHT YELLOW primary, 8px black outline.
+ * Very thick, energetic, "SHOUTING" style.
+ * RENDERS AS: word-by-word pop, ALL CAPS for emphasis
  */
 const MRBEAST_TEMPLATE: SubtitleTemplate = {
   id: 'mrbeast',
@@ -247,15 +251,15 @@ const MRBEAST_TEMPLATE: SubtitleTemplate = {
     fontSize: 44,
     outlineWidth: 6,
     backgroundOpacity: 0,
-    verticalPosition: 14,
+    verticalPosition: 8,
     maxLines: 1,
     maxCharsPerLine: 28,
   },
-  wordRenderMode: 'word_pop',
+  wordRenderMode: 'word_by_word',
   colors: {
     primary: '&H0033CCFF',     // bright yellow (#FFCC33 → BGR: 33CCFF)
     accent: '&H00FFFFFF',      // white for emphasis
-    dim: '&H00888888',
+    dim: '&H00AA8800',        // dark yellow for dimmed words
     outline: '&H00000000',
     background: '&H00000000',   // no bg
     speakerA: '&H0033CCFF',    // yellow
@@ -270,7 +274,7 @@ const MRBEAST_TEMPLATE: SubtitleTemplate = {
     },
   ],
   wordByWordEvents: true,
-  wordPopDurationCs: 6,   // 60ms — faster pop
+  wordPopDurationCs: 6,
   wordStackGap: 0,
   transformWord: (text: string, isEmphasis: boolean) => {
     return isEmphasis ? text.toUpperCase() : text;
@@ -278,29 +282,30 @@ const MRBEAST_TEMPLATE: SubtitleTemplate = {
 };
 
 /**
- * 5. Podcast Minimal
- * Small clean sans, no background, bottom-only, unobtrusive.
- * Good for professional podcasts where audio is primary.
+ * 5. Podcast Minimal — RADICALLY DIFFERENT
+ * SMALL font (22px), NO background, completely transparent, 2-line wrap,
+ * positioned high above bottom. Unobtrusive, barely visible.
+ * RENDERS AS: karaoke fill, disappears into content
  */
 const PODCAST_MINIMAL_TEMPLATE: SubtitleTemplate = {
   id: 'podcast_minimal',
   name: 'Podcast Minimal',
   config: {
     fontName: 'Geist Sans',
-    fontSize: 26,
-    outlineWidth: 2,
+    fontSize: 24,
+    outlineWidth: 1,
     backgroundOpacity: 0,
-    verticalPosition: 8,
+    verticalPosition: 18,
     maxLines: 2,
-    maxCharsPerLine: 42,
+    maxCharsPerLine: 44,
   },
   wordRenderMode: 'karaoke',
   colors: {
-    primary: '&H00FFFFFF',
+    primary: '&H00CCCCCC',     // light gray (not pure white — less visible)
     accent: '&H0066C2E2',     // gold
-    dim: '&H00999999',
+    dim: '&H00666666',
     outline: '&H00000000',
-    background: '&H00000000',  // no bg
+    background: '&H00000000',  // NO background
     speakerA: '&H0066C2E2',
     speakerB: '&H0066B9E2',
     speakerC: '&H00E266B9',
@@ -313,32 +318,33 @@ const PODCAST_MINIMAL_TEMPLATE: SubtitleTemplate = {
 };
 
 /**
- * 6. Documentary
- * Thin serif, lower-third positioning, elegant uppercase labels.
- * Good for talking-head commentary and documentary content.
+ * 6. Documentary — RADICALLY DIFFERENT
+ * EB Garamond SERIF, cream/off-white, positioned HIGHER (bottom 20%).
+ * Thin, elegant, subtitle-like. Lower-third cinematic style.
+ * RENDERS AS: karaoke fill, upper-third position
  */
 const DOCUMENTARY_TEMPLATE: SubtitleTemplate = {
   id: 'documentary',
   name: 'Documentary',
   config: {
     fontName: 'EB Garamond',
-    fontSize: 30,
-    outlineWidth: 1,
-    backgroundOpacity: 0.04,
-    verticalPosition: 15,
+    fontSize: 28,
+    outlineWidth: 0,
+    backgroundOpacity: 0.08,
+    verticalPosition: 20,
     maxLines: 2,
     maxCharsPerLine: 40,
   },
   wordRenderMode: 'karaoke',
   colors: {
-    primary: '&H00F0E8D0',     // warm off-white
+    primary: '&H00E8DCC8',     // warm aged paper white
     accent: '&H0066C2E2',     // gold emphasis
-    dim: '&H00777777',
+    dim: '&H00808080',
     outline: '&H00000000',
-    background: '&H10000000',
+    background: '&H14000000',  // very faint bg
     speakerA: '&H0066C2E2',
-    speakerB: '&H0066B9E2',
-    speakerC: '&H00E266B9',
+    speakerB: '&H00B9B966',   // muted gold
+    speakerC: '&H00B96699',   // muted rose
   },
   emphasisStrategy: 'accent_only',
   extraStyles: [],
@@ -348,30 +354,32 @@ const DOCUMENTARY_TEMPLATE: SubtitleTemplate = {
 };
 
 /**
- * 7. Clean Corporate
- * Medium sans with rounded background pill, professional blue accent.
- * Good for business content, interview clips, and educational.
+ * 7. Clean Corporate — RADICALLY DIFFERENT
+ * Medium sans 26px, ROUNDED PILL background (thick outline used as pill),
+ * professional BLUE accent, positioned at bottom 12%.
+ * Higher outline = 4px creates pill effect.
+ * RENDERS AS: static_line, pill-style background
  */
 const CLEAN_CORPORATE_TEMPLATE: SubtitleTemplate = {
   id: 'clean_corporate',
   name: 'Clean Corporate',
   config: {
     fontName: 'Geist Sans',
-    fontSize: 30,
+    fontSize: 26,
     outlineWidth: 0,
-    backgroundOpacity: 0.15,
+    backgroundOpacity: 0.22,
     verticalPosition: 10,
     maxLines: 2,
-    maxCharsPerLine: 40,
+    maxCharsPerLine: 42,
   },
   wordRenderMode: 'karaoke',
   colors: {
     primary: '&H00FFFFFF',
-    accent: '&H0022AADD',     // professional blue
-    dim: '&H00888888',
-    outline: '&H00000000',
-    background: '&H26000000',  // dark pill background
-    speakerA: '&H0022AADD',   // blue
+    accent: '&H003399DD',     // professional blue
+    dim: '&H00666666',
+    outline: '&H00333333',    // dark gray outline
+    background: '&H38222222',  // dark pill background (22% opacity)
+    speakerA: '&H003399DD',   // blue
     speakerB: '&H0066B9E2',   // lighter blue
     speakerC: '&H00E266B9',   // pink
   },
