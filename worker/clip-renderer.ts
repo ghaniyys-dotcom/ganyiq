@@ -1155,9 +1155,21 @@ async function renderVerticalSplit(
     }
 
     const filterComplex = filterParts.join(';');
-    const cmd = `${ffmpegPath} -y -i "${sourceVideo}"`
-      + ` -filter_complex "${filterComplex}"`
-      + ` -map "[outv]" -map "[outa]" ${ENC} "${outputPath}"`;
+    let cmd: string;
+
+    // Use filter_complex_script when the filter is long (Windows cmd.exe 8191 char limit)
+    if (filterComplex.length > 4000) {
+      const filterScriptPath = join(TEMP_DIR, `filter_${videoId}_${Math.round(startTime)}s.txt`);
+      writeFileSync(filterScriptPath, filterComplex, 'utf-8');
+      log('SPLIT', `Using filter_script (${filterComplex.length} chars → ${filterScriptPath})`);
+      cmd = `${ffmpegPath} -y -i "${sourceVideo}"`
+        + ` -filter_complex_script "${filterScriptPath}"`
+        + ` -map "[outv]" -map "[outa]" ${ENC} "${outputPath}"`;
+    } else {
+      cmd = `${ffmpegPath} -y -i "${sourceVideo}"`
+        + ` -filter_complex "${filterComplex}"`
+        + ` -map "[outv]" -map "[outa]" ${ENC} "${outputPath}"`;
+    }
 
     log('SPLIT', `Single-pass render: ${segIdx} segments${anyXFade ? ' (xfade)' : ''} (${segments.filter(s => s.crops.some(c => c.isReaction)).length} reaction cuts), ${hasNvenc ? 'NVENC' : 'libx264'}, filter=${filterComplex.length} chars`);
     execSync(cmd, { ...EXEC_OPTS, timeout: 300_000 });
