@@ -234,9 +234,9 @@ class ByteTrack:
             self.tracks[new_id] = KalmanFilterFace(box[0], box[1], box[2], box[3])
             self.tracks[new_id].update(box)
 
-        # Remove lost tracks
+        # Remove lost tracks (only if exceeding max_lost — prevent immediate ID recreation)
         for tid in unmatched_tracks2:
-            if tid in self.tracks:
+            if tid in self.tracks and self.tracks[tid].time_since_update > self.max_lost:
                 del self.tracks[tid]
 
         # Update matched tracks
