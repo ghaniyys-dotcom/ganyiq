@@ -1007,6 +1007,8 @@ async function runV2SpeakerDetection(
   tempDir: string,
   envHfToken?: string,
   envDeepgramKey?: string,
+  clipStart?: number,
+  clipEnd?: number,
 ): Promise<SpeakerDetectionResult | null> {
   try {
     // Convert MultiFaceSample[] to TrackedFrame[] (the format speaker-detector expects)
@@ -1030,6 +1032,8 @@ async function runV2SpeakerDetection(
       tempDir,
       envHfToken,
       envDeepgramKey,
+      clipStart,
+      clipEnd,
     );
 
     log('V2_ASD', `Speaker detection: ${result.totalSpeakers} speakers, ${result.frames.length} frames`);
@@ -1245,6 +1249,8 @@ export async function analyzeFaces(
       tempDir,
       hfToken,
       deepgramKey,
+      clipStart,
+      clipEnd,
     );
 
     // Build segments from speaker data using Decision Engine (P1.1)

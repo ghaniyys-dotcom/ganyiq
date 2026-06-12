@@ -985,6 +985,8 @@ export async function detectSpeakers(
   tempDir: string,
   hfToken?: string,
   deepgramKey?: string,
+  clipStart?: number,
+  clipEnd?: number,
 ): Promise<SpeakerDetectionResult> {
   // Estimate speaker count from tracked faces (unique face IDs)
   const uniqueFaceIds = new Set<number>();
@@ -1001,7 +1003,7 @@ export async function detectSpeakers(
   log('DIARIZE', `${speakerSegments.length} segments, ${countSpeakers(speakerSegments)} speakers`);
 
   // Step 2: Run word-level transcription (Whisper → Deepgram fallback)
-  const wordTimestamps = await runTranscription(videoPath, tempDir, deepgramKey);
+  const wordTimestamps = await runTranscription(videoPath, tempDir, deepgramKey, clipStart, clipEnd);
   log('TRANSCRIBE', `${wordTimestamps.length} words`);    // Step 3 [V3]: Run AUDIO-BASED reaction detection (replaces text keyword matching)
     const reactionResult = await runReactionDetection(videoPath, tempDir);
     const reactionSource = reactionResult?.source || 'none';
@@ -1242,6 +1244,8 @@ async function runTranscription(
   videoPath: string,
   tempDir: string,
   deepgramKey?: string,
+  clipStart?: number,
+  clipEnd?: number,
 ): Promise<WordTimestamp[]> {
   const pythonBin = resolvePython();
   if (!pythonBin) {
@@ -1261,6 +1265,9 @@ async function runTranscription(
     let cmd = `${pythonBin} "${script}" "${videoPath}" "${outputPath}"`;
     if (deepgramKey) {
       cmd += ` --deepgram-key "${deepgramKey}"`;
+    }
+    if (clipStart !== undefined && clipEnd !== undefined) {
+      cmd += ` --clip-start ${clipStart} --clip-end ${clipEnd}`;
     }
     await execAsync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
     log('TRANSCRIBE', `Python transcription completed`);

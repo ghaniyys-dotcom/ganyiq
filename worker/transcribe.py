@@ -43,16 +43,18 @@ def resolve_ffmpeg() -> str:
     return 'ffmpeg'
 
 
-def extract_audio(video_path: str, audio_path: str) -> bool:
-    """Extract audio from video file using ffmpeg."""
+def extract_audio(video_path: str, audio_path: str, clip_start: float = None, clip_end: float = None) -> bool:
+    """Extract audio from video file using ffmpeg. Optionally trim to clip window."""
     ffmpeg_bin = resolve_ffmpeg()
     try:
-        subprocess.run(
-            [ffmpeg_bin, '-y', '-i', video_path, '-vn',
-             '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
-             audio_path],
-            capture_output=True, timeout=120
-        )
+        cmd = [ffmpeg_bin, '-y']
+        if clip_start is not None:
+            cmd.extend(['-ss', str(clip_start)])
+        cmd.extend(['-i', video_path])
+        if clip_end is not None:
+            cmd.extend(['-to', str(clip_end)])
+        cmd.extend(['-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', audio_path])
+        subprocess.run(cmd, capture_output=True, timeout=120)
         return os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000
     except Exception as e:
         print(f"[WARN] Audio extraction failed: {e}", file=sys.stderr)
@@ -264,6 +266,10 @@ def main():
                         help='Input is already audio (skip extraction)')
     parser.add_argument('--deepgram-key', type=str, default='',
                         help='Deepgram API key for fallback transcription')
+    parser.add_argument('--clip-start', type=float, default=None,
+                        help='Clip start time in seconds (extract only this segment)')
+    parser.add_argument('--clip-end', type=float, default=None,
+                        help='Clip end time in seconds (extract only this segment)')
 
     args = parser.parse_args()
 
@@ -274,12 +280,17 @@ def main():
         ext = Path(args.input_path).suffix.lower()
         if ext in ['.mp4', '.mkv', '.webm', '.mov', '.avi']:
             audio_path = args.input_path + '_transcribe.wav'
-            print(f"[INFO] Extracting audio from {args.input_path}...", file=sys.stderr)
-            if not extract_audio(args.input_path, audio_path):
+            clip_info = ''
+            if args.clip_start is not None and args.clip_end is not None:
+                clip_info = f' [clip {args.clip_start}s-{args.clip_end}s ({args.clip_end - args.clip_start:.0f}s)]'
+            print(f"[INFO] Extracting audio from {args.input_path}{clip_info}...", file=sys.stderr)
+            if not extract_audio(args.input_path, audio_path, args.clip_start, args.clip_end):
                 print("[WARN] Audio extraction failed", file=sys.stderr)
                 audio_path = args.input_path
             else:
                 cleanup_audio = True
+                audio_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+                print(f"[INFO] Extracted audio: {audio_size_mb:.1f}MB", file=sys.stderr)
 
     if not os.path.exists(audio_path):
         print(f"Error: input not found: {audio_path}", file=sys.stderr)

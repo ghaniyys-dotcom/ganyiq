@@ -1248,7 +1248,26 @@ async function renderVerticalSplit(
     }
 
     log('SPLIT', `Single-pass render: ${segIdx} segments${anyXFade ? ' (xfade)' : ''} (${segments.filter(s => s.crops.some(c => c.isReaction)).length} reaction cuts), ${hasNvenc ? 'NVENC' : 'libx264'}, filter=${filterComplex.length} chars`);
-    execSync(cmd, { ...EXEC_OPTS, timeout: 300_000 });
+    try {
+      execSync(cmd, { ...EXEC_OPTS, timeout: 300_000 });
+    } catch (renderErr: any) {
+      // Save full stderr to a file for post-mortem
+      const errorLogPath = join(TEMP_DIR, `${renderId || 'render'}_ffmpeg_stderr.log`);
+      const stderrContent = renderErr.stderr || renderErr.message || 'No stderr captured';
+      try {
+        writeFileSync(errorLogPath, stderrContent, 'utf-8');
+        log('SPLIT', `Full stderr saved to: ${errorLogPath}`);
+      } catch {}
+      // Print last 100 lines of stderr to console
+      const stderrLines = (stderrContent as string).split('\n');
+      const tailLines = stderrLines.slice(Math.max(0, stderrLines.length - 100));
+      log('SPLIT', `--- ffmpeg stderr (last ${tailLines.length} lines) ---`);
+      for (const line of tailLines) {
+        if (line.trim()) log('SPLIT', `  ${line}`);
+      }
+      log('SPLIT', `--- end ffmpeg stderr ---`);
+      throw renderErr;
+    }
 
     if (!existsSync(outputPath)) {
       throw new Error('Split render produced no output file');
