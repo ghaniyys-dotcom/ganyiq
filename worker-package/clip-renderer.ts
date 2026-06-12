@@ -217,6 +217,7 @@ export async function renderClip(
   // SOURCE QUALITY LOG
   let sourceWidth = 1280;
   let sourceHeight = 720;
+  let sourceFps = 30;
   try {
     const ffprobePath = env.FFMPEG_LOCATION
       ? `"${env.FFMPEG_LOCATION}/ffprobe"`
@@ -231,6 +232,21 @@ export async function renderClip(
     log('SOURCE', `video=${vStream.width}x${vStream.height} codec=${vStream.codec_name} video_bitrate=${vStream.bit_rate || 'N/A'} audio_bitrate=${aStream.bit_rate || 'N/A'} duration=${probe?.format?.duration}s size=${probe?.format?.size} bytes`);
     sourceWidth = vStream.width || 1280;
     sourceHeight = vStream.height || 720;
+
+    const rFrameRate = vStream.r_frame_rate || '30/1';
+    if (rFrameRate && rFrameRate.includes('/')) {
+      const [num, den] = rFrameRate.split('/').map(Number);
+      if (num && den) {
+        sourceFps = num / den;
+      }
+    } else {
+      const parsed = Number(rFrameRate);
+      if (parsed) {
+        sourceFps = parsed;
+      }
+    }
+    log('SOURCE', `Parsed FPS: ${sourceFps}`);
+
     if (vStream.width >= 1920 && vStream.height >= 1080) {
       log('SOURCE', 'Full HD source — excellent quality');
     } else if (vStream.width < 1280 || vStream.height < 720) {
@@ -340,6 +356,7 @@ export async function renderClip(
         subtitleFilter,
         heartbeatFn,
         videoId,
+        sourceFps,
       );
       ffmpegCmd = ''; // marker: already rendered
     } else {
@@ -807,6 +824,7 @@ async function renderVerticalSplit(
   heartbeatFn?: HeartbeatFn,
   /** Unique identifier for temp file naming (e.g. videoId). */
   renderId?: string,
+  sourceFps: number = 30,
 ): Promise<void> {
   if (segments.length === 0) {
     throw new Error('No split segments provided');
@@ -1004,10 +1022,13 @@ async function renderVerticalSplit(
             + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
           );
         } else {
+          const durationStr = segDuration.toFixed(4);
+          const fpsStr = sourceFps.toFixed(3);
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
-            + `${cropFilter},`
+            + `crop=${effectiveCw}:${FULL_H}:${cx}:${cy},`
             + `scale=1080:1920:flags=lanczos,`
+            + `zoompan=z='1.0+0.04*time/${durationStr}':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=1080x1920:fps=${fpsStr},`
             + `unsharp=5:5:0.8:3:3:0.4,`
             + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
           );

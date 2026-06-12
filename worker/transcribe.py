@@ -94,7 +94,9 @@ def transcribe_whisper(audio_path: str) -> dict:
         print("[INFO] whisper not installed, skipping", file=sys.stderr)
         return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
     except Exception as e:
+        import traceback
         print(f"[WARN] Whisper transcription failed: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
 
 
@@ -226,7 +228,9 @@ def transcribe_deepgram(audio_path: str, api_key: str) -> dict:
         }
 
     except Exception as e:
+        import traceback
         print(f"[WARN] Deepgram transcription failed: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
 
 
@@ -274,6 +278,14 @@ def main():
     # Strategy 3: Both failed
     if result['source'] == 'none':
         print("[TRANSCRIBE] strategy=FAILED — no transcription available", file=sys.stderr, flush=True)
+        with open(args.output_json, 'w') as f:
+            json.dump(result, f)
+        if cleanup_audio and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+            except:
+                pass
+        sys.exit(1)
 
     with open(args.output_json, 'w') as f:
         json.dump(result, f)

@@ -15,9 +15,17 @@ import { exec, execSync, ExecSyncOptions } from 'child_process';
 
 function execAsync(cmd: string, options: any): Promise<string> {
   return new Promise((resolve, reject) => {
-    exec(cmd, options, (error, stdout) => {
-      if (error) reject(error);
-      else resolve(typeof stdout === 'string' ? stdout : (stdout as any).toString('utf-8') || '');
+    exec(cmd, options, (error: any, stdout: any, stderr: any) => {
+      if (error) {
+        const stderrStr = typeof stderr === 'string' ? stderr : (stderr as any)?.toString('utf-8') || '';
+        const stdoutStr = typeof stdout === 'string' ? stdout : (stdout as any)?.toString('utf-8') || '';
+        const err = new Error(`Command failed: ${cmd}\nError: ${error.message}\nStderr: ${stderrStr}\nStdout: ${stdoutStr}`);
+        (err as any).stderr = stderrStr;
+        (err as any).stdout = stdoutStr;
+        reject(err);
+      } else {
+        resolve(typeof stdout === 'string' ? stdout : (stdout as any).toString('utf-8') || '');
+      }
     });
   });
 }
@@ -219,8 +227,8 @@ async function runV2Detection(
 
     return null;
   } catch (err) {
-    const msg = (err as Error).message?.slice(0, 200);
-    log('V2_WARN', `V2 detection failed: ${msg}`);
+    const error = err as any;
+    log('V2_WARN', `V2 detection failed: ${error.message}\nStderr: ${error.stderr || ''}\nStdout: ${error.stdout || ''}`);
     return null;
   }
 }
@@ -302,8 +310,8 @@ async function runV1FaceDetection(
     log('DETECT', `V1: ${data.length} samples, ${faceCount} with faces`);
     return data;
   } catch (err) {
-    const msg = (err as Error).message?.slice(0, 200);
-    log('ERROR', `V1 detection failed: ${msg}`);
+    const error = err as any;
+    log('ERROR', `V1 detection failed: ${error.message}\nStderr: ${error.stderr || ''}\nStdout: ${error.stdout || ''}`);
     return null;
   }
 }

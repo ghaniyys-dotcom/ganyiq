@@ -268,9 +268,9 @@ def main():
     parser = argparse.ArgumentParser(description='Track faces across frames')
     parser.add_argument('input_json', help='Face detection data JSON')
     parser.add_argument('output_json', help='Output tracked faces JSON')
-    parser.add_argument('--conf-threshold', type=float, default=0.3,
+    parser.add_argument('--conf-threshold', type=float, default=0.15,
                         help='Detection confidence threshold')
-    parser.add_argument('--max-lost', type=int, default=5,
+    parser.add_argument('--max-lost', type=int, default=25,
                         help='Max frames to keep a lost track')
 
     args = parser.parse_args()

@@ -117,6 +117,8 @@ export interface IdentityMetrics {
 interface CoOccurrenceEntry {
   /** IDs that co-occur with this one (appear in same frame). */
   coOccurring: Set<number>;
+  /** Map of other IDs to the count of frames they co-occurred in. */
+  coOccurringCounts: Map<number, number>;
   /** IDs that are mutually exclusive (never appear together). */
   exclusive: Set<number>;
   /** Number of frames where this ID appears. */
@@ -171,12 +173,15 @@ export class ParticipantRegistry {
       for (const id of idsInFrame) {
         let entry = this.coOccurrence.get(id);
         if (!entry) {
-          entry = { coOccurring: new Set(), exclusive: new Set(), frameCount: 0 };
+          entry = { coOccurring: new Set(), coOccurringCounts: new Map(), exclusive: new Set(), frameCount: 0 };
           this.coOccurrence.set(id, entry);
         }
         entry.frameCount++;
         for (const otherId of idsInFrame) {
-          if (otherId !== id) entry.coOccurring.add(otherId);
+          if (otherId !== id) {
+            entry.coOccurring.add(otherId);
+            entry.coOccurringCounts.set(otherId, (entry.coOccurringCounts.get(otherId) || 0) + 1);
+          }
         }
       }
     }
@@ -187,7 +192,11 @@ export class ParticipantRegistry {
       for (let j = i + 1; j < allIds.length; j++) {
         const idB = allIds[j];
         const entryB = this.coOccurrence.get(idB)!;
-        if (!entryA.coOccurring.has(idB) && !entryB.coOccurring.has(idA)) {
+        const overlap = entryA.coOccurringCounts.get(idB) || 0;
+        const countA = entryA.frameCount;
+        const countB = entryB.frameCount;
+        const overlapRatio = overlap / Math.min(countA, countB);
+        if (overlapRatio < 0.05 && overlap <= 5) {
           entryA.exclusive.add(idB);
           entryB.exclusive.add(idA);
         }
@@ -247,7 +256,7 @@ export class ParticipantRegistry {
         }
         if (allExclusive) {
           const spatialScore = this.computeSpatialConsistency(seedId, candidateId);
-          if (spatialScore > 0.3) clusterIds.add(candidateId);
+          if (spatialScore > 0.65) clusterIds.add(candidateId);
         }
       }
       for (const id of clusterIds) usedIds.add(id);
@@ -291,6 +300,9 @@ export class ParticipantRegistry {
     const dy = avgA.cy - avgB.cy;
     const avgSize = (avgA.w + avgA.h + avgB.w + avgB.h) / 4;
     const positionDistance = Math.sqrt(dx * dx + dy * dy) / Math.max(avgSize, 1);
+    if (positionDistance > 2.0) {
+      return 0;
+    }
     const sizeRatio = Math.min(avgA.w / Math.max(avgB.w, 1), avgB.w / Math.max(avgA.w, 1));
     const positionScore = Math.max(0, 1 - positionDistance * 0.5);
     return positionScore * 0.6 + sizeRatio * 0.4;

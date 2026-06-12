@@ -30,9 +30,17 @@ import { platform } from 'os';
 
 function execAsync(cmd: string, options: any): Promise<string> {
   return new Promise((resolve, reject) => {
-    exec(cmd, options, (error, stdout) => {
-      if (error) reject(error);
-      else resolve(typeof stdout === 'string' ? stdout : (stdout as any).toString('utf-8') || '');
+    exec(cmd, options, (error: any, stdout: any, stderr: any) => {
+      if (error) {
+        const stderrStr = typeof stderr === 'string' ? stderr : (stderr as any)?.toString('utf-8') || '';
+        const stdoutStr = typeof stdout === 'string' ? stdout : (stdout as any)?.toString('utf-8') || '';
+        const err = new Error(`Command failed: ${cmd}\nError: ${error.message}\nStderr: ${stderrStr}\nStdout: ${stdoutStr}`);
+        (err as any).stderr = stderrStr;
+        (err as any).stdout = stdoutStr;
+        reject(err);
+      } else {
+        resolve(typeof stdout === 'string' ? stdout : (stdout as any).toString('utf-8') || '');
+      }
     });
   });
 }
@@ -1259,7 +1267,8 @@ async function runTranscription(
     log('TRANSCRIBE', `Source: ${data.source || 'unknown'}, ${data.words?.length || 0} words`);
     return data.words || [];
   } catch (err) {
-    log('WARN', `Transcription failed: ${(err as Error).message?.slice(0, 120)}`);
+    const error = err as any;
+    log('WARN', `Transcription failed: ${error.message}\nStderr: ${error.stderr || ''}\nStdout: ${error.stdout || ''}`);
     return [];
   }
 }
