@@ -47,7 +47,105 @@ def extract_audio(video_path: str, audio_path: str) -> bool:
         return False
 
 
-# ── Strategy 1: PyAnnote ──────────────────────────────────────────────────────
+# ── Strategy 1: Deepgram Diarization ──────────────────────────────────────────
+
+def diarize_deepgram(audio_path: str, api_key: str) -> list:
+    """Diarize using Deepgram Nova-2 API with speaker detection."""
+    import urllib.request
+    import urllib.parse
+    try:
+        log("strategy=deepgram attempting query to Deepgram API...")
+        with open(audio_path, 'rb') as f:
+            audio_data = f.read()
+
+        ext = Path(audio_path).suffix.lower()
+        content_type = {
+            '.wav': 'audio/wav',
+            '.mp3': 'audio/mp3',
+            '.m4a': 'audio/mp4',
+            '.mp4': 'audio/mp4',
+            '.webm': 'audio/webm',
+        }.get(ext, 'audio/wav')
+
+        # Request nova-2 with diarize parameter
+        params = urllib.parse.urlencode({
+            'model': 'nova-2',
+            'language': 'id',
+            'diarize': 'true',
+            'punctuate': 'true',
+            'smart_format': 'true',
+        })
+        url = f'https://api.deepgram.com/v1/listen?{params}'
+
+        req = urllib.request.Request(
+            url,
+            data=audio_data,
+            headers={
+                'Authorization': f'Token {api_key}',
+                'Content-Type': content_type,
+            },
+            method='POST',
+        )
+
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            response_data = json.loads(resp.read().decode('utf-8'))
+
+        alt = (response_data.get('results', {})
+               .get('channels', [{}])[0]
+               .get('alternatives', [{}])[0])
+
+        if not alt:
+            log("strategy=deepgram failed — no alternatives returned")
+            return []
+
+        raw_words = alt.get('words', [])
+        if not raw_words:
+            log("strategy=deepgram failed — zero words returned")
+            return []
+
+        segments = []
+        # Group contiguous words by speaker, splitting if gap > 1.5s
+        current_speaker = raw_words[0].get('speaker', 0)
+        seg_start = raw_words[0]['start']
+        prev_end = raw_words[0]['end']
+
+        for i in range(1, len(raw_words)):
+            w = raw_words[i]
+            speaker = w.get('speaker', 0)
+            start = w['start']
+            end = w['end']
+
+            if speaker != current_speaker or (start - prev_end) > 1.5:
+                duration = prev_end - seg_start
+                if duration > 0.1:
+                    segments.append({
+                        "speaker": f"SPEAKER_{current_speaker:02d}",
+                        "start": round(seg_start, 2),
+                        "end": round(prev_end, 2),
+                    })
+                current_speaker = speaker
+                seg_start = start
+
+            prev_end = end
+
+        # Add the last segment
+        if prev_end - seg_start > 0.1:
+            segments.append({
+                "speaker": f"SPEAKER_{current_speaker:02d}",
+                "start": round(seg_start, 2),
+                "end": round(prev_end, 2),
+            })
+
+        unique_speakers = set(s['speaker'] for s in segments)
+        log(f"strategy=deepgram segments={len(segments)} speakers={len(unique_speakers)}")
+        return segments
+
+    except Exception as e:
+        log(f"strategy=deepgram FAILED — {type(e).__name__}: {e}")
+        return []
+
+
+# ── Strategy 2: PyAnnote ──────────────────────────────────────────────────────
 
 def diarize_pyannote(audio_path: str, hf_token: str) -> list:
     """Diarize using PyAnnote speaker-diarization-3.1."""
@@ -352,6 +450,7 @@ def main():
     parser.add_argument('input_path', help='Path to video or audio file')
     parser.add_argument('output_json', help='Output speaker segments JSON')
     parser.add_argument('--hf-token', default='', help='HuggingFace token for PyAnnote')
+    parser.add_argument('--deepgram-key', default='', help='Deepgram API key for diarization')
     parser.add_argument('--num-speakers', type=int, default=0,
                         help='Estimated number of speakers (0=auto)')
     parser.add_argument('--skip-extract', action='store_true',
@@ -383,32 +482,41 @@ def main():
     segments = []
     strategy_used = "none"
 
-    # ── Strategy 1: PyAnnote ──
-    if args.hf_token:
-        log(f"hf_token present (length={len(args.hf_token)}) — trying PyAnnote")
-        segments = diarize_pyannote(audio_path, args.hf_token)
+    # ── Strategy 1: Deepgram ──
+    if args.deepgram_key:
+        log(f"deepgram_key present (length={len(args.deepgram_key)}) — trying Deepgram Diarization")
+        segments = diarize_deepgram(audio_path, args.deepgram_key)
         if len(segments) > 0:
-            strategy_used = "pyannote"
-            log("[HF] pyannote initialized and diarization success")
-    else:
-        log("[HF] token not loaded — skipping PyAnnote")
-        log("hf_token not provided — skipping PyAnnote")
+            strategy_used = "deepgram"
+            log("[DG] Deepgram diarization success")
 
-    # ── Strategy 2: MFCC + KMeans clustering ──
+    # ── Strategy 2: PyAnnote ──
     if len(segments) == 0:
-        log("PyAnnote unavailable — trying clustering fallback")
+        if args.hf_token:
+            log(f"hf_token present (length={len(args.hf_token)}) — trying PyAnnote")
+            segments = diarize_pyannote(audio_path, args.hf_token)
+            if len(segments) > 0:
+                strategy_used = "pyannote"
+                log("[HF] pyannote initialized and diarization success")
+        else:
+            log("[HF] token not loaded — skipping PyAnnote")
+            log("hf_token not provided — skipping PyAnnote")
+
+    # ── Strategy 3: MFCC + KMeans clustering ──
+    if len(segments) == 0:
+        log("Deepgram/PyAnnote unavailable — trying clustering fallback")
         segments = diarize_clustering(audio_path, args.num_speakers)
         if len(segments) > 0:
             strategy_used = "clustering"
 
-    # ── Strategy 3: Energy VAD fallback ──
+    # ── Strategy 4: Energy VAD fallback ──
     if len(segments) == 0:
         log("clustering unavailable — trying energy VAD fallback")
         segments = diarize_energy_fallback(audio_path)
         if len(segments) > 0:
             strategy_used = "energy_fallback"
 
-    # ── Strategy 4: Single speaker emergency ──
+    # ── Strategy 5: Single speaker emergency ──
     if len(segments) == 0:
         log("strategy=single_speaker EMERGENCY — no diarization method worked")
         strategy_used = "single_speaker"

@@ -23,11 +23,21 @@
  *   6. Merge reaction-detector events into SpeakerFrames (replaces keyword matching)
  */
 
-import { execSync, ExecSyncOptions } from 'child_process';
+import { exec, execSync, ExecSyncOptions } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { platform } from 'os';
+
+function execAsync(cmd: string, options: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    exec(cmd, options, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(typeof stdout === 'string' ? stdout : (stdout as any).toString('utf-8') || '');
+    });
+  });
+}
 import type { TrackedFrame, TrackedFace, FaceLandmarks } from './tracker';
+import { ParticipantRegistry } from './participant-registry';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -853,10 +863,10 @@ function runVisualReactionDetection(
   return result;
 }
 
-function runReactionDetection(
+async function runReactionDetection(
   videoPath: string,
   tempDir: string,
-): ReactionDetectorResult | null {
+): Promise<ReactionDetectorResult | null> {
   const pythonBin = resolvePython();
   if (!pythonBin) {
     log('REACT', 'Python not found for reaction detection — skipping');
@@ -873,7 +883,7 @@ function runReactionDetection(
 
   try {
     const cmd = `${pythonBin} "${script}" "${videoPath}" "${outputPath}"`;
-    execSync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
+    await execAsync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
     log('REACT', `Python reaction detection completed`);
 
     if (!existsSync(outputPath)) {
@@ -961,13 +971,13 @@ function lookupAudioEvent(
  * @param deepgramKey - Deepgram API key (fallback for Whisper transcription)
  * @returns SpeakerDetectionResult
  */
-export function detectSpeakers(
+export async function detectSpeakers(
   videoPath: string,
   trackedFrames: TrackedFrame[],
   tempDir: string,
   hfToken?: string,
   deepgramKey?: string,
-): SpeakerDetectionResult {
+): Promise<SpeakerDetectionResult> {
   // Estimate speaker count from tracked faces (unique face IDs)
   const uniqueFaceIds = new Set<number>();
   for (const frame of trackedFrames) {
@@ -979,13 +989,13 @@ export function detectSpeakers(
   log('DIARIZE', `Face detection found ${uniqueFaceIds.size} unique faces — estimating ${estimatedSpeakers} speakers`);
 
   // Step 1: Run diarization with estimated speaker count
-  const speakerSegments = runDiarization(videoPath, tempDir, hfToken, estimatedSpeakers);
+  const speakerSegments = await runDiarization(videoPath, tempDir, hfToken, estimatedSpeakers, deepgramKey);
   log('DIARIZE', `${speakerSegments.length} segments, ${countSpeakers(speakerSegments)} speakers`);
 
   // Step 2: Run word-level transcription (Whisper → Deepgram fallback)
-  const wordTimestamps = runTranscription(videoPath, tempDir, deepgramKey);
+  const wordTimestamps = await runTranscription(videoPath, tempDir, deepgramKey);
   log('TRANSCRIBE', `${wordTimestamps.length} words`);    // Step 3 [V3]: Run AUDIO-BASED reaction detection (replaces text keyword matching)
-    const reactionResult = runReactionDetection(videoPath, tempDir);
+    const reactionResult = await runReactionDetection(videoPath, tempDir);
     const reactionSource = reactionResult?.source || 'none';
     if (reactionResult && reactionResult.events.length > 0) {
       const eventTypes = [...new Set(reactionResult.events.map(e => e.event_type))];
@@ -1107,11 +1117,40 @@ export function detectSpeakers(
   }
   log('EVENTS', JSON.stringify(eventCounts));
 
+  // Step 4b: Map raw face track IDs to stable participant IDs using ParticipantRegistry
+  const registry = new ParticipantRegistry();
+  registry.ingestTrackedFrames(trackedFrames);
+  registry.ingestSpeakerSegments(speakerSegments);
+  registry.buildParticipants();
+  const participantMap = registry.getParticipantMap();
+  const totalSpeakers = registry.getParticipantCount();
+
+  log('V2_ASD', `Participant Registry built: ${totalSpeakers} stable participants consolidated from ${registry.getConfidenceMetrics().averageFragmentation.toFixed(1)}x average fragmentation`);
+
+  for (const frame of speakerFrames) {
+    if (frame.activeSpeakerId !== null) {
+      const stableId = participantMap.get(frame.activeSpeakerId);
+      if (stableId !== undefined) {
+        frame.activeSpeakerId = stableId;
+      }
+    }
+    frame.listenerIds = frame.listenerIds.map(id => {
+      const stableId = participantMap.get(id);
+      return stableId !== undefined ? stableId : id;
+    });
+    for (const face of frame.faces) {
+      const stableId = participantMap.get(face.id);
+      if (stableId !== undefined) {
+        face.id = stableId;
+      }
+    }
+  }
+
   return {
     frames: speakerFrames,
     speakerSegments,
     wordTimestamps,
-    totalSpeakers: countSpeakers(speakerSegments),
+    totalSpeakers: totalSpeakers,
     reactionEvents: reactionResult?.events || [],
     reactionSource,
     visualEvents: visualResult?.events || [],
@@ -1123,12 +1162,13 @@ export function detectSpeakers(
 // Python Orchestration (Diarization + Transcription)
 // ============================================================================
 
-function runDiarization(
+async function runDiarization(
   videoPath: string,
   tempDir: string,
   hfToken?: string,
   estimatedSpeakers?: number,
-): SpeakerLabel[] {
+  deepgramKey?: string,
+): Promise<SpeakerLabel[]> {
   const pythonBin = resolvePython();
   if (!pythonBin) {
     log('INFO', 'Python not found for diarization — no speaker labels');
@@ -1145,17 +1185,23 @@ function runDiarization(
 
   try {
     let cmd = `${pythonBin} "${script}" "${videoPath}" "${outputPath}"`;
+    if (deepgramKey) {
+      cmd += ` --deepgram-key "${deepgramKey}"`;
+      log('DG', `DEEPGRAM_API_KEY provided (length=${deepgramKey.length}) — Deepgram diarization enabled`);
+    } else {
+      log('DG', 'DEEPGRAM_API_KEY not provided — Deepgram diarization skipped');
+    }
     if (hfToken) {
       cmd += ` --hf-token "${hfToken}"`;
       log('HF', `HF_TOKEN provided (length=${hfToken.length}) — PyAnnote enabled`);
     } else {
-      log('HF', 'HF_TOKEN not provided — PyAnnote skipped, using clustering');
+      log('HF', 'HF_TOKEN not provided — PyAnnote skipped');
     }
     if (estimatedSpeakers && estimatedSpeakers > 1) {
       cmd += ` --num-speakers ${estimatedSpeakers}`;
       log('SPEAKERS', `Estimated ${estimatedSpeakers} speakers from face data`);
     }
-    execSync(cmd, { ...EXEC_OPTS, timeout: 300_000 });
+    await execAsync(cmd, { ...EXEC_OPTS, timeout: 300_000 });
     log('DIARIZE', `Python diarization completed`);
 
     if (!existsSync(outputPath)) {
@@ -1180,11 +1226,11 @@ function runDiarization(
   }
 }
 
-function runTranscription(
+async function runTranscription(
   videoPath: string,
   tempDir: string,
   deepgramKey?: string,
-): WordTimestamp[] {
+): Promise<WordTimestamp[]> {
   const pythonBin = resolvePython();
   if (!pythonBin) {
     log('INFO', 'Python not found for transcription — no word timestamps');
@@ -1204,7 +1250,7 @@ function runTranscription(
     if (deepgramKey) {
       cmd += ` --deepgram-key "${deepgramKey}"`;
     }
-    execSync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
+    await execAsync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
     log('TRANSCRIBE', `Python transcription completed`);
 
     if (!existsSync(outputPath)) return [];

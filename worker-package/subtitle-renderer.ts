@@ -50,6 +50,7 @@ export interface SubtitleWord {
   speaker?: string;
   /** P0.4: Emphasis color override (gold for highlights, gray for dimmed). */
   emphasisColor?: string;
+  isHighlight?: boolean;
 }
 
 export interface SubtitleLine {
@@ -142,6 +143,7 @@ export function generateAssSubtitle(
   clipEnd: number,
   config: SubtitleConfig = DEFAULT_CONFIG,
   templateName: SubtitleTemplateId = DEFAULT_TEMPLATE,
+  decisionSegments?: any[],
 ): string {
   const clipDuration = clipEnd - clipStart;
 
@@ -202,7 +204,7 @@ export function generateAssSubtitle(
   }
 
   // Build ASS file
-  const assContent = buildAssFile(lines, config, clipDuration, template);
+  const assContent = buildAssFile(lines, config, clipDuration, template, decisionSegments, clipStart);
   return assContent;
 }
 
@@ -265,6 +267,7 @@ function groupWordsIntoLines(
       end: word.end,
       speaker,
       emphasisColor,
+      isHighlight,
     };
 
     // Check for natural break: pause, line length, or punctuation
@@ -283,7 +286,11 @@ function groupWordsIntoLines(
         start: lineStart - clipStart,
         end: lineEnd - clipStart,
         text: currentLineWords.map(w => w.text).join(' '),
-        words: currentLineWords,
+        words: currentLineWords.map(w => ({
+          ...w,
+          start: w.start - clipStart,
+          end: w.end - clipStart,
+        })),
         speaker: getDominantSpeaker(currentLineWords),
       });
       currentLineWords = [subWord];
@@ -300,7 +307,11 @@ function groupWordsIntoLines(
       start: lineStart - clipStart,
       end: lineEnd - clipStart,
       text: currentLineWords.map(w => w.text).join(' '),
-      words: currentLineWords,
+      words: currentLineWords.map(w => ({
+        ...w,
+        start: w.start - clipStart,
+        end: w.end - clipStart,
+      })),
       speaker: getDominantSpeaker(currentLineWords),
     });
   }
@@ -339,18 +350,52 @@ function getDominantSpeaker(words: SubtitleWord[]): string | undefined {
  * Emphasis is attached to SubtitleWord during line grouping to avoid
  * index misalignment issues caused by word skipping.
  */
+function getLayoutPositionTag(
+  lineStart: number,
+  lineEnd: number,
+  decisionSegments?: any[],
+  clipStart?: number,
+): string {
+  if (!decisionSegments || decisionSegments.length === 0 || clipStart === undefined) return '';
+  const mid = (lineStart + lineEnd) / 2;
+  const seg = decisionSegments.find(s => {
+    const relStart = s.startTime - clipStart;
+    const relEnd = s.endTime - clipStart;
+    return mid >= relStart && mid <= relEnd;
+  });
+  if (!seg) return '';
+
+  switch (seg.mode) {
+    case 'split_2':
+      return '{\\pos(540,960)}';
+    case 'split_3':
+      return '{\\pos(540,1280)}';
+    case 'split_4':
+      return '{\\pos(540,960)}';
+    case 'hero_reaction':
+      return '{\\pos(540,1100)}';
+    default:
+      return '';
+  }
+}
+
 function buildAssFile(
   lines: SubtitleLine[],
   config: SubtitleConfig,
   clipDuration: number,
   template?: SubtitleTemplate,
+  decisionSegments?: any[],
+  clipStart?: number,
 ): string {
-  const resolutionX = 1920;
-  const resolutionY = 1080;
+  const resolutionX = 1080; // vertical video width
+  const resolutionY = 1920; // vertical video height
 
   // Calculate vertical position (from bottom)
   const marginBottom = Math.round(resolutionY * (config.verticalPosition / 100));
   const marginVertical = marginBottom;
+
+  const defaultSize = template?.config?.fontSize || config.fontSize;
+  const highlightSize = Math.round(defaultSize * 1.15); // 15% larger for highlighted words
 
   // P0.5: Build ASS header with template-driven styles
   let stylesSection: string;
@@ -391,31 +436,35 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     // Determine style based on speaker
     const style = line.speaker && line.speaker !== 'SPEAKER_00' ? 'AltSpeaker' : 'Default';
 
+    // Get layout-aware position tag
+    const posTag = getLayoutPositionTag(line.start, line.end, decisionSegments, clipStart);
+
     // P0.5: Static line mode — full line appears instantly, no word-by-word reveal
     if (template && template.wordRenderMode === 'static_line') {
-      // Output the entire line as-is with per-word \c color tags but no \K timing
-      let lineText = '';
+      let lineText = posTag;
       for (let wi = 0; wi < line.words.length; wi++) {
         const word = line.words[wi];
         const effectiveColor = word.emphasisColor || baseColor;
+        let sizeTag = '';
+        if (word.isHighlight) {
+          sizeTag = `\\fs${highlightSize}`;
+        }
         if (wi > 0) lineText += ' ';
-        lineText += `{\\c${effectiveColor}}${escapeAssText(word.text)}`;
+        if (sizeTag) {
+          lineText += `{${sizeTag}\\c${effectiveColor}}${escapeAssText(word.text)}{\\fs${defaultSize}}`;
+        } else {
+          lineText += `{\\c${effectiveColor}}${escapeAssText(word.text)}`;
+        }
       }
       events += `Dialogue: 0,${lineStartTime},${lineEndTime},${style},,0,0,0,,${lineText}\n`;
     }
     // P0.5: Opus-style word-by-word pop — words accumulate, current word highlighted
     else if (template && template.wordByWordEvents && line.words.length > 1) {
       const wordCount = line.words.length;
-      const totalLineDurationMs = (line.end - line.start) * 1000;
-
-      // Calculate per-word timing (spread evenly across line duration by actual word timestamps)
       const wordTimings: Array<{ start: number; end: number }> = [];
+
       for (let wi = 0; wi < wordCount; wi++) {
-        const wordRelStart = (line.words[wi].start / line.end) * line.end;
-        const wordRelEnd = wi < wordCount - 1
-          ? (line.words[wi + 1].start / line.end) * line.end
-          : line.end;
-        // Clamp to line boundaries
+        // Clamp relative word times to line boundaries
         const wStart = Math.max(line.start, Math.min(line.end, line.words[wi].start));
         const wEnd = wi < wordCount - 1
           ? Math.max(line.start, Math.min(line.end, line.words[wi + 1].start))
@@ -423,65 +472,89 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         wordTimings.push({ start: wStart, end: wEnd });
       }
 
-      // OpusClip-style word-by-word rendering:
-      // Event i shows words 0..i where word i is highlighted (gold) and previous words are dim.
-      // Words after i are not shown yet.
-      // This creates the effect: words accumulate, only the current word is bright.
       const DIM_COLOR = '&H00888888';  // gray for consumed words
-      const ACCENT_COLOR = template.colors.accent;  // gold for current word
+      const ACCENT_COLOR = template.colors.accent;  // gold/accent for active word
 
       for (let wi = 0; wi < wordCount; wi++) {
         const wStart = wordTimings[wi].start;
-        const wEnd = wi < wordCount - 1 ? wordTimings[wi + 1].start : line.end;
+        const wEnd = wordTimings[wi].end;
 
-        // Build accumulated text: words 0..wi
-        // Word j < wi: dim, Word j == wi: accent
-        let accText = '';
+        let accText = posTag;
         for (let ji = 0; ji <= wi; ji++) {
           const w = line.words[ji];
           const isCurrent = (ji === wi);
           const wordColor = isCurrent ? ACCENT_COLOR : DIM_COLOR;
           const effectiveWordColor = w.emphasisColor || wordColor;
+          let sizeTag = '';
+          if (w.isHighlight) {
+            sizeTag = `\\fs${highlightSize}`;
+          }
           if (ji > 0) accText += ' ';
-          accText += `{\\c${effectiveWordColor}}${escapeAssText(w.text)}`;
+          if (sizeTag) {
+            accText += `{${sizeTag}\\c${effectiveWordColor}}${escapeAssText(w.text)}{\\fs${defaultSize}}`;
+          } else {
+            accText += `{\\c${effectiveWordColor}}${escapeAssText(w.text)}`;
+          }
         }
 
         const wStartTimeFmt = formatAssTime(wStart);
-        // Each event lasts until the next word's start (or line end for last word)
         const wEndTimeFmt = formatAssTime(Math.max(wStart + 0.05, Math.min(wEnd, line.end)));
 
-        // Short minimum duration to prevent flash
-        if (wEnd > wStart + 0.02) {
+        if (wEnd > wStart + 0.01) {
           events += `Dialogue: 0,${wStartTimeFmt},${wEndTimeFmt},${style},,0,0,0,,${accText}\n`;
         }
       }
 
       // Final event: all dim (full line visible after last word)
-      let finalDimText = '';
+      let finalDimText = posTag;
       for (let wi = 0; wi < wordCount; wi++) {
         const w = line.words[wi];
         if (wi > 0) finalDimText += ' ';
         finalDimText += `{\\c${DIM_COLOR}}${escapeAssText(w.text)}`;
       }
-      // Only add if the final dim event is meaningfully long
       const lastWordStart = wordTimings[wordCount - 1].start;
       const dimEndTime = line.end;
       if (dimEndTime - lastWordStart > 0.1) {
         events += `Dialogue: 0,${formatAssTime(lastWordStart)},${formatAssTime(dimEndTime)},${style},,0,0,0,,${finalDimText}\n`;
       }
     } else {
-    // Standard line-level karaoke with emphasis-aware word coloring
-      let karaokeText = '';
+      // Standard line-level karaoke with precise gap timing and size overrides
+      let karaokeText = posTag;
+      let prevTime = line.start;
+
       for (let wi = 0; wi < line.words.length; wi++) {
         const word = line.words[wi];
-        const wordDuration = Math.round((word.end - word.start) * 100); // centiseconds for \K
-        const durationCs = Math.max(1, wordDuration);
+        const gap = word.start - prevTime;
+        if (gap > 0.01) {
+          const gapCs = Math.round(gap * 100);
+          karaokeText += `{\\K${gapCs}}`;
+        }
 
-        // Use emphasis color if set on the word, otherwise speaker color
+        const wordDuration = Math.round((word.end - word.start) * 100);
+        const durationCs = Math.max(1, wordDuration);
         const effectiveColor = word.emphasisColor || baseColor;
 
-        if (wi > 0) karaokeText += ' ';
-        karaokeText += `{\\K${durationCs}\\c${effectiveColor}}${escapeAssText(word.text)}`;
+        let sizeTag = '';
+        if (word.isHighlight) {
+          sizeTag = `\\fs${highlightSize}`;
+        }
+
+        if (wi > 0 && gap <= 0) karaokeText += ' ';
+        if (sizeTag) {
+          karaokeText += `{\\K${durationCs}${sizeTag}\\c${effectiveColor}}${escapeAssText(word.text)}{\\fs${defaultSize}}`;
+        } else {
+          karaokeText += `{\\K${durationCs}\\c${effectiveColor}}${escapeAssText(word.text)}`;
+        }
+        if (gap > 0.01) karaokeText += ' ';
+
+        prevTime = word.end;
+      }
+
+      // If line ends after the last word, pad with silence
+      const finalGap = line.end - prevTime;
+      if (finalGap > 0.01) {
+        const finalGapCs = Math.round(finalGap * 100);
+        karaokeText += `{\\K${finalGapCs}}`;
       }
 
       events += `Dialogue: 0,${lineStartTime},${lineEndTime},${style},,0,0,0,,${karaokeText}\n`;
@@ -532,13 +605,14 @@ export function renderSubtitles(
   outputDir: string,
   filename: string,
   subtitleStyle: SubtitleTemplateId = DEFAULT_TEMPLATE,
+  decisionSegments?: any[],
 ): SubtitleRenderResult {
   // Ensure output directory exists
   if (!existsSync(outputDir)) {
     mkdirSync(outputDir, { recursive: true });
   }
 
-  const assContent = generateAssSubtitle(words, speakerSegments, clipStart, clipEnd, DEFAULT_CONFIG, subtitleStyle);
+  const assContent = generateAssSubtitle(words, speakerSegments, clipStart, clipEnd, DEFAULT_CONFIG, subtitleStyle, decisionSegments);
   const assFilePath = join(outputDir, `${filename}.ass`);
 
   writeFileSync(assFilePath, assContent, 'utf-8');

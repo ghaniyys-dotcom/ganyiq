@@ -100,15 +100,15 @@ const REACTION_HOLD_MAX = 1.8;
 const REACTION_COOLDOWN = 2.5;
 const REACTION_EVENT_DELAY = 0.15;
 
-// Layout hold timers (prevent flicker)
-const LAYOUT_HOLD_SINGLE = 1.5;
-const LAYOUT_HOLD_SPLIT = 1.5;
-const LAYOUT_HOLD_SPLIT_3 = 2.0;
-const LAYOUT_HOLD_SPLIT_4 = 2.5;
-const LAYOUT_HOLD_PIP = 2.0;
-const LAYOUT_HOLD_PIP_ACTIVATE = 2.0;
-const LAYOUT_HOLD_HERO = 2.0;
-const LAYOUT_HOLD_WIDE = 1.5;
+// Layout hold timers (prevent flicker) — professional editors hold 3-8s minimum
+const LAYOUT_HOLD_SINGLE = 3.5;     // was 1.5 — too short, caused rapid SINGLE↔SPLIT flicker
+const LAYOUT_HOLD_SPLIT = 5.0;      // was 1.5 — SPLIT_2 must hold at least 5s
+const LAYOUT_HOLD_SPLIT_3 = 6.0;    // was 2.0 — 3-way split needs stability
+const LAYOUT_HOLD_SPLIT_4 = 7.0;    // was 2.5 — 4-way grid is disorienting if short
+const LAYOUT_HOLD_PIP = 4.0;        // was 2.0 — PiP needs time to register
+const LAYOUT_HOLD_PIP_ACTIVATE = 3.0; // was 2.0 — don't rush into PiP
+const LAYOUT_HOLD_HERO = 5.0;       // was 2.0 — hero+reaction needs time
+const LAYOUT_HOLD_WIDE = 3.0;       // was 1.5 — wide context needs breathing room
 
 // Speaker activity thresholds
 const SPLIT_MIN_SPEAKERS = 2;
@@ -134,11 +134,11 @@ const PEAK_MOMENT_ESCALATE = 50;   // min score to escalate layout
 const PEAK_MOMENT_MAX = 80;        // max escalation level
 const PEAK_HOLD_DECAY = 0.5;       // seconds decay after peak ends
 
-// Visual rhythm
-const MIN_SHOT_DURATION = 0.5;     // discard sub-500ms segments
-const MAX_SHOT_DURATION = 8.0;     // force cut after 8s
-const MAX_CUTS_PER_WINDOW = 3;     // max cuts in 5s window
-const CUT_SUPPRESSION_WINDOW = 5.0;
+// Visual rhythm — professional pacing
+const MIN_SHOT_DURATION = 1.0;     // was 0.5 — discard sub-1s segments (too jumpy)
+const MAX_SHOT_DURATION = 12.0;    // was 8.0 — allow longer holds before forced cut
+const MAX_CUTS_PER_WINDOW = 2;     // was 3 — fewer cuts per window for cleaner output
+const CUT_SUPPRESSION_WINDOW = 8.0; // was 5.0 — wider suppression window
 
 function log(tag: string, message: string): void {
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -512,6 +512,9 @@ const DEFAULT_CONFIG: DecisionEngineConfig = {
 export class DecisionEngine {
   private config: DecisionEngineConfig;
   private smoother: EmaCameraSmoother;
+  private secondarySmoother: EmaCameraSmoother;
+  private tertiarySmoother: EmaCameraSmoother;
+  private quaternarySmoother: EmaCameraSmoother;
   private scheduler: ReactionScheduler;
   private speakerTracker: SpeakerActivityTracker;
   private peakDetector: PeakMomentDetector;
@@ -529,6 +532,9 @@ export class DecisionEngine {
   constructor(config?: Partial<DecisionEngineConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.smoother = new EmaCameraSmoother(this.config.emaAlphaDefault, this.config.emaAlphaSprint);
+    this.secondarySmoother = new EmaCameraSmoother(this.config.emaAlphaDefault, this.config.emaAlphaSprint);
+    this.tertiarySmoother = new EmaCameraSmoother(this.config.emaAlphaDefault, this.config.emaAlphaSprint);
+    this.quaternarySmoother = new EmaCameraSmoother(this.config.emaAlphaDefault, this.config.emaAlphaSprint);
     this.scheduler = new ReactionScheduler();
     this.speakerTracker = new SpeakerActivityTracker(this.config.speakerWindowSec);
     this.peakDetector = new PeakMomentDetector();
@@ -624,9 +630,12 @@ export class DecisionEngine {
       const quaternaryCx = quaternaryId !== null && faceCrops.has(quaternaryId) ? faceCrops.get(quaternaryId)!.cx : primaryCx;
       const quaternaryCy = quaternaryId !== null && faceCrops.has(quaternaryId) ? faceCrops.get(quaternaryId)!.cy : primaryCy;
 
-      // Apply EMA smoothing (primary only)
+      // Apply EMA smoothing to all panels
       const needsSprint = modeChangedThisFrame || this.scheduler.isActive || peakEscalatedMode !== null;
       const smooth = this.smoother.push(primaryCx, primaryCy, needsSprint);
+      const smoothSecondary = this.secondarySmoother.push(secondaryCx, secondaryCy, needsSprint);
+      const smoothTertiary = this.tertiarySmoother.push(tertiaryCx, tertiaryCy, needsSprint);
+      const smoothQuaternary = this.quaternarySmoother.push(quaternaryCx, quaternaryCy, needsSprint);
 
       // Tick reaction scheduler
       this.tickReactionScheduler(frame, t);
@@ -645,14 +654,14 @@ export class DecisionEngine {
         smoothCropX: smooth.x,
         smoothCropY: smooth.y,
         secondaryFaceId: this.secondaryFaceId,
-        secondaryCropX: Math.round(secondaryCx),
-        secondaryCropY: Math.round(secondaryCy),
+        secondaryCropX: smoothSecondary.x,
+        secondaryCropY: smoothSecondary.y,
         tertiaryFaceId: this.tertiaryFaceId,
-        tertiaryCropX: Math.round(tertiaryCx),
-        tertiaryCropY: Math.round(tertiaryCy),
+        tertiaryCropX: smoothTertiary.x,
+        tertiaryCropY: smoothTertiary.y,
         quaternaryFaceId: this.quaternaryFaceId,
-        quaternaryCropX: Math.round(quaternaryCx),
-        quaternaryCropY: Math.round(quaternaryCy),
+        quaternaryCropX: smoothQuaternary.x,
+        quaternaryCropY: smoothQuaternary.y,
         audioEvent: frame.audioEvent,
         eventConfidence: frame.audioEventConfidence,
         transitionAlpha: this.smoother.getCurrentAlpha(),
@@ -760,9 +769,9 @@ export class DecisionEngine {
         }
       }
     }
-    // FACE-COUNT FALLBACK: 2 faces visible for 5s+ even if speaker count uncertain
+    // FACE-COUNT FALLBACK: 2 faces visible for 8s+ even if speaker count uncertain
     if (faceCount >= 2 && activeSpeakerCount < 2 && current === DecisionMode.SINGLE) {
-      if (timeSinceSwitch >= 5.0) {
+      if (timeSinceSwitch >= 8.0) {
         log('LAYOUT', `Face-count fallback: ${faceCount} faces → SPLIT_2 (activeSpeakers=${activeSpeakerCount})`);
         return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_2);
       }
@@ -776,10 +785,10 @@ export class DecisionEngine {
         return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_3);
       }
     }
-    // FACE-COUNT FALLBACK: 3+ faces visible for 6s+
+    // FACE-COUNT FALLBACK: 3+ faces visible for 10s+
     if (faceCount >= 3 && activeSpeakerCount < 3 && 
         (current === DecisionMode.SINGLE || current === DecisionMode.SPLIT_2)) {
-      if (timeSinceSwitch >= 6.0) {
+      if (timeSinceSwitch >= 10.0) {
         log('LAYOUT', `Face-count fallback: ${faceCount} faces → SPLIT_3 (activeSpeakers=${activeSpeakerCount})`);
         return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_3);
       }
@@ -791,10 +800,10 @@ export class DecisionEngine {
         return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_4);
       }
     }
-    // FACE-COUNT FALLBACK: 4+ faces visible for 7s+
+    // FACE-COUNT FALLBACK: 4+ faces visible for 12s+
     if (faceCount >= 4 && activeSpeakerCount < 3 &&
         (current === DecisionMode.SINGLE || current === DecisionMode.SPLIT_2 || current === DecisionMode.SPLIT_3)) {
-      if (timeSinceSwitch >= 7.0) {
+      if (timeSinceSwitch >= 12.0) {
         log('LAYOUT', `Face-count fallback: ${faceCount} faces → SPLIT_4 (activeSpeakers=${activeSpeakerCount})`);
         return this.assignFacesToMode(frame, currentTime, DecisionMode.SPLIT_4);
       }
@@ -1118,6 +1127,9 @@ export class DecisionEngine {
 
   private reset(): void {
     this.smoother.reset();
+    this.secondarySmoother.reset();
+    this.tertiarySmoother.reset();
+    this.quaternarySmoother.reset();
     this.scheduler.reset();
     this.speakerTracker.reset();
     this.peakDetector.reset();

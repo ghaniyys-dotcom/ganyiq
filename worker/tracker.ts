@@ -11,10 +11,19 @@
  *   4. Return TrackedFaceSample[] for decision engine
  */
 
-import { execSync, ExecSyncOptions } from 'child_process';
+import { exec, execSync, ExecSyncOptions } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { platform } from 'os';
+
+function execAsync(cmd: string, options: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    exec(cmd, options, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(typeof stdout === 'string' ? stdout : (stdout as any).toString('utf-8') || '');
+    });
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,10 +81,10 @@ function log(tag: string, message: string): void {
  * Run the Python ByteTrack tracker.
  * Returns tracked frames or null if Python unavailable.
  */
-function runPythonTracker(
+async function runPythonTracker(
   tempDir: string,
   faceDataPath: string,
-): TrackedFrame[] | null {
+): Promise<TrackedFrame[] | null> {
   const pythonBin = resolvePython();
   if (!pythonBin) {
     log('INFO', 'Python not found for tracker — using JS fallback');
@@ -92,7 +101,7 @@ function runPythonTracker(
 
   try {
     const cmd = `${pythonBin} "${trackerScript}" "${faceDataPath}" "${outputPath}"`;
-    execSync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
+    await execAsync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
     log('RUN', `Python tracker completed`);
 
     if (!existsSync(outputPath)) {
@@ -315,12 +324,12 @@ export interface TrackerResult {
  * @param tempDir - Temp directory for intermediate files
  * @returns TrackerResult
  */
-export function runTracker(
+export async function runTracker(
   faceDataPath: string,
   tempDir: string,
-): TrackerResult {
+): Promise<TrackerResult> {
   // Try Python tracker first
-  const pythonResult = runPythonTracker(tempDir, faceDataPath);
+  const pythonResult = await runPythonTracker(tempDir, faceDataPath);
 
   if (pythonResult) {
     const uniqueIds = new Set<number>();

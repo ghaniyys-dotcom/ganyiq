@@ -11,7 +11,16 @@
  * Falls back to V1 pipeline (Haar Cascade + greedy tracking) gracefully.
  */
 
-import { execSync, ExecSyncOptions } from 'child_process';
+import { exec, execSync, ExecSyncOptions } from 'child_process';
+
+function execAsync(cmd: string, options: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    exec(cmd, options, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(typeof stdout === 'string' ? stdout : (stdout as any).toString('utf-8') || '');
+    });
+  });
+}
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, resolve } from 'path';
 import { platform } from 'os';
@@ -155,13 +164,13 @@ function log(tag: string, message: string): void {
  * Run V2 face detection (YOLOv8-face ONNX) with ByteTrack tracking.
  * Returns detected + tracked frames, or null if V2 pipeline unavailable.
  */
-function runV2Detection(
+async function runV2Detection(
   videoPath: string,
   tempDir: string,
   sampleRate: number,
   clipStart?: number,
   clipEnd?: number,
-): TrackerResult | null {
+): Promise<TrackerResult | null> {
   const pythonBin = resolvePython();
   if (!pythonBin) {
     log('V2', 'Python not found — skipping V2 pipeline');
@@ -192,7 +201,7 @@ function runV2Detection(
     if (clipStart !== undefined && clipEnd !== undefined) {
       cmd += ` --start-time ${clipStart} --end-time ${clipEnd}`;
     }
-    const out = execSync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
+    const out = await execAsync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
     log('V2', `Python output: ${(out as string).trim()}`);
 
     if (!existsSync(outputPath)) {
@@ -201,7 +210,7 @@ function runV2Detection(
 
     // Run ByteTrack tracker
     log('V2', 'Running ByteTrack tracker...');
-    const trackResult = runTracker(outputPath, tempDir);
+    const trackResult = await runTracker(outputPath, tempDir);
 
     if (trackResult && trackResult.trackedFrames.length > 0) {
       log('V2', `Tracker: ${trackResult.trackedFrames.length} frames, ${trackResult.uniqueIds} unique IDs (${trackResult.usedPython ? 'Python' : 'JS fallback'})`);
@@ -250,13 +259,13 @@ function checkOpenCV(pythonBin: string): boolean {
   }
 }
 
-function runV1FaceDetection(
+async function runV1FaceDetection(
   videoPath: string,
   tempDir: string,
   sampleRate: number,
   clipStart?: number,
   clipEnd?: number,
-): RawMultiSample[] | null {
+): Promise<RawMultiSample[] | null> {
   const pythonBin = resolvePython();
   if (!pythonBin) {
     log('INFO', 'Python not found — face tracking unavailable, using center crop');
@@ -282,7 +291,7 @@ function runV1FaceDetection(
     if (clipStart !== undefined && clipEnd !== undefined) {
       cmd += ` --start-time ${clipStart} --end-time ${clipEnd}`;
     }
-    const out = execSync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
+    const out = await execAsync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
 
     if (!existsSync(outputPath)) {
       throw new Error('face_data_v1.json not produced');
@@ -984,13 +993,13 @@ function fillSegmentGaps(
 /**
  * Run V2 speaker detection pipeline (AV-ASD) and merge with tracking data.
  */
-function runV2SpeakerDetection(
+async function runV2SpeakerDetection(
   videoPath: string,
   verifiedFrames: MultiFaceSample[],
   tempDir: string,
   envHfToken?: string,
   envDeepgramKey?: string,
-): SpeakerDetectionResult | null {
+): Promise<SpeakerDetectionResult | null> {
   try {
     // Convert MultiFaceSample[] to TrackedFrame[] (the format speaker-detector expects)
     const trackedFrames = verifiedFrames.map(mf => ({
@@ -1007,7 +1016,7 @@ function runV2SpeakerDetection(
       faceCount: mf.face_count,
     }));
 
-    const result = detectSpeakers(
+    const result = await detectSpeakers(
       videoPath,
       trackedFrames,
       tempDir,
@@ -1201,7 +1210,7 @@ function buildV2Segments(
  * @param hfToken - HuggingFace token for speaker diarization (optional)
  * @returns TrackResult with segments, or null on failure/fallback
  */
-export function analyzeFaces(
+export async function analyzeFaces(
   videoPath: string,
   tempDir: string,
   sourceWidth: number,
@@ -1210,10 +1219,10 @@ export function analyzeFaces(
   clipEnd?: number,
   hfToken?: string,
   deepgramKey?: string,
-): TrackResult | null {
+): Promise<TrackResult | null> {
   // ── TRY V2 PIPELINE FIRST ──
   log('V2', 'Attempting V2 pipeline (YOLOv8-face + ByteTrack + AV-ASD)...');
-  const trackerResult = runV2Detection(videoPath, tempDir, SAMPLE_RATE, clipStart, clipEnd);
+  const trackerResult = await runV2Detection(videoPath, tempDir, SAMPLE_RATE, clipStart, clipEnd);
 
   if (trackerResult && trackerResult.trackedFrames.length > 0) {
     log('V2', 'V2 detection + tracking succeeded. Running AV-ASD...');
@@ -1222,7 +1231,7 @@ export function analyzeFaces(
     const verifiedFrames = trackedFramesToMultiFaceSamples(trackerResult);
 
     // Run V2 speaker detection
-    const speakerData = runV2SpeakerDetection(
+    const speakerData = await runV2SpeakerDetection(
       videoPath,
       verifiedFrames,
       tempDir,
@@ -1283,7 +1292,7 @@ export function analyzeFaces(
   // ── V1 FALLBACK ──
   log('V2', 'V2 pipeline unavailable — falling back to V1 (Haar Cascade + greedy tracking)');
 
-  const rawSamples = runV1FaceDetection(videoPath, tempDir, SAMPLE_RATE, clipStart, clipEnd);
+  const rawSamples = await runV1FaceDetection(videoPath, tempDir, SAMPLE_RATE, clipStart, clipEnd);
   if (!rawSamples || rawSamples.length === 0) {
     log('RESULT', 'No face data — using center crop fallback');
     return null;

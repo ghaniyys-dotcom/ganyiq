@@ -258,7 +258,7 @@ export async function renderClip(
   const hfToken = env.HF_TOKEN || process.env.HF_TOKEN || '';
   const deepgramKey = env.DEEPGRAM_API_KEY || process.env.DEEPGRAM_API_KEY || '';
   if (heartbeatFn) await heartbeatFn();
-  const trackResult = analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight, startTime, endTime, hfToken, deepgramKey);
+  const trackResult = await analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight, startTime, endTime, hfToken, deepgramKey);
 
   // Generate subtitles if we have word timestamps
   let subtitleFilter = '';
@@ -276,6 +276,7 @@ export async function renderClip(
       tempSubtitlesDir,
       `${videoId}_${Math.round(startTime)}s`,
       effectiveSubtitleStyle,
+      trackResult.decisionSegments || undefined,
     );
     log('SUBTITLE', `Using subtitle style: ${effectiveSubtitleStyle}`);
     subtitleFilter = `,${buildSubtitleFilter(subtitleResult.assFilePath)}`;
@@ -989,6 +990,10 @@ async function renderVerticalSplit(
 
         const reactionLabel = seg.crops[0]?.isReaction ? 'reaction' : isWide ? 'wide' : 'single';
 
+        const segDuration = Math.max(1, segEnd - segStart);
+        const kbZoom = 0.04; // 4% zoom over the segment
+        const cropFilter = `crop=w='${effectiveCw}*(1-${kbZoom}*t/${segDuration})':h='${FULL_H}*(1-${kbZoom}*t/${segDuration})':x='${cx}+${effectiveCw}*${kbZoom}*t/(2*${segDuration})':y='${FULL_H}*${kbZoom}*t/(2*${segDuration})'`;
+
         if (seg.crops[0]?.isReaction) {
           const reactionZoom = 1.05;
           filterParts.push(
@@ -1001,7 +1006,7 @@ async function renderVerticalSplit(
         } else {
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
-            + `crop=${effectiveCw}:${FULL_H}:${cx}:${cy},`
+            + `${cropFilter},`
             + `scale=1080:1920:flags=lanczos,`
             + `unsharp=5:5:0.8:3:3:0.4,`
             + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
@@ -1020,7 +1025,7 @@ async function renderVerticalSplit(
         const cellH = 960;   // 1920/2
 
         // Compute crop width for each face
-        let panelCropW = Math.round(FULL_H * (1080 / cellH));
+        let panelCropW = Math.round(FULL_H * (cellW / cellH));
         panelCropW = Math.min(panelCropW, sourceWidth);
 
         const splitLabel = `sp${segIdx}`;
@@ -1068,9 +1073,14 @@ async function renderVerticalSplit(
         log('SPLIT', `Seg ${segIdx}: 4-way grid [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
 
       } else {
-        // ── Multi-face vstack (SPLIT_2, SPLIT_3): trim → split → crop each → vstack → sharpen → subtitle ──
+        // ── Multi-face vstack (SPLIT_2, SPLIT_3): trim → split → crop → sharpen → pad divider → vstack → subtitle ──
+        // P2.1: Professional divider lines between panels (3px white)
+        // P3.1: Per-panel sharpening (unsharp BEFORE vstack, not after)
         const faceCount = Math.min(numFaces, SPLIT_MAX_FACES);
-        const segHeight = Math.floor(1920 / faceCount);
+        const DIVIDER_PX = 3;
+        const totalDividers = faceCount - 1;
+        const usableHeight = 1920 - (totalDividers * DIVIDER_PX);
+        const segHeight = Math.floor(usableHeight / faceCount);
         let panelCropW = Math.round(FULL_H * (1080 / segHeight));
         panelCropW = Math.min(panelCropW, sourceWidth);
 
@@ -1088,20 +1098,55 @@ async function renderVerticalSplit(
             : sourceWidth / 2;
           const cx = clamp(Math.round(faceCx - panelCropW / 2), 0, sourceWidth - panelCropW);
           const subLabel = `sf${segIdx}_${fi}`;
+
+          // P3.1: Sharpen each panel INDIVIDUALLY before compositing
+          // P2.1: Add bottom divider pad (white 3px) except for last panel
+          const needsDivider = fi < faceCount - 1;
+          const dividerFilter = needsDivider
+            ? `,pad=1080:${segHeight + DIVIDER_PX}:0:0:color=white`
+            : '';
+
+          // P2.4: Pad top panel to 1920 to act as a background canvas for slide-in overlays
+          const padFilter = fi === 0
+            ? `,pad=1080:1920:0:0:color=black`
+            : '';
+
           filterParts.push(
-            `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,scale=1080:${segHeight}:flags=lanczos,setsar=1,setpts=PTS-STARTPTS[${subLabel}]`
+            `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,`
+            + `scale=1080:${segHeight}:flags=lanczos,`
+            + `unsharp=5:5:0.8:3:3:0.4,`
+            + `setsar=1,setpts=PTS-STARTPTS${dividerFilter}${padFilter}[${subLabel}]`
           );
           vstackInputs.push(`[${subLabel}]`);
         }
 
-        filterParts.push(
-          `${vstackInputs.join('')}vstack=inputs=${faceCount},setsar=1,`
-          + `unsharp=5:5:0.8:3:3:0.4,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
-        );
+        // P2.4: Overlay panels with a 0.4s slide-in transition animation
+        if (faceCount === 2) {
+          filterParts.push(
+            `[sf${segIdx}_0][sf${segIdx}_1]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${segHeight + DIVIDER_PX})*(t/0.4),${segHeight + DIVIDER_PX})':shortest=1,`
+            + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+          );
+        } else if (faceCount === 3) {
+          const y1 = segHeight + DIVIDER_PX;
+          const y2 = 2 * (segHeight + DIVIDER_PX);
+          filterParts.push(
+            `[sf${segIdx}_0][sf${segIdx}_1]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${y1})*(t/0.4),${y1})'[tmp_v${segIdx}]`
+          );
+          filterParts.push(
+            `[tmp_v${segIdx}][sf${segIdx}_2]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${y2})*(t/0.4),${y2})':shortest=1,`
+            + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+          );
+        } else {
+          // Fallback just in case
+          filterParts.push(
+            `${vstackInputs.join('')}vstack=inputs=${faceCount},`
+            + `setsar=1,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+          );
+        }
         filterParts.push(
           `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
         );
-        log('SPLIT', `Seg ${segIdx}: ${faceCount}-way vstack cw=${panelCropW} [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
+        log('SPLIT', `Seg ${segIdx}: ${faceCount}-way vstack cw=${panelCropW} divider=${DIVIDER_PX}px [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
       }
 
       segIdx++;
