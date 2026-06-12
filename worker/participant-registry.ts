@@ -256,7 +256,7 @@ export class ParticipantRegistry {
         }
         if (allExclusive) {
           const spatialScore = this.computeSpatialConsistency(seedId, candidateId);
-          if (spatialScore > 0.65) clusterIds.add(candidateId);
+          if (spatialScore > 0.45) clusterIds.add(candidateId);
         }
       }
       for (const id of clusterIds) usedIds.add(id);
@@ -300,7 +300,7 @@ export class ParticipantRegistry {
     const dy = avgA.cy - avgB.cy;
     const avgSize = (avgA.w + avgA.h + avgB.w + avgB.h) / 4;
     const positionDistance = Math.sqrt(dx * dx + dy * dy) / Math.max(avgSize, 1);
-    if (positionDistance > 2.0) {
+    if (positionDistance > 3.0) {
       return 0;
     }
     const sizeRatio = Math.min(avgA.w / Math.max(avgB.w, 1), avgB.w / Math.max(avgA.w, 1));

@@ -22,11 +22,33 @@ import subprocess
 from pathlib import Path
 
 
+def resolve_ffmpeg() -> str:
+    """Return the full path to ffmpeg, checking FFMPEG_LOCATION env var first."""
+    ffmpeg_location = os.environ.get('FFMPEG_LOCATION')
+    if ffmpeg_location:
+        candidate = os.path.join(ffmpeg_location, 'ffmpeg.exe')
+        if os.path.exists(candidate):
+            return candidate
+        candidate = os.path.join(ffmpeg_location, 'ffmpeg')
+        if os.path.exists(candidate):
+            return candidate
+    if sys.platform == 'win32':
+        home = os.environ.get('LOCALAPPDATA', '')
+        if home:
+            candidate = os.path.join(home, 'Microsoft', 'WinGet', 'Packages',
+                                     'Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe',
+                                     'ffmpeg-8.1.1-full_build', 'bin', 'ffmpeg.exe')
+            if os.path.exists(candidate):
+                return candidate
+    return 'ffmpeg'
+
+
 def extract_audio(video_path: str, audio_path: str) -> bool:
     """Extract audio from video file using ffmpeg."""
+    ffmpeg_bin = resolve_ffmpeg()
     try:
         subprocess.run(
-            ['ffmpeg', '-y', '-i', video_path, '-vn',
+            [ffmpeg_bin, '-y', '-i', video_path, '-vn',
              '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
              audio_path],
             capture_output=True, timeout=120

@@ -108,7 +108,7 @@ async function runPythonTracker(
   const outputPath = join(tempDir, 'tracked_faces.json');
 
   try {
-    const cmd = `${pythonBin} "${trackerScript}" "${faceDataPath}" "${outputPath}" --conf-threshold 0.15 --max-lost 25`;
+    const cmd = `${pythonBin} "${trackerScript}" "${faceDataPath}" "${outputPath}" --conf-threshold 0.15 --max-lost 50`;
     await execAsync(cmd, { ...EXEC_OPTS, timeout: 120_000 });
     log('RUN', `Python tracker completed`);
 

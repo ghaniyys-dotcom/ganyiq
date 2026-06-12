@@ -273,6 +273,10 @@ export async function renderClip(
   // HF Token for PyAnnote speaker diarization (optional — set HF_TOKEN in .env.local)
   const hfToken = env.HF_TOKEN || process.env.HF_TOKEN || '';
   const deepgramKey = env.DEEPGRAM_API_KEY || process.env.DEEPGRAM_API_KEY || '';
+  // Make FFMPEG_LOCATION available to Python subprocesses (diarize.py, transcribe.py, reaction-detector.py)
+  if (env.FFMPEG_LOCATION && !process.env.FFMPEG_LOCATION) {
+    process.env.FFMPEG_LOCATION = env.FFMPEG_LOCATION;
+  }
   if (heartbeatFn) await heartbeatFn();
   const trackResult = await analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight, startTime, endTime, hfToken, deepgramKey);
 
