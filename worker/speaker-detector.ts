@@ -1275,8 +1275,30 @@ async function runTranscription(
     if (!existsSync(outputPath)) return [];
 
     const data = JSON.parse(readFileSync(outputPath, 'utf-8'));
-    log('TRANSCRIBE', `Source: ${data.source || 'unknown'}, ${data.words?.length || 0} words`);
-    return data.words || [];
+    const words = (data.words || []) as WordTimestamp[];
+    // Log first 20 timestamps to verify timeline
+    if (words.length > 0) {
+      const samples = words.slice(0, 20).map(w => `${w.word}@${w.start}-${w.end}`);
+      log('TIMESTAMPS', `First 20 word timestamps (raw): ${samples.join(', ')}`);
+      const lastWord = words[words.length - 1];
+      log('TIMESTAMPS', `Last word: ${lastWord.word}@${lastWord.start}-${lastWord.end}, duration=${(lastWord.end - words[0].start).toFixed(1)}s`);
+    }
+    // Normalize: Deepgram returns clip-relative timestamps (0-based for extracted clip).
+    // Subtitle renderer expects absolute video timestamps.
+    if (clipStart !== undefined && clipStart > 0 && words.length > 0) {
+      log('NORMALIZE', `Adding clipStart offset ${clipStart}s to ${words.length} word timestamps`);
+      for (const w of words) {
+        w.start += clipStart;
+        w.end += clipStart;
+      }
+      // Re-log after normalization
+      if (words.length > 0) {
+        const samples = words.slice(0, 3).map(w => `${w.word}@${w.start.toFixed(2)}-${w.end.toFixed(2)}`);
+        log('TIMESTAMPS', `After normalize: ${samples.join(', ')}`);
+      }
+    }
+    log('TRANSCRIBE', `Source: ${data.source || 'unknown'}, ${words.length} words`);
+    return words;
   } catch (err) {
     const error = err as any;
     log('WARN', `Transcription failed: ${error.message}\nStderr: ${error.stderr || ''}\nStdout: ${error.stdout || ''}`);
