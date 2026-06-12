@@ -1229,7 +1229,11 @@ async function runDiarization(
     log('DIARIZE', `Legacy format: ${raw.length} segments`);
     return Array.isArray(raw) ? raw : [];
   } catch (err) {
-    log('WARN', `Diarization failed: ${(err as Error).message?.slice(0, 120)}`);
+    const execErr = err as any;
+    const errorMsg = (execErr.message || String(err)).slice(0, 500);
+    const stderrStr = execErr.stderr ? execErr.stderr.toString().slice(0, 1000) : '';
+    log('WARN', `Diarization failed: ${errorMsg}`);
+    if (stderrStr) log('WARN', `diarize.py stderr: ${stderrStr}`);
     return [];
   }
 }

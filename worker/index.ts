@@ -420,7 +420,7 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
     } catch (err) {
       const execErr = err as any;
       const errorMsg = (execErr.message || String(err)).slice(0, 2000);
-      const stderrStr = execErr.stderr ? execErr.stderr.toString().slice(0, 1500) : '';
+      const stderrStr = execErr.stderr ? execErr.stderr.toString().slice(0, 3000) : '';
       log('CLIP', `❌ Failed: ${errorMsg}`);
       if (stderrStr) log('CLIP', `ffmpeg stderr:\n${stderrStr}`);
 
