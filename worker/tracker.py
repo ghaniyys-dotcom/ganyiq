@@ -104,8 +104,8 @@ class ByteTrack:
 
     def __init__(
         self,
-        iou_threshold_high: float = 0.3,
-        iou_threshold_low: float = 0.1,
+        iou_threshold_high: float = 0.2,
+        iou_threshold_low: float = 0.2,
         max_lost: int = 20,
         conf_threshold: float = 0.15,
     ):

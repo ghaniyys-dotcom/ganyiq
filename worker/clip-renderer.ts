@@ -917,7 +917,7 @@ async function renderVerticalSplit(
         );
         filterParts.push(
           `[main_shadowed${segIdx}][pip_img${segIdx}]overlay=W-w-24:H-h-24,`
-          + `setsar=1,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+          + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
         );
         filterParts.push(
           `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
@@ -960,7 +960,7 @@ async function renderVerticalSplit(
           );
           filterParts.push(
             `[hero${segIdx}][react${segIdx}]vstack=inputs=2,`
-            + `setsar=1,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+            + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
           );
         } else {
           // 2 reaction panels side by side
@@ -988,7 +988,7 @@ async function renderVerticalSplit(
           );
           filterParts.push(
             `[hero${segIdx}][react_row${segIdx}]vstack=inputs=2,`
-            + `setsar=1,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+            + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
           );
         }
 
@@ -1023,18 +1023,17 @@ async function renderVerticalSplit(
             + `crop=${Math.round(effectiveCw / reactionZoom)}:${FULL_H}:${Math.round(cx + effectiveCw * (1 - 1/reactionZoom) / 2)}:${cy},`
             + `scale=1080:1920:flags=lanczos,`
             + `unsharp=5:5:0.8:3:3:0.4,`
-            + `setsar=1,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+            + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
           );
         } else {
           const durationStr = segDuration.toFixed(4);
-          const fpsStr = sourceFps.toFixed(3);
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
             + `crop=${effectiveCw}:${FULL_H}:${cx}:${cy},`
             + `scale=1080:1920:flags=lanczos,`
-            + `zoompan=z='1.0+0.04*time/${durationStr}':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=1080x1920:fps=${fpsStr},`
+            + `zoompan=z='1.0+0.04*time/${durationStr}':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=1080x1920:fps=30000/1001,`
             + `unsharp=5:5:0.8:3:3:0.4,`
-            + `setsar=1,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+            + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
           );
         }
 
@@ -1090,7 +1089,7 @@ async function renderVerticalSplit(
         // Stack rows
         filterParts.push(
           `[top_row${segIdx}][btm_row${segIdx}]vstack=inputs=2,setsar=1,`
-          + `unsharp=5:5:0.8:3:3:0.4,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+          + `unsharp=5:5:0.8:3:3:0.4,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
         );
         filterParts.push(
           `[0:a]atrim=start=${segStart}:end=${segEnd},asetpts=PTS-STARTPTS[${aLabel}]`
@@ -1149,7 +1148,7 @@ async function renderVerticalSplit(
         if (faceCount === 2) {
           filterParts.push(
             `[sf${segIdx}_0][sf${segIdx}_1]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${segHeight + DIVIDER_PX})*(t/0.4),${segHeight + DIVIDER_PX})':shortest=1,`
-            + `setsar=1,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+            + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
           );
         } else if (faceCount === 3) {
           const y1 = segHeight + DIVIDER_PX;
@@ -1159,13 +1158,13 @@ async function renderVerticalSplit(
           );
           filterParts.push(
             `[tmp_v${segIdx}][sf${segIdx}_2]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${y2})*(t/0.4),${y2})':shortest=1,`
-            + `setsar=1,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+            + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
           );
         } else {
           // Fallback just in case
           filterParts.push(
             `${vstackInputs.join('')}vstack=inputs=${faceCount},`
-            + `setsar=1,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
+            + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS${subtitleFilter}[${vLabel}]`
           );
         }
         filterParts.push(
