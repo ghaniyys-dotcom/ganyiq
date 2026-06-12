@@ -418,8 +418,11 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
     try {
       await renderClip(job, env, () => sendHeartbeat(env));
     } catch (err) {
-      const errorMsg = (err as Error).message.slice(0, 2000);
+      const execErr = err as any;
+      const errorMsg = (execErr.message || String(err)).slice(0, 2000);
+      const stderrStr = execErr.stderr ? execErr.stderr.toString().slice(0, 1500) : '';
       log('CLIP', `❌ Failed: ${errorMsg}`);
+      if (stderrStr) log('CLIP', `ffmpeg stderr:\n${stderrStr}`);
 
       // Report failure
       await apiPost(

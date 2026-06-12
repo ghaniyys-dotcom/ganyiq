@@ -1227,7 +1227,9 @@ async function renderVerticalSplit(
     let cmd: string;
 
     // Use filter_complex_script when the filter is long (Windows cmd.exe 8191 char limit)
-    if (filterComplex.length > 4000) {
+    // On Windows, always use filter_script to avoid cmd.exe quoting/escaping issues
+    const useFilterScript = platform() === 'win32' || filterComplex.length > 4000;
+    if (useFilterScript) {
       const effectiveRenderId = renderId || `render_${Math.round(jobStartTime)}s`;
       const filterScriptPath = join(TEMP_DIR, `filter_${effectiveRenderId}.txt`);
       writeFileSync(filterScriptPath, filterComplex, 'utf-8');

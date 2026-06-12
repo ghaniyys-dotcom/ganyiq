@@ -637,6 +637,8 @@ export function renderSubtitles(
  * Uses the `ass` filter for high-quality rendering.
  */
 export function buildSubtitleFilter(assFilePath: string): string {
+  // Escape colon for ffmpeg filter syntax: C:/path → C\:/path
+  // Single backslash + colon tells ffmpeg the colon is part of the path, not a param separator
   const escapedPath = assFilePath.replace(/\\/g, '/').replace(/:/g, '\\:');
   return `ass='${escapedPath}'`;
 }
