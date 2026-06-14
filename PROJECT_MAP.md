@@ -61,7 +61,7 @@
 | File | Role |
 |------|------|
 | `deploy.sh` | Production deployment — rsync + build + restart |
-| `infrastructure/nginx/ganiyq.conf` | Nginx reverse proxy config (reference copy) |
+| `infrastructure/nginx/ganyiq.conf` | Nginx reverse proxy config (reference copy) |
 | `infrastructure/README.md` | Locations of original config files |
 
 ## External Services

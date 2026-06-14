@@ -18,6 +18,8 @@ import { analyzeFaces, type CropSegment, type MultiCropSegment, type MultiFaceSa
 import type { DecisionSegment } from './decision-engine';
 import { renderSubtitles, type SubtitleRenderResult, buildSubtitleFilter } from './subtitle-renderer';
 import type { SubtitleTemplateId } from './subtitle-templates';
+import { logMemoryStart, logMemoryEnd, startMemoryTracking, stopMemoryTracking } from './memory-profiler';
+import { isEnabled, logFeatureFlags } from './features';
 
 // ---------------------------------------------------------------------------
 // Interfaces (mirrors the types in worker/index.ts)
@@ -194,6 +196,12 @@ export async function renderClip(
 
   log('CLIP', `Rendering clip ${videoId} ${startTime}s-${endTime}s`);
 
+  // Log feature flag status for debugging
+  logFeatureFlags();
+
+  // Start memory profiling (periodic 5s snapshots)
+  startMemoryTracking(5000);
+
   // Ensure cache directory
   if (!existsSync(CACHE_DIR)) execSync(`mkdir "${CACHE_DIR}"`, EXEC_OPTS);
   if (!existsSync(TEMP_DIR)) execSync(`mkdir "${TEMP_DIR}"`, EXEC_OPTS);
@@ -278,12 +286,15 @@ export async function renderClip(
     process.env.FFMPEG_LOCATION = env.FFMPEG_LOCATION;
   }
   if (heartbeatFn) await heartbeatFn();
+  logMemoryStart('analysis-pipeline');
   const trackResult = await analyzeFaces(videoPath, TEMP_DIR, sourceWidth, sourceHeight, startTime, endTime, hfToken, deepgramKey);
+  logMemoryEnd('analysis-pipeline');
 
   // Generate subtitles if we have word timestamps
   let subtitleFilter = '';
   let subtitleResult: SubtitleRenderResult | null = null;
-  if (trackResult?.speakerData?.wordTimestamps && trackResult.speakerData.wordTimestamps.length > 0) {
+  if (trackResult?.speakerData?.wordTimestamps && trackResult.speakerData.wordTimestamps.length > 0 && isEnabled('SUBTITLES')) {
+    logMemoryStart('subtitle-generation');
     log('SUBTITLE', 'Generating ASS subtitles...');
     const tempSubtitlesDir = join(TEMP_DIR, 'subs');
     if (!existsSync(tempSubtitlesDir)) mkdirSync(tempSubtitlesDir, { recursive: true });
@@ -301,11 +312,18 @@ export async function renderClip(
     log('SUBTITLE', `Using subtitle style: ${effectiveSubtitleStyle}`);
     subtitleFilter = `,${buildSubtitleFilter(subtitleResult.assFilePath)}`;
     log('SUBTITLE', `✅ Subtitles generated: ${subtitleResult.lineCount} lines, ${subtitleResult.wordCount} words`);
+    logMemoryEnd('subtitle-generation');
   } else {
     log('SUBTITLE', 'No word-level timestamps available — skipping subtitles');
+    logMemoryEnd('subtitle-generation');
+  }
+  if (!isEnabled('SUBTITLES')) {
+    log('SUBTITLE', 'SUBTITLES disabled by feature flag');
   }
 
   const hasSubtitles = subtitleResult !== null ? '1' : '0';
+
+  logMemoryStart('ffmpeg-render');
 
   let ffmpegCmd: string;
   if (renderMode === 'vertical' || renderMode === 'vertical-split') {
@@ -407,6 +425,7 @@ export async function renderClip(
   if (!fileExists) {
     throw new Error('ffmpeg cut produced no output file');
   }
+  logMemoryEnd('ffmpeg-render');
 
   // Actual file size from disk
   let fileSizeBytes = 0;
@@ -522,6 +541,9 @@ export async function renderClip(
 
   // Cleanup temp clip file
   try { execSync(`del /f "${outputPath}"`, EXEC_OPTS); } catch { try { execSync(`rm -f "${outputPath}"`, { ...EXEC_OPTS, shell: '/bin/sh' }); } catch {} }
+
+  // Stop memory tracking and report peaks
+  stopMemoryTracking();
 }
 
 // =========================================================================
@@ -851,6 +873,12 @@ async function renderVerticalSplit(
 
   log('SPLIT', `Using ${hasNvenc ? 'NVENC GPU' : 'libx264 CPU'} encoder`);
 
+  // P0-7: Simplified render mode — strip all transitions, zoompan, overlays if flag is disabled
+  const simplified = !isEnabled('LAYOUT_TRANSITIONS');
+  if (simplified) {
+    log('SPLIT', 'LAYOUT_TRANSITIONS disabled — simplified render graph (no xfade, no zoompan, no slide-in)');
+  }
+
   let segIdx = 0;
 
   try {
@@ -861,7 +889,8 @@ async function renderVerticalSplit(
       if (segEnd <= segStart) continue;
       const thisDuration = segEnd - segStart;
       segDurations.push(thisDuration);
-      segTransitions.push(seg.transitionIn);
+      // Force transitions off in simplified mode
+      segTransitions.push(simplified ? undefined : seg.transitionIn);
 
       const numFaces = seg.crops.length;
       const vLabel = `sv${segIdx}`;
@@ -874,7 +903,7 @@ async function renderVerticalSplit(
       const isPiP = numFaces >= 2 && seg.mode === 'listener_pip';
       const isHeroReaction = seg.mode === 'hero_reaction';
 
-      if (isPiP) {
+      if (isPiP && !simplified) {
         // ── Picture-in-Picture: speaker full-frame + listener inset ──
         const mainFace = seg.crops[0];
         const pipFace = seg.crops[1];
@@ -924,7 +953,7 @@ async function renderVerticalSplit(
         );
         log('SPLIT', `Seg ${segIdx}: PiP [${segStart}s-${segEnd}s]`);
 
-      } else if (isHeroReaction) {
+      } else if (isHeroReaction && !simplified) {
         // ── HERO_REACTION: 60/40 top/bottom split ──
         // crops[0] = primary speaker (top 60%, full width)
         // crops[1..2] = reaction panel(s) (bottom 40%, 1 or 2 faces side by side)
@@ -1016,7 +1045,7 @@ async function renderVerticalSplit(
         const kbZoom = 0.04; // 4% zoom over the segment
         const cropFilter = `crop=w='${effectiveCw}*(1-${kbZoom}*t/${segDuration})':h='${FULL_H}*(1-${kbZoom}*t/${segDuration})':x='${cx}+${effectiveCw}*${kbZoom}*t/(2*${segDuration})':y='${FULL_H}*${kbZoom}*t/(2*${segDuration})'`;
 
-        if (seg.crops[0]?.isReaction) {
+        if (seg.crops[0]?.isReaction && !simplified) {
           const reactionZoom = 1.05;
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
@@ -1025,7 +1054,7 @@ async function renderVerticalSplit(
             + `unsharp=5:5:0.8:3:3:0.4,`
             + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`
           );
-        } else {
+        } else if (!simplified) {
           const durationStr = segDuration.toFixed(4);
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
@@ -1033,6 +1062,14 @@ async function renderVerticalSplit(
             + `scale=1080:1920:flags=lanczos,`
             + `zoompan=z='1.0+0.04*time/${durationStr}':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=1080x1920:fps=30000/1001,`
             + `unsharp=5:5:0.8:3:3:0.4,`
+            + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`
+          );
+        } else {
+          // Simplified: no zoompan, no reaction zoom — plain crop + scale
+          filterParts.push(
+            `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
+            + `crop=${effectiveCw}:${FULL_H}:${cx}:${cy},`
+            + `scale=1080:1920:flags=lanczos,`
             + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`
           );
         }
@@ -1131,7 +1168,7 @@ async function renderVerticalSplit(
             : '';
 
           // P2.4: Pad top panel to 1920 to act as a background canvas for slide-in overlays
-          const padFilter = fi === 0
+          const padFilter = fi === 0 && !simplified
             ? `,pad=1080:1920:0:0:color=black`
             : '';
 
@@ -1144,8 +1181,14 @@ async function renderVerticalSplit(
           vstackInputs.push(`[${subLabel}]`);
         }
 
-        // P2.4: Overlay panels with a 0.4s slide-in transition animation
-        if (faceCount === 2) {
+        // P2.4: Overlay panels with slide-in transition animation, or plain vstack in simplified mode
+        if (simplified) {
+          // Simplified: plain vstack, no slide-in animation
+          filterParts.push(
+            `${vstackInputs.join('')}vstack=inputs=${faceCount},`
+            + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`
+          );
+        } else if (faceCount === 2) {
           filterParts.push(
             `[sf${segIdx}_0][sf${segIdx}_1]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${segHeight + DIVIDER_PX})*(t/0.4),${segHeight + DIVIDER_PX})':shortest=1,`
             + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`

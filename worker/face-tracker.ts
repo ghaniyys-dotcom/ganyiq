@@ -32,6 +32,8 @@ function execAsync(cmd: string, options: any): Promise<string> {
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, resolve } from 'path';
 import { platform } from 'os';
+import { logMemoryStart, logMemoryEnd } from './memory-profiler';
+import { isEnabled } from './features';
 import { runTracker, type TrackerResult } from './tracker';
 import { detectSpeakers, type SpeakerDetectionResult, type SpeakerFrame } from './speaker-detector';
 import { processDecisionEngine, type DecisionSegment } from './decision-engine';
@@ -1232,9 +1234,16 @@ export async function analyzeFaces(
   hfToken?: string,
   deepgramKey?: string,
 ): Promise<TrackResult | null> {
-  // ── TRY V2 PIPELINE FIRST ──
+  // -- TRY V2 PIPELINE FIRST --
   log('V2', 'Attempting V2 pipeline (YOLOv8-face + ByteTrack + AV-ASD)...');
-  const trackerResult = await runV2Detection(videoPath, tempDir, SAMPLE_RATE, clipStart, clipEnd);
+  let trackerResult = null;
+  if (isEnabled('V2_TRACKING')) {
+    logMemoryStart('face-tracking');
+    trackerResult = await runV2Detection(videoPath, tempDir, SAMPLE_RATE, clipStart, clipEnd);
+    logMemoryEnd('face-tracking');
+  } else {
+    log('V2', 'V2_TRACKING disabled by feature flag — skipping');
+  }
 
   if (trackerResult && trackerResult.trackedFrames.length > 0) {
     log('V2', 'V2 detection + tracking succeeded. Running AV-ASD...');

@@ -27,6 +27,8 @@ import { exec, execSync, ExecSyncOptions } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { platform } from 'os';
+import { logMemoryStart, logMemoryEnd } from './memory-profiler';
+import { isEnabled } from './features';
 
 function execAsync(cmd: string, options: any): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -999,14 +1001,31 @@ export async function detectSpeakers(
   log('DIARIZE', `Face detection found ${uniqueFaceIds.size} unique faces — estimating ${estimatedSpeakers} speakers`);
 
   // Step 1: Run diarization with estimated speaker count
-  const speakerSegments = await runDiarization(videoPath, tempDir, hfToken, estimatedSpeakers, deepgramKey);
-  log('DIARIZE', `${speakerSegments.length} segments, ${countSpeakers(speakerSegments)} speakers`);
+  let speakerSegments: SpeakerLabel[] = [];
+  if (isEnabled('DIARIZATION')) {
+    logMemoryStart('diarization');
+    speakerSegments = await runDiarization(videoPath, tempDir, hfToken, estimatedSpeakers, deepgramKey);
+    log('DIARIZE', speakerSegments.length + ' segments, ' + countSpeakers(speakerSegments) + ' speakers');
+    logMemoryEnd('diarization');
+  } else {
+    log('DIARIZE', 'DIARIZATION disabled by feature flag — skipping');
+  }
 
   // Step 2: Run word-level transcription (Whisper → Deepgram fallback)
+  logMemoryStart('transcription');
   const wordTimestamps = await runTranscription(videoPath, tempDir, deepgramKey, clipStart, clipEnd);
-  log('TRANSCRIBE', `${wordTimestamps.length} words`);    // Step 3 [V3]: Run AUDIO-BASED reaction detection (replaces text keyword matching)
-    const reactionResult = await runReactionDetection(videoPath, tempDir);
-    const reactionSource = reactionResult?.source || 'none';
+  log('TRANSCRIBE', `${wordTimestamps.length} words`);
+  logMemoryEnd('transcription');
+
+  // Step 3 [V3]: Run AUDIO-BASED reaction detection (replaces text keyword matching)
+  let reactionResult: ReactionDetectorResult | null = null;
+  let reactionSource = 'none';
+  let visualResult: VisualReactionResult | null = null;
+  let visualSource = 'none';
+  if (isEnabled('REACTION_DETECTION')) {
+    logMemoryStart('reaction-detection');
+    reactionResult = await runReactionDetection(videoPath, tempDir);
+    reactionSource = reactionResult?.source || 'none';
     if (reactionResult && reactionResult.events.length > 0) {
       const eventTypes = [...new Set(reactionResult.events.map(e => e.event_type))];
       log('AUDIO_EVENT', `V3 audio detection: ${reactionResult.events.length} events ` +
@@ -1016,17 +1035,23 @@ export async function detectSpeakers(
     }
 
     // Step 3b [P0.2]: Run VISUAL-BASED reaction detection from face landmarks
-    const visualResult = runVisualReactionDetection(trackedFrames);
-    const visualSource = visualResult?.source || 'none';
-    if (visualResult && visualResult.events.length > 0) {
-      const eventTypes = [...new Set(visualResult.events.map(e => e.event_type))];
-      log('VISUAL', `P0.2 visual detection: ${visualResult.events.length} events ` +
-        `(types: ${eventTypes.join(', ')}), source=${visualResult.source}`);
+    if (isEnabled('VISUAL_REACTION')) {
+      visualResult = runVisualReactionDetection(trackedFrames);
+      visualSource = visualResult?.source || 'none';
+      if (visualResult && visualResult.events.length > 0) {
+        const eventTypes = [...new Set(visualResult.events.map(e => e.event_type))];
+        log('VISUAL', 'P0.2 visual detection: ' + visualResult.events.length + ' events ' +
+          '(types: ' + eventTypes.join(', ') + '), source=' + visualResult.source);
+      } else {
+        log('VISUAL', 'No visual events detected (no landmarks or no faces)');
+      }
     } else {
-      log('VISUAL', 'No visual events detected (no landmarks or no faces)');
+      log('VISUAL', 'VISUAL_REACTION disabled by feature flag');
     }
+    logMemoryEnd('reaction-detection');
+  } // end if REACTION_DETECTION
 
-    // Step 4: Fuse speaker + face tracking data
+  // Step 4: Fuse speaker + face tracking data
   const speakerFrames: SpeakerFrame[] = [];
   let lastActiveSpeakerId: number | null = null;
   let turnDetected = false;
