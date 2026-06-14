@@ -262,9 +262,10 @@ function checkOpenCV(pythonBin: string): boolean {
     const out = execSync(`${pythonBin} -c "import cv2; print(cv2.__version__)"`, {
       ...EXEC_OPTS, timeout: 5000,
     });
-    log('INFO', `OpenCV ${(out as string).trim()} detected`);
+    log('INFO', `OpenCV ${(out as string).trim()} detected — face tracking available`);
     return true;
   } catch {
+    log('WARN', 'OpenCV not found. Install: pip install opencv-python numpy');
     return false;
   }
 }

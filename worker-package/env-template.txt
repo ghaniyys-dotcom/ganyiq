@@ -1,3 +1,17 @@
 GANYIQ_API_URL=https://ganyiq.ganys.me
 DEEPGRAM_API_KEY=PASTE_YOUR_DEEPGRAM_KEY_HERE
 WORKER_NAME=PC-GANY
+
+# FFmpeg path — uncomment and set if ffmpeg is NOT in your system PATH
+# Can be either a directory (with ffmpeg.exe inside) or the full path to ffmpeg.exe:
+# FFMPEG_LOCATION=C:\ProgramData\chocolatey\bin
+# FFMPEG_LOCATION=C:\Users\...\ffmpeg-8.1.1-full_build\bin\ffmpeg.exe
+
+# Optional: HuggingFace token for PyAnnote speaker diarization
+# HF_TOKEN=hf_your_token_here
+
+# Optional: Feature flags (default = OFF in Phase A)
+# Set to 1 to enable:
+# GANYIQ_FEATURE_LAYOUT_TRANSITIONS=1
+# GANYIQ_FEATURE_REACTION_DETECTION=1
+# GANYIQ_FEATURE_VISUAL_REACTION=1

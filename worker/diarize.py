@@ -28,15 +28,27 @@ def log(msg: str):
 
 
 def resolve_ffmpeg() -> str:
-    """Return the full path to ffmpeg, checking FFMPEG_LOCATION env var first."""
+    """Return the full path to ffmpeg, checking FFMPEG_LOCATION env var first.
+
+    FFMPEG_LOCATION can contain either:
+      - A DIRECTORY (e.g., "C:\\ffmpeg\\bin") → appends "ffmpeg.exe"
+      - A FULL PATH to ffmpeg.exe → uses directly
+    """
     ffmpeg_location = os.environ.get('FFMPEG_LOCATION')
     if ffmpeg_location:
-        candidate = os.path.join(ffmpeg_location, 'ffmpeg.exe')
-        if os.path.exists(candidate):
-            return candidate
-        candidate = os.path.join(ffmpeg_location, 'ffmpeg')
-        if os.path.exists(candidate):
-            return candidate
+        ffmpeg_location = ffmpeg_location.rstrip('/\\')  # strip trailing slashes
+        # If location already IS ffmpeg.exe or ffmpeg, use it directly
+        for exe_name in ['ffmpeg.exe', 'ffmpeg']:
+            if ffmpeg_location.endswith(exe_name):
+                if os.path.exists(ffmpeg_location):
+                    log(f"ffmpeg found at: {ffmpeg_location}")
+                    return ffmpeg_location
+        # Otherwise, treat as directory and append binary name
+        for exe_name in ['ffmpeg.exe', 'ffmpeg']:
+            candidate = os.path.join(ffmpeg_location, exe_name)
+            if os.path.exists(candidate):
+                log(f"ffmpeg found at: {candidate}")
+                return candidate
     # On Windows, check WinGet install location
     if sys.platform == 'win32':
         home = os.environ.get('LOCALAPPDATA', '')
@@ -45,7 +57,9 @@ def resolve_ffmpeg() -> str:
                                      'Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe',
                                      'ffmpeg-8.1.1-full_build', 'bin', 'ffmpeg.exe')
             if os.path.exists(candidate):
+                log(f"ffmpeg found via WinGet: {candidate}")
                 return candidate
+    log("ffmpeg not found via FFMPEG_LOCATION or WinGet — falling back to PATH default")
     return 'ffmpeg'
 
 

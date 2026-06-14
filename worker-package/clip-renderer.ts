@@ -22,6 +22,31 @@ import { logMemoryStart, logMemoryEnd, startMemoryTracking, stopMemoryTracking }
 import { isEnabled, logFeatureFlags } from './features';
 
 // ---------------------------------------------------------------------------
+// FFmpeg Path Resolution (cross-platform)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the full path to an ffmpeg binary.
+ *
+ * FFMPEG_LOCATION can contain either:
+ *   - A DIRECTORY (e.g., "C:\ffmpeg\bin") → appends "/ffmpeg"
+ *   - A FULL PATH to the exe (e.g., "C:\ffmpeg\bin\ffmpeg.exe") → uses directly
+ *
+ * On Windows, .exe extension is appended if missing.
+ */
+function resolveFfmpegLocation(location: string | undefined, binary: string): string {
+  if (!location) return binary;
+  const norm = location.replace(/[/\\]+$/, ''); // strip trailing slashes
+  // Check if location is actually a full path to the binary
+  const baseName = platform() === 'win32' ? `${binary}.exe` : binary;
+  if (norm.endsWith(`/${baseName}`) || norm.endsWith(`\\${baseName}`) || norm.endsWith(`/${binary}`) || norm.endsWith(`\\${binary}`)) {
+    return `"${norm}"`;
+  }
+  // Location is a directory — append binary name
+  return `"${norm}/${baseName}"`;
+}
+
+// ---------------------------------------------------------------------------
 // Interfaces (mirrors the types in worker/index.ts)
 // ---------------------------------------------------------------------------
 interface EnvConfig {
@@ -227,11 +252,8 @@ export async function renderClip(
   let sourceHeight = 720;
   let sourceFps = 30;
   try {
-    const ffprobePath = env.FFMPEG_LOCATION
-      ? `"${env.FFMPEG_LOCATION}/ffprobe"`
-      : 'ffprobe';
     const probeOut = execSync(
-      `${ffprobePath} -v quiet -print_format json -show_format -show_streams "${videoPath}"`,
+      `${resolveFfmpegLocation(env.FFMPEG_LOCATION, 'ffprobe')} -v quiet -print_format json -show_format -show_streams "${videoPath}"`,
       { ...EXEC_OPTS, timeout: 15_000 },
     );
     const probe = JSON.parse(probeOut);
@@ -271,11 +293,10 @@ export async function renderClip(
   log('FFMPEG', `Cutting ${startTime}s-${endTime}s → ${outputFilename}`);
 
   const durationSec = endTime - startTime;
-  const ffmpegPath = env.FFMPEG_LOCATION
-    ? `"${env.FFMPEG_LOCATION}/ffmpeg"`
-    : 'ffmpeg';
-
   log('FFMPEG', `renderMode=${renderMode}`);
+
+  // Resolve ffmpeg/ffprobe paths (handles both directory and full-path-in-FFMPEG_LOCATION)
+  const ffmpegBin = resolveFfmpegLocation(env.FFMPEG_LOCATION, 'ffmpeg');
 
   // Run analysis pipeline (V2 with V1 fallback)
   // HF Token for PyAnnote speaker diarization (optional — set HF_TOKEN in .env.local)
@@ -371,7 +392,7 @@ export async function renderClip(
     if (splitSegments.length > 0) {
       log('SHORTS', `Split screen render: ${splitSegments.length} segments${subtitleResult ? ` + subtitles (${subtitleResult.lineCount} lines)` : ''}`);
       await renderVerticalSplit(
-        ffmpegPath, videoPath, outputPath,
+        ffmpegBin, videoPath, outputPath,
         startTime, endTime,
         splitSegments,
         sourceWidth, sourceHeight,
@@ -384,11 +405,11 @@ export async function renderClip(
     } else {
       // Extreme fallback — should never happen
       log('SHORTS', 'No split segments — center crop fallback');
-      ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -vf "scale=-1:1920,crop=1080:1920${subtitleFilter}" -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${outputPath}"`;
+      ffmpegCmd = `${ffmpegBin} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -vf "scale=-1:1920,crop=1080:1920${subtitleFilter}" -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${outputPath}"`;
     }
   } else {
     // ── Landscape mode (existing): stream copy ──
-    ffmpegCmd = `${ffmpegPath} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -c copy -movflags +faststart "${outputPath}"`;
+    ffmpegCmd = `${ffmpegBin} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -c copy -movflags +faststart "${outputPath}"`;
   }
 
   // Skip if already rendered by face-tracking path
@@ -445,11 +466,8 @@ export async function renderClip(
 
   // OUTPUT QUALITY LOG
   try {
-    const ffprobePath = env.FFMPEG_LOCATION
-      ? `"${env.FFMPEG_LOCATION}/ffprobe"`
-      : 'ffprobe';
     const probeOut = execSync(
-      `${ffprobePath} -v quiet -print_format json -show_format -show_streams "${outputPath}"`,
+      `${resolveFfmpegLocation(env.FFMPEG_LOCATION, 'ffprobe')} -v quiet -print_format json -show_format -show_streams "${outputPath}"`,
       { ...EXEC_OPTS, timeout: 15_000 },
     );
     const probe = JSON.parse(probeOut);
@@ -563,7 +581,7 @@ export async function renderClip(
  * Crop is applied as part of the ffmpeg filter chain.
  */
 async function renderVerticalTracked(
-  ffmpegPath: string,
+  ffmpegBin: string,
   sourceVideo: string,
   outputPath: string,
   jobStartTime: number,
@@ -602,7 +620,7 @@ async function renderVerticalTracked(
       const cx = Math.max(0, Math.min(sourceWidth - cropW, seg.cropX));
       const cy = Math.max(0, Math.min(sourceHeight - cropH, seg.cropY));
 
-      const cmd = `${ffmpegPath} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" ` +
+      const cmd = `${ffmpegBin} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" ` +
         `-vf "crop=${Math.round(cropW)}:${cropH}:${Math.round(cx)}:${Math.round(cy)},scale=1080:1920" ` +
         `-c:v libx264 -preset medium -crf 18 ` +
         `-c:a aac -b:a 128k ` +
@@ -641,7 +659,7 @@ async function renderVerticalTracked(
 
     log('TRACK', `Concatenating ${segmentPaths.length} segments`);
 
-    const concatCmd = `${ffmpegPath} -y -f concat -safe 0 -i "${concatFile}" -c copy "${outputPath}"`;
+    const concatCmd = `${ffmpegBin} -y -f concat -safe 0 -i "${concatFile}" -c copy "${outputPath}"`;
     execSync(concatCmd, { ...EXEC_OPTS, timeout: 120_000 });
 
     if (!existsSync(outputPath)) {
@@ -838,7 +856,7 @@ function buildSplitSegments(
  * Concat all segments at the end.
  */
 async function renderVerticalSplit(
-  ffmpegPath: string,
+  ffmpegBin: string,
   sourceVideo: string,
   outputPath: string,
   jobStartTime: number,
@@ -1293,11 +1311,11 @@ async function renderVerticalSplit(
       const filterScriptPath = join(TEMP_DIR, `filter_${effectiveRenderId}.txt`);
       writeFileSync(filterScriptPath, filterComplex, 'utf-8');
       log('SPLIT', `Using filter_script (${filterComplex.length} chars → ${filterScriptPath})`);
-      cmd = `${ffmpegPath} -y -i "${sourceVideo}"`
+      cmd = `${ffmpegBin} -y -i "${sourceVideo}"`
         + ` -filter_complex_script "${filterScriptPath}"`
         + ` -map "[${finalVideoLabel}]" -map "[outa]" ${ENC} "${outputPath}"`;
     } else {
-      cmd = `${ffmpegPath} -y -i "${sourceVideo}"`
+      cmd = `${ffmpegBin} -y -i "${sourceVideo}"`
         + ` -filter_complex "${filterComplex}"`
         + ` -map "[${finalVideoLabel}]" -map "[outa]" ${ENC} "${outputPath}"`;
     }

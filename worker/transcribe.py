@@ -23,15 +23,23 @@ from pathlib import Path
 
 
 def resolve_ffmpeg() -> str:
-    """Return the full path to ffmpeg, checking FFMPEG_LOCATION env var first."""
+    """Return the full path to ffmpeg, checking FFMPEG_LOCATION env var first.
+
+    FFMPEG_LOCATION can contain either:
+      - A DIRECTORY (e.g., "C:\\ffmpeg\\bin") → appends "ffmpeg.exe"
+      - A FULL PATH to ffmpeg.exe → uses directly
+    """
     ffmpeg_location = os.environ.get('FFMPEG_LOCATION')
     if ffmpeg_location:
-        candidate = os.path.join(ffmpeg_location, 'ffmpeg.exe')
-        if os.path.exists(candidate):
-            return candidate
-        candidate = os.path.join(ffmpeg_location, 'ffmpeg')
-        if os.path.exists(candidate):
-            return candidate
+        ffmpeg_location = ffmpeg_location.rstrip('/\\')
+        for exe_name in ['ffmpeg.exe', 'ffmpeg']:
+            if ffmpeg_location.endswith(exe_name):
+                if os.path.exists(ffmpeg_location):
+                    return ffmpeg_location
+        for exe_name in ['ffmpeg.exe', 'ffmpeg']:
+            candidate = os.path.join(ffmpeg_location, exe_name)
+            if os.path.exists(candidate):
+                return candidate
     if sys.platform == 'win32':
         home = os.environ.get('LOCALAPPDATA', '')
         if home:
@@ -40,6 +48,7 @@ def resolve_ffmpeg() -> str:
                                      'ffmpeg-8.1.1-full_build', 'bin', 'ffmpeg.exe')
             if os.path.exists(candidate):
                 return candidate
+    # ffmpeg not found via FFMPEG_LOCATION or WinGet — will use PATH default
     return 'ffmpeg'
 
 
