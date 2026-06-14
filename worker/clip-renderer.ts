@@ -1152,15 +1152,34 @@ async function renderVerticalSplit(
         log('SPLIT', `Seg ${segIdx}: 4-way grid [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
 
       } else {
-        // ── Multi-face vstack (SPLIT_2, SPLIT_3): trim → split → crop → sharpen → pad divider → vstack → subtitle ──
+        // ── Multi-face vstack (SPLIT_2, SPLIT_3): trim → split → crop → sharpen → pad divider → vstack ──
         // P2.1: Professional divider lines between panels (3px white)
         // P3.1: Per-panel sharpening (unsharp BEFORE vstack, not after)
+        //
+        // HEIGHT DISTRIBUTION: usableHeight does not always divide evenly by faceCount.
+        // Using Math.floor loses 1-2px → concat fails (dimension mismatch). Fix: distribute
+        // remainder (segHeightExtra) to first N panels so vstack always totals exactly 1920.
         const faceCount = Math.min(numFaces, SPLIT_MAX_FACES);
         const DIVIDER_PX = 3;
         const totalDividers = faceCount - 1;
         const usableHeight = 1920 - (totalDividers * DIVIDER_PX);
-        const segHeight = Math.floor(usableHeight / faceCount);
-        let panelCropW = Math.round(FULL_H * (1080 / segHeight));
+        const segHeightBase = Math.floor(usableHeight / faceCount);
+        const segHeightExtra = usableHeight - segHeightBase * faceCount; // 0 or 1px
+
+        // Log dimensions BEFORE rendering for diagnostics
+        const segHeights: number[] = [];
+        for (let fi = 0; fi < faceCount; fi++) {
+          const thisH = segHeightBase + (fi < segHeightExtra ? 1 : 0);
+          const paddedH = fi < faceCount - 1 ? thisH + DIVIDER_PX : thisH;
+          segHeights.push(paddedH);
+        }
+        const totalH = segHeights.reduce((s, h) => s + h, 0);
+        log('SPLIT', `Seg ${segIdx}: ${faceCount}-way vstack dims=1080x${segHeights.join('+')}=${totalH} cw=${Math.round(FULL_H * (1080 / segHeightBase))} divider=${DIVIDER_PX}px [${segStart}s-${segEnd}s]${hasTransition ? ' +xfade' : ''}`);
+        if (totalH !== 1920) {
+          log('WARN', `Seg ${segIdx} vstack height mismatch: ${totalH} != 1920 (usableHeight=${usableHeight}, base=${segHeightBase}, extra=${segHeightExtra})`);
+        }
+
+        let panelCropW = Math.round(FULL_H * (1080 / segHeightBase));
         panelCropW = Math.min(panelCropW, sourceWidth);
 
         const splitLabel = `sp${segIdx}`;
@@ -1178,11 +1197,14 @@ async function renderVerticalSplit(
           const cx = clamp(Math.round(faceCx - panelCropW / 2), 0, sourceWidth - panelCropW);
           const subLabel = `sf${segIdx}_${fi}`;
 
+          // Distribute height: extra pixels go to first panels
+          const thisFaceH = segHeightBase + (fi < segHeightExtra ? 1 : 0);
+
           // P3.1: Sharpen each panel INDIVIDUALLY before compositing
           // P2.1: Add bottom divider pad (white 3px) except for last panel
           const needsDivider = fi < faceCount - 1;
           const dividerFilter = needsDivider
-            ? `,pad=1080:${segHeight + DIVIDER_PX}:0:0:color=white`
+            ? `,pad=1080:${thisFaceH + DIVIDER_PX}:0:0:color=white`
             : '';
 
           // P2.4: Pad top panel to 1920 to act as a background canvas for slide-in overlays
@@ -1192,7 +1214,7 @@ async function renderVerticalSplit(
 
           filterParts.push(
             `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,`
-            + `scale=1080:${segHeight}:flags=lanczos,`
+            + `scale=1080:${thisFaceH}:flags=lanczos,`
             + `unsharp=5:5:0.8:3:3:0.4,`
             + `setsar=1,setpts=PTS-STARTPTS${dividerFilter}${padFilter}[${subLabel}]`
           );
@@ -1207,18 +1229,19 @@ async function renderVerticalSplit(
             + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`
           );
         } else if (faceCount === 2) {
+          const overlayY = segHeightBase + (0 < segHeightExtra ? 1 : 0) + DIVIDER_PX;
           filterParts.push(
-            `[sf${segIdx}_0][sf${segIdx}_1]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${segHeight + DIVIDER_PX})*(t/0.4),${segHeight + DIVIDER_PX})':shortest=1,`
+            `[sf${segIdx}_0][sf${segIdx}_1]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${overlayY})*(t/0.4),${overlayY})':shortest=1,`
             + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`
           );
         } else if (faceCount === 3) {
-          const y1 = segHeight + DIVIDER_PX;
-          const y2 = 2 * (segHeight + DIVIDER_PX);
+          const y0padded = segHeightBase + (0 < segHeightExtra ? 1 : 0) + DIVIDER_PX;
+          const y1padded = y0padded + (segHeightBase + (1 < segHeightExtra ? 1 : 0) + DIVIDER_PX);
           filterParts.push(
-            `[sf${segIdx}_0][sf${segIdx}_1]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${y1})*(t/0.4),${y1})'[tmp_v${segIdx}]`
+            `[sf${segIdx}_0][sf${segIdx}_1]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${y0padded})*(t/0.4),${y0padded})'[tmp_v${segIdx}]`
           );
           filterParts.push(
-            `[tmp_v${segIdx}][sf${segIdx}_2]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${y2})*(t/0.4),${y2})':shortest=1,`
+            `[tmp_v${segIdx}][sf${segIdx}_2]overlay=x=0:y='if(lt(t,0.4),1920-(1920-${y1padded})*(t/0.4),${y1padded})':shortest=1,`
             + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`
           );
         } else {
