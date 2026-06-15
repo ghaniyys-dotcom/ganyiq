@@ -201,23 +201,36 @@ function renderDnaProfile(
     level: deriveDnaLevel(c.label, c.primaryTag, c.relatedTags, dnaTags, confidence, score),
   }));
 
+  const LEVEL_PERCENTAGES: Record<string, number> = {
+    strong: 95,
+    high: 70,
+    medium: 45,
+    low: 20,
+  };
+
   return (
     <div className="dna-profile">
       <div className="dna-profile-title">CLIP DNA PROFILE</div>
       <div className="dna-profile-grid">
         {items.map(item => {
-          const segs = item.level ? LEVEL_BAR_SEGMENTS[item.level] : 0;
+          const pct = item.level ? LEVEL_PERCENTAGES[item.level] : 0;
           const label = item.level ? LEVEL_LABELS[item.level] : '—';
           return (
             <div key={item.key} className="dna-row">
               <span className="dna-row-label">{item.label}</span>
-              <div className="dna-row-bar">
-                {Array.from({ length: 10 }).map((_, i) => (
+              <div className="dna-row-track-wrapper">
+                <div className="dna-row-track">
                   <div
-                    key={i}
-                    className={`dna-bar-seg${i < segs ? ` ${item.level}` : ''}`}
+                    className={`dna-row-fill ${item.level || ''}`}
+                    style={{ width: `${pct}%` }}
                   />
-                ))}
+                  {item.level && (
+                    <div
+                      className={`dna-row-glow-dot ${item.level}`}
+                      style={{ left: `${pct}%` }}
+                    />
+                  )}
+                </div>
               </div>
               <span className={`dna-row-level ${item.level || ''}`}>{label}</span>
             </div>
@@ -606,6 +619,26 @@ const SUBTITLE_STYLE_OPTIONS: Array<{ id: string; label: string }> = [
   { id: 'clean_corporate', label: 'Clean Corporate' },
 ];
 
+function getTranscriptSegments(excerpt: string, startSec: number, endSec: number) {
+  if (!excerpt) return [];
+  const sentences = excerpt.match(/[^.!?]+[.!?]*/g) || [excerpt];
+  const trimmedSentences = sentences.map(s => s.trim()).filter(s => s.length > 0);
+  const totalChars = trimmedSentences.reduce((acc, s) => acc + s.length, 0) || 1;
+  const duration = endSec - startSec;
+
+  let currentChars = 0;
+  return trimmedSentences.map((sentence) => {
+    const sentenceChars = sentence.length;
+    const startOffset = (currentChars / totalChars) * duration;
+    const sentenceStart = startSec + startOffset;
+    currentChars += sentenceChars;
+    return {
+      text: sentence,
+      start: sentenceStart,
+    };
+  });
+}
+
 export default function Home() {
   const [url, setUrl] = useState('');
   const [stage, setStage] = useState<Stage>('idle');
@@ -629,6 +662,9 @@ export default function Home() {
   const [clipStates, setClipStates] = useState<Record<number, ClipStatus>>({});
   const [clipUrls, setClipUrls] = useState<Record<number, string>>({});
   const [clipErrors, setClipErrors] = useState<Record<number, string>>({});
+  const [clipDetailStatuses, setClipDetailStatuses] = useState<Record<number, 'pending' | 'processing' | 'ready' | 'failed' | 'idle'>>({});
+  const [customStartTimes, setCustomStartTimes] = useState<Record<number, number>>({});
+  const [customEndTimes, setCustomEndTimes] = useState<Record<number, number>>({});
   const [renderMode, setRenderMode] = useState<'landscape' | 'vertical'>('vertical');
   const [subtitleStyle, setSubtitleStyle] = useState('opus');
   const [urlError, setUrlError] = useState(false);
@@ -639,9 +675,15 @@ export default function Home() {
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const [secondaryExpanded, setSecondaryExpanded] = useState(false);
   const [analyticsExpanded, setAnalyticsExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<'analysis' | 'titles' | 'export'>('analysis');
+  const [activeTab, setActiveTab] = useState<'insights' | 'export'>('insights');
   const [isPlayingVideo, setIsPlayingVideo] = useState(false);
   const [copiedTimestamp, setCopiedTimestamp] = useState(false);
+
+  // Worker status state
+  const [workers, setWorkers] = useState<Array<{ id: string; name: string; status: string; lastHeartbeat: string | null }>>([]);
+
+  // Player start time tracking
+  const [playerStartTime, setPlayerStartTime] = useState<number>(0);
 
   // Title suggestions copy state
   const [copiedTitleIndex, setCopiedTitleIndex] = useState<number | null>(null);
@@ -709,10 +751,65 @@ export default function Home() {
 
   useEffect(() => {
     setTranscriptExpanded(false);
-    setActiveTab('analysis');
+    setActiveTab('insights');
     setIsPlayingVideo(false);
     setCopiedTimestamp(false);
+    if (activeMoment) {
+      setPlayerStartTime(activeMoment.startTime);
+    }
   }, [activeMoment]);
+
+  const fetchWorkers = () => {
+    fetch('/api/workers')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.workers) setWorkers(data.workers);
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchWorkers();
+    const interval = setInterval(fetchWorkers, 20000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.getAttribute('contenteditable') === 'true')
+      ) {
+        return;
+      }
+
+      if (!result || result.moments.length === 0 || !activeMoment) return;
+
+      const currentIdx = result.moments.findIndex((m) => m.rank === activeMoment.rank);
+
+      if (e.key === 'k' || e.key === 'K' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const nextIdx = Math.min(result.moments.length - 1, currentIdx + 1);
+        setActiveMoment(result.moments[nextIdx]);
+      } else if (e.key === 'j' || e.key === 'J' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prevIdx = Math.max(0, currentIdx - 1);
+        setActiveMoment(result.moments[prevIdx]);
+      } else if (e.key === ' ' || e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        setIsPlayingVideo((prev: boolean) => !prev);
+      } else if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        generateClip(activeMoment.rank);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [result, activeMoment]);
 
   // Scoring progress counter: increments during AI scoring stage
   useEffect(() => {
@@ -724,7 +821,7 @@ export default function Home() {
     if (total <= 0) return;
     const step = Math.max(1, Math.floor(total / 12)); // ~12 ticks over 36s
     const timer = setInterval(() => {
-      setScoredCount(prev => {
+      setScoredCount((prev: number) => {
         const next = prev + step;
         return next >= total ? total : next;
       });
@@ -763,24 +860,37 @@ export default function Home() {
   async function generateClip(momentIndex: number) {
     if (!result?.analysisId) return;
 
-    setClipStates((prev) => ({ ...prev, [momentIndex]: 'generating' }));
+    setClipStates((prev: Record<number, ClipStatus>) => ({ ...prev, [momentIndex]: 'generating' }));
+    setClipDetailStatuses((prev: Record<number, 'pending' | 'processing' | 'ready' | 'failed' | 'idle'>) => ({ ...prev, [momentIndex]: 'pending' }));
 
     try {
+      const customStart = customStartTimes[momentIndex];
+      const customEnd = customEndTimes[momentIndex];
+
       const res = await fetch('/api/clips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ analysisId: result.analysisId, momentIndex, renderMode, subtitleStyle }),
+        body: JSON.stringify({
+          analysisId: result.analysisId,
+          momentIndex,
+          renderMode,
+          subtitleStyle,
+          customStartTime: typeof customStart === 'number' ? customStart : undefined,
+          customEndTime: typeof customEnd === 'number' ? customEnd : undefined,
+        }),
       });
       const data = await res.json();
 
       if (!res.ok) {
-        setClipStates((prev) => ({ ...prev, [momentIndex]: 'failed' }));
+        setClipStates((prev: Record<number, ClipStatus>) => ({ ...prev, [momentIndex]: 'failed' }));
+        setClipDetailStatuses((prev: Record<number, 'pending' | 'processing' | 'ready' | 'failed' | 'idle'>) => ({ ...prev, [momentIndex]: 'failed' }));
         return;
       }
 
       if (data.status === 'ready') {
-        setClipStates((prev) => ({ ...prev, [momentIndex]: 'ready' }));
-        setClipUrls((prev) => ({ ...prev, [momentIndex]: data.clipUrl }));
+        setClipStates((prev: Record<number, ClipStatus>) => ({ ...prev, [momentIndex]: 'ready' }));
+        setClipDetailStatuses((prev: Record<number, 'pending' | 'processing' | 'ready' | 'failed' | 'idle'>) => ({ ...prev, [momentIndex]: 'ready' }));
+        setClipUrls((prev: Record<number, string>) => ({ ...prev, [momentIndex]: data.clipUrl }));
         return;
       }
 
@@ -793,8 +903,9 @@ export default function Home() {
             clearInterval(timer);
             delete pollTimers.current[momentIndex];
             delete pollStartTimes.current[momentIndex];
-            setClipStates((prev) => ({ ...prev, [momentIndex]: 'failed' }));
-            setClipErrors((prev) => ({ ...prev, [momentIndex]: 'Processing is taking longer than expected. Please refresh or try again.' }));
+            setClipStates((prev: Record<number, ClipStatus>) => ({ ...prev, [momentIndex]: 'failed' }));
+            setClipDetailStatuses((prev: Record<number, 'pending' | 'processing' | 'ready' | 'failed' | 'idle'>) => ({ ...prev, [momentIndex]: 'failed' }));
+            setClipErrors((prev: Record<number, string>) => ({ ...prev, [momentIndex]: 'Processing is taking longer than expected. Please refresh or try again.' }));
             return;
           }
 
@@ -802,24 +913,31 @@ export default function Home() {
           const statusData = await statusRes.json();
 
           if (statusData.status === 'ready') {
-            setClipStates((prev) => ({ ...prev, [momentIndex]: 'ready' }));
-            setClipUrls((prev) => ({ ...prev, [momentIndex]: statusData.clipUrl }));
+            setClipStates((prev: Record<number, ClipStatus>) => ({ ...prev, [momentIndex]: 'ready' }));
+            setClipDetailStatuses((prev: Record<number, 'pending' | 'processing' | 'ready' | 'failed' | 'idle'>) => ({ ...prev, [momentIndex]: 'ready' }));
+            setClipUrls((prev: Record<number, string>) => ({ ...prev, [momentIndex]: statusData.clipUrl }));
             clearInterval(timer);
             delete pollTimers.current[momentIndex];
             delete pollStartTimes.current[momentIndex];
           } else if (statusData.status === 'failed') {
-            setClipStates((prev) => ({ ...prev, [momentIndex]: 'failed' }));
-            setClipErrors((prev) => ({ ...prev, [momentIndex]: statusData.error || 'Clip generation failed.' }));
+            setClipStates((prev: Record<number, ClipStatus>) => ({ ...prev, [momentIndex]: 'failed' }));
+            setClipDetailStatuses((prev: Record<number, 'pending' | 'processing' | 'ready' | 'failed' | 'idle'>) => ({ ...prev, [momentIndex]: 'failed' }));
+            setClipErrors((prev: Record<number, string>) => ({ ...prev, [momentIndex]: statusData.error || 'Clip generation failed.' }));
             clearInterval(timer);
             delete pollTimers.current[momentIndex];
             delete pollStartTimes.current[momentIndex];
+          } else if (statusData.status === 'processing') {
+            setClipDetailStatuses((prev: Record<number, 'pending' | 'processing' | 'ready' | 'failed' | 'idle'>) => ({ ...prev, [momentIndex]: 'processing' }));
+          } else if (statusData.status === 'pending') {
+            setClipDetailStatuses((prev: Record<number, 'pending' | 'processing' | 'ready' | 'failed' | 'idle'>) => ({ ...prev, [momentIndex]: 'pending' }));
           }
         } catch { /* keep polling */ }
       }, 5000);
 
       pollTimers.current[momentIndex] = timer;
     } catch {
-      setClipStates((prev) => ({ ...prev, [momentIndex]: 'failed' }));
+      setClipStates((prev: Record<number, ClipStatus>) => ({ ...prev, [momentIndex]: 'failed' }));
+      setClipDetailStatuses((prev: Record<number, 'pending' | 'processing' | 'ready' | 'failed' | 'idle'>) => ({ ...prev, [momentIndex]: 'failed' }));
     }
   }
 
@@ -995,12 +1113,70 @@ export default function Home() {
             Generate Clip
           </button>
         );
-      case 'generating':
+      case 'generating': {
+        const detailStatus = clipDetailStatuses[moment.rank] || 'pending';
+        const startTime = pollStartTimes.current[moment.rank] || Date.now();
+        const elapsed = Date.now() - startTime;
+
+        let step1 = 'pending';
+        let step2 = 'pending';
+        let step3 = 'pending';
+        let step4 = 'pending';
+        let step5 = 'pending';
+
+        if (detailStatus === 'pending') {
+          step1 = 'active';
+        } else if (detailStatus === 'processing') {
+          step1 = 'done';
+          if (elapsed < 12000) {
+            step2 = 'active';
+          } else if (elapsed < 25000) {
+            step2 = 'done';
+            step3 = 'active';
+          } else {
+            step2 = 'done';
+            step3 = 'done';
+            step4 = 'active';
+          }
+        } else if (detailStatus === 'ready') {
+          step1 = 'done';
+          step2 = 'done';
+          step3 = 'done';
+          step4 = 'done';
+          step5 = 'done';
+        }
+
         return (
-          <button className="ws-generate-btn generating" disabled>
-            Generating...
-          </button>
+          <div className="ws-pipeline-tracker-box" onClick={(e) => e.stopPropagation()}>
+            <div className="tracker-header">
+              <span className="tracker-spinner-icon" />
+              <span className="tracker-title">Rendering Clip #{moment.rank}...</span>
+            </div>
+            <div className="tracker-steps">
+              <div className={`tracker-step ${step1}`}>
+                <span className="step-bullet" />
+                <span className="step-text">Queueing (Waiting for Worker)</span>
+              </div>
+              <div className={`tracker-step ${step2}`}>
+                <span className="step-bullet" />
+                <span className="step-text">Downloading Video Source</span>
+              </div>
+              <div className={`tracker-step ${step3}`}>
+                <span className="step-bullet" />
+                <span className="step-text">AI Face-Focus & Speaker Crop</span>
+              </div>
+              <div className={`tracker-step ${step4}`}>
+                <span className="step-bullet" />
+                <span className="step-text">Applying Subtitle Overlay</span>
+              </div>
+              <div className={`tracker-step ${step5}`}>
+                <span className="step-bullet" />
+                <span className="step-text">Uploading MP4 Output</span>
+              </div>
+            </div>
+          </div>
         );
+      }
       case 'ready':
         return (
           <a className="ws-generate-btn ready" href={clipUrls[moment.rank] || '#'} download onClick={(e) => e.stopPropagation()}>
@@ -1049,6 +1225,133 @@ export default function Home() {
           </button>
         );
     }
+  }
+
+  const handleWaveformDrag = (type: 'start' | 'end', moment: Moment, e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const container = e.currentTarget.parentElement;
+    if (!container) return;
+    container.setPointerCapture(e.pointerId);
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const rect = container.getBoundingClientRect();
+      const x = Math.max(0, Math.min(moveEvent.clientX - rect.left, rect.width));
+      const percentage = x / rect.width;
+      const duration = moment.endTime - moment.startTime;
+      const targetTime = moment.startTime + percentage * duration;
+
+      if (type === 'start') {
+        const currentEnd = customEndTimes[moment.rank] ?? moment.endTime;
+        const newStart = Math.min(targetTime, currentEnd - 1.0);
+        setCustomStartTimes((prev: Record<number, number>) => ({ ...prev, [moment.rank]: parseFloat(newStart.toFixed(2)) }));
+        setPlayerStartTime(newStart);
+      } else {
+        const currentStart = customStartTimes[moment.rank] ?? moment.startTime;
+        const newEnd = Math.max(targetTime, currentStart + 1.0);
+        setCustomEndTimes((prev: Record<number, number>) => ({ ...prev, [moment.rank]: parseFloat(newEnd.toFixed(2)) }));
+      }
+    };
+
+    const onPointerUp = (upEvent: PointerEvent) => {
+      try {
+        container.releasePointerCapture(upEvent.pointerId);
+      } catch {}
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  function renderLiveSubtitleOverlay(style: string) {
+    return (
+      <div className={`live-subtitle-overlay style-preset-${style}`}>
+        <div className="subtitle-caption-container">
+          {style === 'opus' && (
+            <span className="subtitle-caption">
+              THIS IS HOW GANYIQ MAKES IT <span className="highlight">VIRAL</span>
+            </span>
+          )}
+          {style === 'hormozi' && (
+            <span className="subtitle-caption">
+              KEEP IT <span className="yellow-box">SIMPLE</span> AND WIN!
+            </span>
+          )}
+          {style === 'gadzhi' && (
+            <span className="subtitle-caption serif-gadzhi">
+              "Creating high-impact aesthetics."
+            </span>
+          )}
+          {style === 'mrbeast' && (
+            <span className="subtitle-caption mrbeast-pop">
+              100x ENGAGEMENT!
+            </span>
+          )}
+          {style === 'podcast_minimal' && (
+            <span className="subtitle-caption minimal-white">
+              Minimalist captioning for clarity.
+            </span>
+          )}
+          {style === 'documentary' && (
+            <span className="subtitle-caption italic-doc">
+              "A cinematic storytelling journey."
+            </span>
+          )}
+          {style === 'clean_corporate' && (
+            <span className="subtitle-caption corporate-style">
+              Professional Presentation
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderViralityBreakdown(moment: Moment) {
+    const hookStrength = Math.min(100, Math.max(30, Math.round(moment.worthClippingScore * 0.98 - 2 + (moment.rank === 1 ? 5 : 0))));
+    const confidenceVal = parseFloat(moment.confidence) || 0.85;
+    const retentionProb = Math.min(100, Math.max(30, Math.round(confidenceVal * 100 - (moment.endTime - moment.startTime) * 0.25)));
+    const shareIndex = Math.min(100, Math.max(30, Math.round((moment.worthClippingScore + confidenceVal * 100) / 2 + (moment.dnaTags.length * 2))));
+
+    const renderGauge = (val: number, label: string, colorClass: string) => {
+      const radius = 30;
+      const circ = 2 * Math.PI * radius;
+      const offset = circ - (val / 100) * circ;
+      return (
+        <div className={`radial-gauge-item ${colorClass}`}>
+          <div className="gauge-outer">
+            <svg width="76" height="76" viewBox="0 0 76 76" className="gauge-svg">
+              <circle cx="38" cy="38" r={radius} className="gauge-track" strokeWidth="5" />
+              <circle
+                cx="38"
+                cy="38"
+                r={radius}
+                className="gauge-fill"
+                strokeWidth="5"
+                strokeDasharray={circ}
+                strokeDashoffset={offset}
+                strokeLinecap="round"
+                transform="rotate(-90 38 38)"
+              />
+            </svg>
+            <div className="gauge-center-value">{val}%</div>
+          </div>
+          <span className="gauge-item-label">{label}</span>
+        </div>
+      );
+    };
+
+    return (
+      <div className="virality-analytics-card">
+        <h4 className="ws-section-title">VIRALITY BREAKDOWN</h4>
+        <div className="virality-gauges-row">
+          {renderGauge(hookStrength, 'Hook Strength', 'gold-gauge')}
+          {renderGauge(retentionProb, 'Retention Prob.', 'emerald-gauge')}
+          {renderGauge(shareIndex, 'Shareability Index', 'indigo-gauge')}
+        </div>
+      </div>
+    );
   }
 
   // ── Score label helper ──
@@ -1445,6 +1748,61 @@ export default function Home() {
     );
   }
 
+  function renderAIExecutiveReport() {
+    if (!result || result.moments.length === 0) return null;
+    
+    const allScores = result.moments.map(m => m.worthClippingScore);
+    const avgScore = Math.round(allScores.reduce((s, v) => s + v, 0) / allScores.length);
+    const eliteCount = result.moments.filter(m => m.tier === 'elite').length;
+    
+    const allTags = result.moments.flatMap(m => m.dnaTags);
+    const hasHook = allTags.includes('hookPower');
+    const hasStory = allTags.includes('storytelling');
+    const hasHumor = allTags.includes('humor');
+    
+    let optimalPlatform = 'YouTube Shorts & Reels';
+    let summaryText = 'This video features highly engaging, educational and conversational content, ideal for YouTube Shorts and Instagram Reels.';
+    if (hasHook && (hasStory || hasHumor)) {
+      optimalPlatform = 'TikTok & YouTube Shorts';
+      summaryText = 'This video has highly dynamic narrative patterns with immediate hook power, making it exceptionally fit for TikTok algorithms.';
+    } else if (allTags.includes('authority') || allTags.includes('educational')) {
+      optimalPlatform = 'LinkedIn Video & YouTube Shorts';
+      summaryText = 'This content is authoritative and instructional, offering structured setups and takeaways suitable for professional and educational platforms.';
+    }
+    
+    return (
+      <div className="ai-exec-report fade-in">
+        <div className="report-header">
+          <div className="report-badge">
+            <span className="report-badge-pulse" />
+            AI Executive Evaluation
+          </div>
+          <span className="report-date">{new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+        </div>
+        <div className="report-content">
+          <div className="report-main">
+            <h3 className="report-title">Viral Potential: {avgScore >= 80 ? 'Exceptional' : 'Strong'}</h3>
+            <p className="report-desc">{summaryText}</p>
+          </div>
+          <div className="report-stats">
+            <div className="report-stat">
+              <span className="stat-label">Optimal Platform</span>
+              <span className="stat-val">{optimalPlatform}</span>
+            </div>
+            <div className="report-stat">
+              <span className="stat-label">Average Viral Score</span>
+              <span className="stat-val accent-gold">{avgScore}%</span>
+            </div>
+            <div className="report-stat">
+              <span className="stat-label">Elite Moments</span>
+              <span className="stat-val">{eliteCount} / {result.moments.length}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Featured Workspace ──
   function renderFeaturedWorkspace() {
     if (!activeMoment || !result) return null;
@@ -1479,11 +1837,24 @@ export default function Home() {
                     <div className="phone-speaker" />
                     <div className="phone-camera" />
                   </div>
+                  
+                  {/* Visual Face Tracking Overlay */}
+                  <div className="face-tracking-overlay">
+                    <div className="face-tracking-box">
+                      <div className="corner top-left" />
+                      <div className="corner top-right" />
+                      <div className="corner bottom-left" />
+                      <div className="corner bottom-right" />
+                      <span className="tracking-label">AI Face Focus</span>
+                    </div>
+                  </div>
+                  {renderLiveSubtitleOverlay(subtitleStyle)}
                   {isPlayingVideo ? (
                     <div className="ws-iframe-container">
                       <iframe
-                        src={`https://www.youtube.com/embed/${result.videoId}?start=${Math.floor(m.startTime)}&autoplay=1&rel=0`}
+                        src={`https://www.youtube.com/embed/${result.videoId}?start=${Math.floor(playerStartTime)}&autoplay=1&rel=0&enablejsapi=1`}
                         title="YouTube video player"
+                        id="youtube-player-iframe-vertical"
                         frameBorder="0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                         allowFullScreen
@@ -1513,11 +1884,13 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="ws-video">
+                  {renderLiveSubtitleOverlay(subtitleStyle)}
                   {isPlayingVideo ? (
                     <div className="ws-iframe-container">
                       <iframe
-                        src={`https://www.youtube.com/embed/${result.videoId}?start=${Math.floor(m.startTime)}&autoplay=1&rel=0`}
+                        src={`https://www.youtube.com/embed/${result.videoId}?start=${Math.floor(playerStartTime)}&autoplay=1&rel=0&enablejsapi=1`}
                         title="YouTube video player"
+                        id="youtube-player-iframe-landscape"
                         frameBorder="0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                         allowFullScreen
@@ -1550,22 +1923,69 @@ export default function Home() {
               <div className="ws-video-placeholder">Video preview unavailable</div>
             )}
 
-            {/* Waveform Studio visualizer (CSS-only skeleton) */}
-            <div className={`ws-waveform ${isPlayingVideo ? 'playing' : ''}`}>
-              {[...Array(24)].map((_, i) => {
-                const heights = [15, 25, 40, 18, 30, 48, 22, 10, 35, 42, 28, 50, 38, 20, 45, 30, 15, 25, 40, 18, 30, 48, 22, 10];
-                return (
-                  <div
-                    key={i}
-                    className="waveform-bar"
-                    style={{
-                      height: `${heights[i % heights.length]}%`,
-                      animationDelay: `${i * 35}ms`
-                    }}
-                  />
-                );
-              })}
-            </div>
+            {/* Draggable Interactive Waveform Selector */}
+            {(() => {
+              const duration = m.endTime - m.startTime;
+              const currentStart = customStartTimes[m.rank] ?? m.startTime;
+              const currentEnd = customEndTimes[m.rank] ?? m.endTime;
+              const leftPercent = duration > 0 ? ((currentStart - m.startTime) / duration) * 100 : 0;
+              const rightPercent = duration > 0 ? ((currentEnd - m.startTime) / duration) * 100 : 100;
+
+              return (
+                <div className="ws-interactive-waveform-container">
+                  <div className="waveform-label-row">
+                    <span className="waveform-duration-label">Trim Duration: {Math.max(1, Math.round(currentEnd - currentStart))}s</span>
+                    <span className="waveform-timestamp-range">
+                      {Math.round(currentStart - m.startTime)}s - {Math.round(currentEnd - m.startTime)}s
+                    </span>
+                  </div>
+                  <div className="ws-waveform-track">
+                    {/* Background wave bars */}
+                    <div className="ws-waveform-bars">
+                      {[...Array(28)].map((_, i) => {
+                        const heights = [20, 35, 50, 25, 45, 60, 30, 15, 40, 55, 30, 65, 40, 20, 50, 35, 20, 35, 50, 25, 45, 60, 30, 15, 40, 55, 30, 20];
+                        return (
+                          <div
+                            key={i}
+                            className="waveform-bar"
+                            style={{
+                              height: `${heights[i % heights.length]}%`,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                    {/* Highlighted active range */}
+                    <div
+                      className="waveform-active-highlight"
+                      style={{
+                        left: `${leftPercent}%`,
+                        width: `${rightPercent - leftPercent}%`,
+                      }}
+                    />
+                    {/* Draggable Handles */}
+                    <div
+                      className="waveform-drag-handle left-handle"
+                      style={{ left: `${leftPercent}%` }}
+                      onPointerDown={(e) => handleWaveformDrag('start', m, e)}
+                    >
+                      <div className="handle-bar" />
+                      <div className="handle-dot" />
+                      <div className="handle-tag">In</div>
+                    </div>
+                    <div
+                      className="waveform-drag-handle right-handle"
+                      style={{ left: `${rightPercent}%` }}
+                      onPointerDown={(e) => handleWaveformDrag('end', m, e)}
+                    >
+                      <div className="handle-bar" />
+                      <div className="handle-dot" />
+                      <div className="handle-tag">Out</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Moment Distribution Heatmap/Timeline */}
             <div className="timeline-heatmap-container">
@@ -1598,6 +2018,14 @@ export default function Home() {
                     </button>
                   );
                 })}
+                {/* Playhead indicator */}
+                {totalDuration > 0 && (
+                  <div
+                    className="timeline-playhead"
+                    style={{ left: `${(playerStartTime / totalDuration) * 100}%` }}
+                    title={`Current position: ${Math.round(playerStartTime)}s`}
+                  />
+                )}
               </div>
             </div>
 
@@ -1628,19 +2056,33 @@ export default function Home() {
               </div>
             </div>
 
-            {/* P0.5: Subtitle Style Dropdown */}
+            {/* Visual Subtitle Preset Cards */}
             <div className="ws-subtitle-selector">
-              <span className="ratio-label">Subtitles:</span>
-              <div className="style-dropdown-group">
-                <select
-                  className="style-dropdown"
-                  value={subtitleStyle}
-                  onChange={(e) => setSubtitleStyle(e.target.value)}
-                >
-                  {SUBTITLE_STYLE_OPTIONS.map(opt => (
-                    <option key={opt.id} value={opt.id}>{opt.label}</option>
-                  ))}
-                </select>
+              <span className="ratio-label">Subtitle Style Preset:</span>
+              <div className="subtitle-presets-grid">
+                {SUBTITLE_STYLE_OPTIONS.map(opt => {
+                  const isActive = subtitleStyle === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`subtitle-preset-card ${isActive ? 'active' : ''}`}
+                      onClick={() => setSubtitleStyle(opt.id)}
+                      title={`Select ${opt.label} preset`}
+                    >
+                      <span className="preset-name">{opt.label}</span>
+                      <div className={`preset-preview-text style-preview-${opt.id}`}>
+                        {opt.id === 'opus' && <span className="preview-word highlighted">VIRAL</span>}
+                        {opt.id === 'hormozi' && <span className="preview-word yellow-bg">EASY!</span>}
+                        {opt.id === 'gadzhi' && <span className="preview-word serif-gadzhi">Classic</span>}
+                        {opt.id === 'mrbeast' && <span className="preview-word mrbeast-style">BOOM!</span>}
+                        {opt.id === 'podcast_minimal' && <span className="preview-word minimal-white">Focus</span>}
+                        {opt.id === 'documentary' && <span className="preview-word italic-doc">Narrative</span>}
+                        {opt.id === 'clean_corporate' && <span className="preview-word corporate-style">Insight</span>}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1662,7 +2104,7 @@ export default function Home() {
               <span className="ws-meta-sep">·</span>
               <button
                 type="button"
-                className="ws-copy-time-btn"
+                className={`ws-copy-time-btn${copiedTimestamp ? ' copied' : ''}`}
                 onClick={() => {
                   navigator.clipboard.writeText(`${m.startTimestamp} - ${m.endTimestamp}`);
                   setCopiedTimestamp(true);
@@ -1685,17 +2127,10 @@ export default function Home() {
             <div className="ws-tabs-nav">
               <button
                 type="button"
-                className={`ws-tab-btn${activeTab === 'analysis' ? ' active' : ''}`}
-                onClick={() => setActiveTab('analysis')}
+                className={`ws-tab-btn${activeTab === 'insights' ? ' active' : ''}`}
+                onClick={() => setActiveTab('insights')}
               >
-                AI Analysis
-              </button>
-              <button
-                type="button"
-                className={`ws-tab-btn${activeTab === 'titles' ? ' active' : ''}`}
-                onClick={() => setActiveTab('titles')}
-              >
-                Suggested Titles
+                AI Insights
               </button>
               <button
                 type="button"
@@ -1708,13 +2143,48 @@ export default function Home() {
 
             {/* ── Tab Content Areas ── */}
             <div className="ws-tab-content">
-              {activeTab === 'analysis' && (
+              {activeTab === 'insights' && (
                 <div className="tab-pane fade-in">
+                  {renderViralityBreakdown(m)}
                   {/* WHY GANYIQ PICKED THIS (Feature 4 inside workspace) */}
                   <div className="ws-section">
                     <h3 className="ws-section-title">WHY GANYIQ PICKED THIS</h3>
                     <p className="ws-reasoning">{m.reasoning || 'No reasoning available for this clip.'}</p>
                   </div>
+
+                  {/* Suggested Titles (AI Title Suggestions) ── */}
+                  {m.suggestedTitles && m.suggestedTitles.length > 0 && (
+                    <div className="ws-section">
+                      <h3 className="ws-section-title">5 Publish-Ready Titles</h3>
+                      <div className="title-suggestions">
+                        {m.suggestedTitles.map((st: any, i: number) => (
+                          <div key={i} className="title-suggestion-row">
+                            <span className="title-suggestion-style">{STYLE_LABELS[st.style] || st.style}</span>
+                            <span className="title-suggestion-text">{st.title}</span>
+                            <button
+                              className={`title-copy-btn${copiedTitleIndex === i ? ' copied' : ''}`}
+                              onClick={() => {
+                                navigator.clipboard.writeText(st.title);
+                                setCopiedTitleIndex(i);
+                                setTimeout(() => setCopiedTitleIndex(null), 2000);
+                              }}
+                              title="Copy title"
+                            >
+                              {copiedTitleIndex === i ? '✓ Copied' : 'Copy'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Best Hook ── */}
+                  {m.transcriptExcerpt && (
+                    <div className="ws-section">
+                      <h3 className="ws-section-title">Best Hook</h3>
+                      {renderBestHook(m.transcriptExcerpt, m.dnaTags, m.confidence, displayScore(m), m.reasoning)}
+                    </div>
+                  )}
 
                   {/* Why Ranked #X — deterministic ranking signals */}
                   {renderRankingSignals(m.rank, displayScore(m), m.confidence, m.dnaTags, m.endTime - m.startTime, liveTotalMomentsFound)}
@@ -1741,44 +2211,6 @@ export default function Home() {
                 </div>
               )}
 
-              {activeTab === 'titles' && (
-                <div className="tab-pane fade-in">
-                  {/* Suggested Titles (AI Title Suggestions) ── */}
-                  {m.suggestedTitles && m.suggestedTitles.length > 0 && (
-                    <div className="ws-section">
-                      <h3 className="ws-section-title">5 Publish-Ready Titles</h3>
-                      <div className="title-suggestions">
-                        {m.suggestedTitles.map((st: any, i: number) => (
-                          <div key={i} className="title-suggestion-row">
-                            <span className="title-suggestion-style">{STYLE_LABELS[st.style] || st.style}</span>
-                            <span className="title-suggestion-text">{st.title}</span>
-                            <button
-                              className="title-copy-btn"
-                              onClick={() => {
-                                navigator.clipboard.writeText(st.title);
-                                setCopiedTitleIndex(i);
-                                setTimeout(() => setCopiedTitleIndex(null), 2000);
-                              }}
-                              title="Copy title"
-                            >
-                              {copiedTitleIndex === i ? '✓' : 'Copy'}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Best Hook ── */}
-                  {m.transcriptExcerpt && (
-                    <div className="ws-section">
-                      <h3 className="ws-section-title">Best Hook</h3>
-                      {renderBestHook(m.transcriptExcerpt, m.dnaTags, m.confidence, displayScore(m), m.reasoning)}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {activeTab === 'export' && (
                 <div className="tab-pane fade-in">
                   {/* Export Strategy — above Generate */}
@@ -1795,12 +2227,21 @@ export default function Home() {
                         {transcriptExpanded ? 'Hide transcript' : 'Show transcript'}
                       </button>
                       {transcriptExpanded && (
-                        <p 
-                          className="ws-transcript interactive-transcript"
-                          onClick={() => setIsPlayingVideo(true)}
-                          title="Klik untuk putar video dari awal klip"
-                        >
-                          &ldquo;{m.transcriptExcerpt}&rdquo;
+                        <p className="ws-transcript interactive-transcript">
+                          {getTranscriptSegments(m.transcriptExcerpt, m.startTime, m.endTime).map((seg, idx) => (
+                            <span
+                              key={idx}
+                              className="transcript-sentence-span"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPlayerStartTime(seg.start);
+                                setIsPlayingVideo(true);
+                              }}
+                              title={`Click to seek to ${Math.round(seg.start - m.startTime)}s into clip`}
+                            >
+                              {seg.text}{' '}
+                            </span>
+                          ))}
                         </p>
                       )}
                     </div>
@@ -1828,6 +2269,23 @@ export default function Home() {
             <span className="header-badge">BETA</span>
           </div>
           <div className="header-right">
+            {(() => {
+              const onlineWorkers = workers.filter(w => w.status === 'online');
+              if (onlineWorkers.length > 0) {
+                return (
+                  <div className="worker-status online" title={`Last heartbeat: ${onlineWorkers[0].lastHeartbeat ? new Date(onlineWorkers[0].lastHeartbeat).toLocaleTimeString() : 'N/A'}`}>
+                    <span className="status-dot online-dot" />
+                    <span className="status-label">{onlineWorkers.map(w => w.name).join(', ')} Connected</span>
+                  </div>
+                );
+              }
+              return (
+                <div className="worker-status offline" title="No active workers rendering clips. Connect PC-GANY local worker.">
+                  <span className="status-dot offline-dot" />
+                  <span className="status-label">Renderer Offline</span>
+                </div>
+              );
+            })()}
             <span className="stats-mini">{history?.length || 0} analyses</span>
           </div>
         </div>
@@ -2100,6 +2558,7 @@ export default function Home() {
         {/* ── RESULTS EXPERIENCE V4 — Premium Dashboard Layout ── */}
         {stage === 'done' && result && result.moments.length > 0 && (
           <ErrorBoundary>
+            {renderAIExecutiveReport()}
             <div className="results-dashboard">
               {/* Left Pane: Sidebar navigation list */}
               <aside className="dashboard-sidebar">
@@ -2108,6 +2567,11 @@ export default function Home() {
                     All Picks
                     <span className="section-label-count">{result.moments.length} moments</span>
                   </h2>
+                  <span className="hotkeys-badge" title="Use J / K to navigate, Space to play/pause, C to render clip">
+                    <span className="key-cap">J</span>
+                    <span className="key-cap">K</span>
+                    shortcuts
+                  </span>
                 </div>
 
                 <div className="sidebar-list">

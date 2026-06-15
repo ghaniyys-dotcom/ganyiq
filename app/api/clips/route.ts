@@ -21,7 +21,7 @@ import { query } from '@/db/client';
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json();
-    const { analysisId, momentIndex, renderMode, subtitleStyle } = body || {};
+    const { analysisId, momentIndex, renderMode, subtitleStyle, customStartTime, customEndTime } = body || {};
 
     if (!analysisId || typeof momentIndex !== 'number') {
       return NextResponse.json(
@@ -59,12 +59,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const moment = momentResult.rows[0];
 
+    const finalStartTime = typeof customStartTime === 'number' ? customStartTime : parseFloat(moment.start_time);
+    const finalEndTime = typeof customEndTime === 'number' ? customEndTime : parseFloat(moment.end_time);
+
     // 2. Check clips_cache (include render_mode in cache key)
     const cacheResult = await query<{ id: string; filename: string }>(
       `SELECT id, filename FROM clips_cache
        WHERE video_id = $1 AND start_time = $2 AND end_time = $3 AND render_mode = $4
        LIMIT 1`,
-      [moment.video_id, moment.start_time, moment.end_time, finalRenderMode],
+      [moment.video_id, finalStartTime.toString(), finalEndTime.toString(), finalRenderMode],
     );
 
     if (cacheResult.rows.length > 0) {
@@ -79,8 +82,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // 3. Create clip job in queue
     const clipParams: Record<string, unknown> = {
       videoId: moment.video_id,
-      startTime: parseFloat(moment.start_time),
-      endTime: parseFloat(moment.end_time),
+      startTime: finalStartTime,
+      endTime: finalEndTime,
       renderMode: finalRenderMode,
     };
     if (subtitleStyle) {
@@ -103,7 +106,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       `INSERT INTO clips_cache (video_id, start_time, end_time, filename, job_id, render_mode)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [moment.video_id, moment.start_time, moment.end_time, '', jobId, finalRenderMode],
+      [moment.video_id, finalStartTime.toString(), finalEndTime.toString(), '', jobId, finalRenderMode],
     );
 
     return NextResponse.json(

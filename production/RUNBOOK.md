@@ -76,10 +76,10 @@ bash deploy.sh                 # Full deploy
 
 ```bash
 # Full database backup
-pg_dump -U ganyiq ganyiq > /root/GANYIQ/backups/pg/ganiyq_$(date +%Y%m%d_%H%M%S).sql
+pg_dump -U ganyiq ganyiq > /root/GANYIQ/backups/pg/ganyiq_$(date +%Y%m%d_%H%M%S).sql
 
 # Restore from backup
-psql -U ganyiq -d ganyiq < /root/GANYIQ/backups/pg/ganiyq_20260604_080101.sql
+psql -U ganyiq -d ganyiq < /root/GANYIQ/backups/pg/ganyiq_20260604_080101.sql
 ```
 
 ## Worker Troubleshooting

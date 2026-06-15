@@ -36,6 +36,8 @@ export interface RawMoment {
   confidence: ConfidenceLevel;
   dnaTags: DnaTag[];
   reasoning: string;
+  /** V2 Judge Engine result (optional, set by judge-integration.ts) */
+  judgeResult?: import('./judge-types').JudgeResult;
 }
 
 export interface RankedMoment extends RawMoment {
@@ -59,3 +61,8 @@ export interface AnalysisError {
   error: string;     // Error code
   message: string;   // Human-readable message
 }
+
+// V2 Timeline Architecture — re-exported for convenience
+export type { TimelineJSON, TrackType, TimelineTrack, TimelineSegment } from './timeline-types';
+// V2 Judge Engine types
+export type { JudgeResult } from './judge-types';

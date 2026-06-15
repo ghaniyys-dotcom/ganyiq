@@ -81,7 +81,7 @@ ffmpeg -version
 2. Right-click → Extract All...
 3. Rename the folder to ganyiq-worker
 4. Open Command Prompt inside the folder:
-   cd C:\path\to\ganiyq-worker
+   cd C:\path\to\ganyiq-worker
 ```
 
 ### Step 5 — Install Dependencies

@@ -17,6 +17,7 @@ import { detectGenre } from '@/lib/genre-detector';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { generateAllTitlesForAnalysis } from '@/lib/title-generator';
 import type { RankedMoment } from '@/lib/types';
+import { enrichWithJudgeV2, isJudgeV2Enabled, createJudgeLlm } from '@/lib/judge-integration';
 
 // ---------------------------------------------------------------------------
 // Progress stages
@@ -27,6 +28,7 @@ type Stage =
   | 'extracting_candidates'
   | 'batch_analysis'
   | 'multi_pass'
+  | 'judging'
   | 'ranking'
   | 'storing_results';
 
@@ -35,6 +37,7 @@ const STAGES: Stage[] = [
   'extracting_candidates',
   'batch_analysis',
   'multi_pass',
+  'judging',
   'ranking',
   'storing_results',
 ];
@@ -95,10 +98,33 @@ export async function runAnalysisPipeline(
     const analysisResult = await analyzeTranscript(videoData.metadata, videoData.transcript, analysisId);
     console.timeEnd(`[PROFILE] ${youtubeId} 2_analyze_transcript`);
 
-    // ---- Stage 3: Multi-pass verification ----
+    // ---- Stage 3a: Judge V2 (feature-flagged) ----
+    let momentsForRanking = analysisResult.moments;
+    let judgeTiming = '';
+
+    if (isJudgeV2Enabled()) {
+      await setStage(analysisId, 'judging');
+      console.time(`[PROFILE] ${youtubeId} 3a_judge_v2`);
+      const judgeLlm = createJudgeLlm();
+      const enrichedMoments = await enrichWithJudgeV2(
+        analysisResult.moments,
+        videoData.transcript,
+        judgeLlm,
+      );
+
+      // Count how many got judge scores
+      const judgedCount = enrichedMoments.filter(m => m.judgeResult).length;
+      console.log(`[JUDGE-V2] Enriched ${judgedCount}/${enrichedMoments.length} moments`);
+      console.timeEnd(`[PROFILE] ${youtubeId} 3a_judge_v2`);
+      momentsForRanking = enrichedMoments;
+    } else {
+      console.log('[JUDGE-V2] DISABLED — using V1 worthClippingScore');
+    }
+
+    // ---- Stage 3b: Ranking ----
     await setStage(analysisId, 'ranking');
     console.time(`[PROFILE] ${youtubeId} 3_ranking`);
-    const rawMoments = analysisResult.moments;
+    const rawMoments = momentsForRanking;
     const servingModel = analysisResult.model;
     const genreProfile = detectGenre(videoData.metadata.title, videoData.metadata.channelName);
     const dedupConfig = getDedupConfig(genreProfile.dedupWindow);

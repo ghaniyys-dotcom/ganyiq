@@ -29,6 +29,7 @@ import type {
   TranscriptSegment,
   MomentTier,
 } from '@/lib/types';
+import type { JudgeResult } from '@/lib/judge-types';
 import type { GenreProfile } from '@/lib/genre-detector';
 
 // ---------------------------------------------------------------------------
@@ -246,7 +247,9 @@ function isDuplicateOf(
 
   // ----- Factor 3: Score Proximity + Same Tags + Moderate Time -----
   // If scores are within threshold AND share tags AND start within scoreWindow
-  const scoreDiff = Math.abs(candidate.worthClippingScore - kept.worthClippingScore);
+  const scoreA = candidate.judgeResult?.curvedScore ?? candidate.worthClippingScore;
+  const scoreB = kept.judgeResult?.curvedScore ?? kept.worthClippingScore;
+  const scoreDiff = Math.abs(scoreA - scoreB);
   if (sharedTags >= 1 && scoreDiff <= dedupConfig.scoreProximityThreshold && timeGap < dedupConfig.scoreWindow) {
     return { isDuplicate: true, reason: `score_proximity_${Math.round(scoreDiff)}pts_${Math.round(timeGap)}s` };
   }
@@ -286,7 +289,8 @@ function deduplicateMoments(
     if (shouldKeep) {
       kept.push(moment);
     } else {
-      console.log(`[DEDUP] Removed: score=${moment.worthClippingScore} time=${moment.startTime.toFixed(1)}s reason=${removalReason}`);
+      const score = moment.judgeResult?.curvedScore ?? moment.worthClippingScore;
+      console.log(`[DEDUP] Removed: score=${score} time=${moment.startTime.toFixed(1)}s reason=${removalReason}`);
     }
   }
 
@@ -397,9 +401,12 @@ export function rankMoments(
   const config = dedupConfig ?? getDedupConfig(30);
 
   // Step 1: Sort by score descending
-  const sorted = [...moments].sort(
-    (a, b) => b.worthClippingScore - a.worthClippingScore,
-  );
+  // V2: Use curvedScore if JudgeResult is available, else worthClippingScore
+  const sorted = [...moments].sort((a, b) => {
+    const scoreA = a.judgeResult?.curvedScore ?? a.worthClippingScore;
+    const scoreB = b.judgeResult?.curvedScore ?? b.worthClippingScore;
+    return scoreB - scoreA;
+  });
 
   // Step 2: Apply multi-speaker additive bonus
   const hasSpeakerData = transcript.some(s => s.speaker !== undefined && s.speaker !== 'mixed');

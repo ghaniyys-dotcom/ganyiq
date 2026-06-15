@@ -8,7 +8,7 @@ This folder contains reference copies of infrastructure configuration files.
 | Item | Location |
 |------|----------|
 | Original config | `/etc/nginx/sites-enabled/ganyiq` |
-| Reference copy | `nginx/ganiyq.conf` |
+| Reference copy | `nginx/ganyiq.conf` |
 
 Domain: `ganyiq.ganys.me` → reverse proxy to `http://127.0.0.1:3003`
 SSL certificate: Let's Encrypt (SAN cert, expires 2026-08-30)
@@ -27,19 +27,19 @@ Never commit cookies to git. `/etc/ganyiq/` is outside the repo.
 
 | Item | Detail |
 |------|--------|
-| Process name | `ganiyq` |
+| Process name | `ganyiq` |
 | Process ID | 5 |
 | Working directory | `/var/www/ganyiq` |
 | Script | `npm start -- -p 3003` |
 | Restarts | ~57 (at time of writing) |
-| Logs | `/root/.pm2/logs/ganiyq-{out,error}.log` |
-| PID | `/root/.pm2/pids/ganiyq-5.pid` |
+| Logs | `/root/.pm2/logs/ganyiq-{out,error}.log` |
+| PID | `/root/.pm2/pids/ganyiq-5.pid` |
 
 ## PostgreSQL
 
 | Item | Detail |
 |------|--------|
-| Database | `ganiyq` |
-| User | `ganiyq` |
+| Database | `ganyiq` |
+| User | `ganyiq` |
 | Port | 5432 (localhost) |
 | Connection string | `DATABASE_URL` in `.env.local` |
