@@ -66,3 +66,5 @@ export interface AnalysisError {
 export type { TimelineJSON, TrackType, TimelineTrack, TimelineSegment } from './timeline-types';
 // V2 Judge Engine types
 export type { JudgeResult } from './judge-types';
+// V2 Multi-Generator types (Phase 2.1)
+export type { GeneratorStrategy, GeneratorCandidate, GeneratorResult, IGenerator } from './multi-generator/types';
