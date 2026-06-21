@@ -1,0 +1,101 @@
+clipId,transcript,source,category,density_score,human_score
+HDV2_ACT_043,Review your weekly goals every Sunday evening to stay aligned. Research supports this approach strongly.,synthetic_high_density,actionable_advice,5,7
+HDV2_ACT_045,Write down your top 3 priorities the night before to start the day focused.,synthetic_high_density,actionable_advice,4,7
+HDV2_ACT_031,Batch similar tasks together to reduce context switching costs. Many high performers use this method daily.,synthetic_high_density,actionable_advice,5,9
+HDV2_FAC_010,The Dunning-Kruger effect causes incompetent people to overestimate their abilities. Research supports this approach strongly.,synthetic_high_density,factual,4,8
+HDV2_FRA_065,"The SCARF model explains social threats: Status, Certainty, Autonomy, Relatedness, Fairness. Many high performers use this method daily.",synthetic_high_density,framework_technique,4,7
+HDV2_ACT_041,Batch similar tasks together to reduce context switching costs. Research supports this approach strongly.,synthetic_high_density,actionable_advice,4,8
+HDV2_EDU_084,Elaboration helps memory by connecting new information to existing knowledge. Implement this consistently for best results.,synthetic_high_density,educational_explanation,4,7
+HDV2_FRA_061,The Eisenhower Matrix divides tasks into urgent/important quadrants. Research supports this approach strongly.,synthetic_high_density,framework_technique,4,8
+HDV2_FAC_009,Habit formation takes an average of 66 days according to research.,synthetic_high_density,factual,4,9
+HDV2_FRA_070,"The Cynefin framework categorizes problems into simple, complicated, complex, chaotic.",synthetic_high_density,framework_technique,5,9
+HDV2_EDU_088,The spacing effect shows that information is retained better when learning is spread over time. Research supports this approach strongly.,synthetic_high_density,educational_explanation,4,9
+HDV2_EDU_076,"When learning a skill, spaced repetition is more effective than cramming because of the forgetting curve. Research supports this approach strongly.",synthetic_high_density,educational_explanation,5,8
+HDV2_FRA_064,"The GROW model for coaching: Goal, Reality, Options, Will. Implement this consistently for best results.",synthetic_high_density,framework_technique,5,9
+HDV2_ACT_044,Turn off all notifications for 90-minute deep work blocks. Many high performers use this method daily.,synthetic_high_density,actionable_advice,4,9
+HDV2_FAC_001,The Pomodoro technique was invented in the 1980s by Francesco Cirillo.,synthetic_high_density,factual,4,8
+HDV2_FRA_075,"The SCARF model explains social threats: Status, Certainty, Autonomy, Relatedness, Fairness. Many high performers use this method daily.",synthetic_high_density,framework_technique,4,7
+HDV2_FRA_056,"The OODA Loop is Observe, Orient, Decide, Act for rapid decision making. Many high performers use this method daily.",synthetic_high_density,framework_technique,5,7
+HDV2_FRA_067,The Build-Measure-Learn loop is the core of the Lean Startup methodology. Implement this consistently for best results.,synthetic_high_density,framework_technique,4,7
+HDV2_ACT_048,"Before starting any project, write down the three most important outcomes you want. Research supports this approach strongly.",synthetic_high_density,actionable_advice,4,7
+HDV2_ACT_034,Turn off all notifications for 90-minute deep work blocks. Implement this consistently for best results.,synthetic_high_density,actionable_advice,4,8
+HDV2_ACT_030,Use the 'eat the frog' method: complete your hardest task first every day. Research supports this approach strongly.,synthetic_high_density,actionable_advice,5,7
+HDV2_EDU_082,Dual coding theory suggests combining words and visuals leads to better learning. Research supports this approach strongly.,synthetic_high_density,educational_explanation,5,9
+HDV2_FAC_003,The average human attention span on digital content is 8 seconds. Many high performers use this method daily.,synthetic_high_density,factual,5,9
+HDV2_EDU_092,Dual coding theory suggests combining words and visuals leads to better learning. This principle applies across many domains.,synthetic_high_density,educational_explanation,5,8
+HDV2_FAC_005,Stanford research shows that 20% of people produce 80% of results in most fields. Many high performers use this method daily.,synthetic_high_density,factual,5,7
+HDV2_FAC_016,The Zeigarnik effect is the tendency to remember unfinished tasks better than completed ones. This principle applies across many domains.,synthetic_high_density,factual,5,9
+HDV2_EDU_087,"Deliberate practice requires immediate feedback and focus on weak areas, unlike regular practice. Many high performers use this method daily.",synthetic_high_density,educational_explanation,5,9
+HDV2_FAC_021,The Pomodoro technique was invented in the 1980s by Francesco Cirillo. Implement this consistently for best results.,synthetic_high_density,factual,4,7
+HDV2_EDU_098,The spacing effect shows that information is retained better when learning is spread over time. Implement this consistently for best results.,synthetic_high_density,educational_explanation,5,7
+HDV2_EDU_085,The protégé effect shows that teaching others improves the teacher's own understanding. Many high performers use this method daily.,synthetic_high_density,educational_explanation,5,8
+HDV2_FAC_023,The average human attention span on digital content is 8 seconds. Many high performers use this method daily.,synthetic_high_density,factual,4,7
+HDV2_FRA_066,"The OODA Loop is Observe, Orient, Decide, Act for rapid decision making. This principle applies across many domains.",synthetic_high_density,framework_technique,4,7
+HDV2_EDU_091,The testing effect demonstrates that retrieving information strengthens memory more than restudying. Research supports this approach strongly.,synthetic_high_density,educational_explanation,5,7
+HDV2_ACT_042,Set a timer for 25 minutes and work with zero distractions during that period. Implement this consistently for best results.,synthetic_high_density,actionable_advice,4,7
+HDV2_EDU_095,The protégé effect shows that teaching others improves the teacher's own understanding.,synthetic_high_density,educational_explanation,5,7
+HDV2_ACT_046,"To remember names better, repeat the person's name three times during the conversation. Implement this consistently for best results.",synthetic_high_density,actionable_advice,4,8
+HDV2_FRA_069,"The MoSCoW method prioritizes requirements as Must, Should, Could, Won't. Many high performers use this method daily.",synthetic_high_density,framework_technique,4,7
+HDV2_FRA_053,The 80/20 Principle (Pareto) says focus on the 20% of inputs that produce 80% of results. Research supports this approach strongly.,synthetic_high_density,framework_technique,5,9
+HDV2_EDU_097,"Deliberate practice requires immediate feedback and focus on weak areas, unlike regular practice. Many high performers use this method daily.",synthetic_high_density,educational_explanation,4,7
+HDV2_FRA_062,The Feynman Technique: explain complex concepts in simple language to test understanding.,synthetic_high_density,framework_technique,5,8
+HDV2_FAC_020,The Dunning-Kruger effect causes incompetent people to overestimate their abilities. This principle applies across many domains.,synthetic_high_density,factual,4,8
+HDV2_FAC_014,The compound effect states that small daily improvements lead to massive results over time. This principle applies across many domains.,synthetic_high_density,factual,5,9
+HDV2_EDU_078,The spacing effect shows that information is retained better when learning is spread over time. Many high performers use this method daily.,synthetic_high_density,educational_explanation,5,8
+HDV2_ACT_047,"Use the 2-minute rule: if a task takes less than 2 minutes, do it immediately. This principle applies across many domains.",synthetic_high_density,actionable_advice,4,7
+HDV2_FRA_051,The Eisenhower Matrix divides tasks into urgent/important quadrants. Research supports this approach strongly.,synthetic_high_density,framework_technique,5,8
+HDV2_EDU_094,Elaboration helps memory by connecting new information to existing knowledge.,synthetic_high_density,educational_explanation,5,8
+HDV2_FRA_060,"The Cynefin framework categorizes problems into simple, complicated, complex, chaotic. Research supports this approach strongly.",synthetic_high_density,framework_technique,5,9
+HDV2_ACT_028,"Before starting any project, write down the three most important outcomes you want. Many high performers use this method daily.",synthetic_high_density,actionable_advice,4,9
+HDV2_ACT_050,Use the 'eat the frog' method: complete your hardest task first every day. Research supports this approach strongly.,synthetic_high_density,actionable_advice,4,9
+HDV2_ACT_038,"Before starting any project, write down the three most important outcomes you want. This principle applies across many domains.",synthetic_high_density,actionable_advice,5,7
+HDV2_FRA_055,"The SCARF model explains social threats: Status, Certainty, Autonomy, Relatedness, Fairness. Many high performers use this method daily.",synthetic_high_density,framework_technique,5,7
+HDV2_EDU_079,Active recall is significantly more effective than passive re-reading for long-term memory.,synthetic_high_density,educational_explanation,5,7
+HDV2_FAC_018,The brain can only hold 4-7 items in working memory at once. Implement this consistently for best results.,synthetic_high_density,factual,5,7
+HDV2_ACT_026,"To remember names better, repeat the person's name three times during the conversation.",synthetic_high_density,actionable_advice,5,8
+HDV2_ACT_037,"Use the 2-minute rule: if a task takes less than 2 minutes, do it immediately. Implement this consistently for best results.",synthetic_high_density,actionable_advice,5,9
+HDV2_EDU_096,"When learning a skill, spaced repetition is more effective than cramming because of the forgetting curve. Research supports this approach strongly.",synthetic_high_density,educational_explanation,4,8
+HDV2_ACT_032,Set a timer for 25 minutes and work with zero distractions during that period.,synthetic_high_density,actionable_advice,4,7
+HDV2_ACT_035,Write down your top 3 priorities the night before to start the day focused.,synthetic_high_density,actionable_advice,4,8
+HDV2_FAC_012,Python 3.12 introduced a 5-10% performance improvement over 3.11.,synthetic_high_density,factual,4,9
+HDV2_FRA_054,"The GROW model for coaching: Goal, Reality, Options, Will. Many high performers use this method daily.",synthetic_high_density,framework_technique,4,9
+HDV2_EDU_093,The generation effect means people remember information better when they generate it themselves. Implement this consistently for best results.,synthetic_high_density,educational_explanation,4,7
+HDV2_ACT_033,Review your weekly goals every Sunday evening to stay aligned. Implement this consistently for best results.,synthetic_high_density,actionable_advice,5,7
+HDV2_FAC_002,Python 3.12 introduced a 5-10% performance improvement over 3.11.,synthetic_high_density,factual,4,7
+HDV2_FAC_019,Habit formation takes an average of 66 days according to research. Many high performers use this method daily.,synthetic_high_density,factual,5,9
+HDV2_FRA_052,The Feynman Technique: explain complex concepts in simple language to test understanding. Research supports this approach strongly.,synthetic_high_density,framework_technique,4,9
+HDV2_FRA_068,The 5 Whys technique helps find root causes by asking 'why' five times. Research supports this approach strongly.,synthetic_high_density,framework_technique,4,9
+HDV2_FAC_013,The average human attention span on digital content is 8 seconds.,synthetic_high_density,factual,4,8
+HDV2_EDU_100,Interleaving different topics during study sessions improves discrimination and retention. Research supports this approach strongly.,synthetic_high_density,educational_explanation,4,8
+HDV2_FAC_008,The brain can only hold 4-7 items in working memory at once. Implement this consistently for best results.,synthetic_high_density,factual,5,8
+HDV2_FAC_024,The compound effect states that small daily improvements lead to massive results over time. Many high performers use this method daily.,synthetic_high_density,factual,4,7
+HDV2_FRA_074,"The GROW model for coaching: Goal, Reality, Options, Will. Many high performers use this method daily.",synthetic_high_density,framework_technique,5,7
+HDV2_ACT_027,"Use the 2-minute rule: if a task takes less than 2 minutes, do it immediately. Many high performers use this method daily.",synthetic_high_density,actionable_advice,4,8
+HDV2_FRA_059,"The MoSCoW method prioritizes requirements as Must, Should, Could, Won't. Research supports this approach strongly.",synthetic_high_density,framework_technique,4,9
+HDV2_ACT_040,Use the 'eat the frog' method: complete your hardest task first every day. Implement this consistently for best results.,synthetic_high_density,actionable_advice,4,9
+HDV2_EDU_080,Interleaving different topics during study sessions improves discrimination and retention. Many high performers use this method daily.,synthetic_high_density,educational_explanation,4,9
+HDV2_FAC_015,Stanford research shows that 20% of people produce 80% of results in most fields. Implement this consistently for best results.,synthetic_high_density,factual,5,7
+HDV2_FRA_072,The Feynman Technique: explain complex concepts in simple language to test understanding. Many high performers use this method daily.,synthetic_high_density,framework_technique,4,7
+HDV2_EDU_086,"When learning a skill, spaced repetition is more effective than cramming because of the forgetting curve. Research supports this approach strongly.",synthetic_high_density,educational_explanation,5,9
+HDV2_EDU_089,Active recall is significantly more effective than passive re-reading for long-term memory. Many high performers use this method daily.,synthetic_high_density,educational_explanation,4,8
+HDV2_FAC_022,Python 3.12 introduced a 5-10% performance improvement over 3.11. This principle applies across many domains.,synthetic_high_density,factual,4,8
+HDV2_FRA_073,The 80/20 Principle (Pareto) says focus on the 20% of inputs that produce 80% of results.,synthetic_high_density,framework_technique,4,9
+HDV2_FAC_004,The compound effect states that small daily improvements lead to massive results over time. Implement this consistently for best results.,synthetic_high_density,factual,4,7
+HDV2_FAC_011,The Pomodoro technique was invented in the 1980s by Francesco Cirillo. Implement this consistently for best results.,synthetic_high_density,factual,5,7
+HDV2_EDU_083,The generation effect means people remember information better when they generate it themselves. Implement this consistently for best results.,synthetic_high_density,educational_explanation,5,8
+HDV2_EDU_090,Interleaving different topics during study sessions improves discrimination and retention. Implement this consistently for best results.,synthetic_high_density,educational_explanation,5,7
+HDV2_EDU_077,"Deliberate practice requires immediate feedback and focus on weak areas, unlike regular practice. This principle applies across many domains.",synthetic_high_density,educational_explanation,5,9
+HDV2_FAC_006,The Zeigarnik effect is the tendency to remember unfinished tasks better than completed ones. Implement this consistently for best results.,synthetic_high_density,factual,4,7
+HDV2_FAC_017,Multitasking reduces productivity by up to 40% according to multiple studies. This principle applies across many domains.,synthetic_high_density,factual,4,8
+HDV2_FRA_058,The 5 Whys technique helps find root causes by asking 'why' five times. Many high performers use this method daily.,synthetic_high_density,framework_technique,4,9
+HDV2_FAC_007,Multitasking reduces productivity by up to 40% according to multiple studies. Research supports this approach strongly.,synthetic_high_density,factual,4,9
+HDV2_ACT_029,Schedule your most important task first thing in the morning when energy is highest. Many high performers use this method daily.,synthetic_high_density,actionable_advice,4,7
+HDV2_ACT_039,Schedule your most important task first thing in the morning when energy is highest. Many high performers use this method daily.,synthetic_high_density,actionable_advice,4,7
+HDV2_FRA_057,The Build-Measure-Learn loop is the core of the Lean Startup methodology. Many high performers use this method daily.,synthetic_high_density,framework_technique,4,7
+HDV2_FRA_071,The Eisenhower Matrix divides tasks into urgent/important quadrants. Many high performers use this method daily.,synthetic_high_density,framework_technique,5,9
+HDV2_EDU_099,Active recall is significantly more effective than passive re-reading for long-term memory. Research supports this approach strongly.,synthetic_high_density,educational_explanation,4,8
+HDV2_ACT_049,Schedule your most important task first thing in the morning when energy is highest. This principle applies across many domains.,synthetic_high_density,actionable_advice,4,9
+HDV2_FRA_063,The 80/20 Principle (Pareto) says focus on the 20% of inputs that produce 80% of results. Many high performers use this method daily.,synthetic_high_density,framework_technique,4,9
+HDV2_ACT_036,"To remember names better, repeat the person's name three times during the conversation. Implement this consistently for best results.",synthetic_high_density,actionable_advice,5,8
+HDV2_EDU_081,The testing effect demonstrates that retrieving information strengthens memory more than restudying.,synthetic_high_density,educational_explanation,5,9
+HDV2_FAC_025,Stanford research shows that 20% of people produce 80% of results in most fields. Many high performers use this method daily.,synthetic_high_density,factual,4,7

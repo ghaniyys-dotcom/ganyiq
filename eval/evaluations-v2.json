@@ -1,0 +1,802 @@
+[
+  {
+    "clipId": "ANCHOR_BAD",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 1,
+      "harm": 1
+    },
+    "final_score": 3,
+    "reasoning": "The clip contains no substantive information, has no hook, and poses no harm—it is a generic sign-off with a subscription reminder."
+  },
+  {
+    "clipId": "ANCHOR_AVG",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 7,
+      "harm": 1
+    },
+    "final_score": 25,
+    "reasoning": "The clip poses a relatable question about starting a business with limited capital, which hooks viewers effectively. However, it delivers no actual information or actionable advice—just a setup. Minimal harm, but low information gain."
+  },
+  {
+    "clipId": "ANCHOR_EXCELLENT",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 7,
+      "harm": 2
+    },
+    "final_score": 26,
+    "reasoning": "Personal emotional hook is strong, but the clip lacks concrete information or actionable insight. Low harm, though slightly vague."
+  },
+  {
+    "clipId": "P02_negative_converted_2_0s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 3
+    },
+    "final_score": 6,
+    "reasoning": "The clip shows a brief, somewhat surprising exchange about a child smoking, which may grab attention due to the unexpected topic. However, it lacks clear context or educational value, and the subject matter (child smoking) could be harmful if not properly framed."
+  },
+  {
+    "clipId": "P01_negative_3_47s_DUP",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 17,
+    "reasoning": "The clip offers a common observation about online judgment without deep insight, has moderate emotional hook, and low harm despite mild generalization."
+  },
+  {
+    "clipId": "P02_negative_1_60s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The clip opens with a question that may spark curiosity, but delivers no concrete information or value. It poses a vague inquiry about content quality and views without providing context, explanation, or resolution. Minimal harm as it's not toxic or misleading, though it borders on clickbait without"
+  },
+  {
+    "clipId": "P04_high_3_45s",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 26,
+    "reasoning": "The clip delivers a common motivational insight about mindset and patience, which is somewhat useful but not particularly new or surprising. The hook is moderate—it states a relatable problem but lacks a strong emotional or dramatic pull. There is minimal harm; the message is benign and not misleadi"
+  },
+  {
+    "clipId": "P06_negative_1_12s",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 6,
+      "harm": 1
+    },
+    "final_score": 28,
+    "reasoning": "The clip offers a common motivational idea (failure as a teacher) with moderate novelty. The hook is decent due to a direct question, but lacks strong specificity. No significant harm detected."
+  },
+  {
+    "clipId": "P01_negative_0_540s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The clip is a generic sign-off with no new information, weak hook, and no harmful content."
+  },
+  {
+    "clipId": "P01_medium_2_2s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is a brief, casual greeting with no substantive content, low information, and minimal hook, but no harm."
+  },
+  {
+    "clipId": "P02_high_3_285s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The clip offers minimal new information—it's a brief, vague reflection on gratitude and depression without depth or actionable insight. The emotional tone may mildly hook viewers, but the lack of context or resolution limits engagement. No significant harm, though oversimplifying depression could be"
+  },
+  {
+    "clipId": "P03_high_3_77s",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 22,
+    "reasoning": "The clip provides a brief, somewhat vague claim about Indonesia's economic resilience based on fundamental data, offering limited new or surprising information. The hook is weak—it starts mid-thought with no strong opening to capture attention quickly. There is minimal harm, as the statement is not "
+  },
+  {
+    "clipId": "P06_medium_3_177s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 21,
+    "reasoning": "The clip delivers a brief motivational statement about rising up due to responsibility, which offers minimal new information. The emotional tone provides moderate attention capture, but lacks a strong hook. No harmful content detected."
+  },
+  {
+    "clipId": "P03_medium_1_157s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 15,
+    "reasoning": "Generic opinion with low novelty; weak hook; minimal harm but lacks substance."
+  },
+  {
+    "clipId": "P05_high_0_110s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 6,
+      "harm": 2
+    },
+    "final_score": 9,
+    "reasoning": "No actual information is delivered; it's purely a teaser. The hook creates mild curiosity but risks clickbait if content doesn't deliver."
+  },
+  {
+    "clipId": "P05_medium_2_15s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 7,
+      "harm": 2
+    },
+    "final_score": 21,
+    "reasoning": "Vague teaser with minimal concrete info, but curiosity-driven hook is moderately engaging. Low harm as it's just a teaser."
+  },
+  {
+    "clipId": "P03_medium_2_247s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 5,
+      "harm": 4
+    },
+    "final_score": 9,
+    "reasoning": "The clip makes a bold comparative claim (Japan 250%, US 120%, 'we are far better') without providing context, source, or definition of the metric. This creates curiosity (moderate attention) but delivers little verifiable information. The unsourced comparison risks spreading misleading or nationalis"
+  },
+  {
+    "clipId": "P04_negative_1_10s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 7,
+      "harm": 1
+    },
+    "final_score": 25,
+    "reasoning": "The clip poses a relatable question about starting a business with limited capital, which hooks curiosity (good attention capture), but delivers no actual information or answer yet (low information gain). Minimal harm as it's a genuine common question without misinformation."
+  },
+  {
+    "clipId": "P06_medium_2_122s",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 6,
+      "harm": 1
+    },
+    "final_score": 28,
+    "reasoning": "Generic motivational quote with no new or surprising info. Hook is moderately strong due to contrast structure. No harm detected."
+  },
+  {
+    "clipId": "P06_negative_0_12s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 6,
+      "harm": 1
+    },
+    "final_score": 23,
+    "reasoning": "Generic motivational statement with low novelty; decent hook via question format; minimal harm but lacks depth or actionable insight."
+  },
+  {
+    "clipId": "P05_high_3_0s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 7,
+      "harm": 3
+    },
+    "final_score": 12,
+    "reasoning": "Vague teaser with no actual information; strong emotional hook but risks clickbait without substance."
+  },
+  {
+    "clipId": "P02_negative_converted_1_410s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 16,
+    "reasoning": "Generic motivational statement with no specific information. Mildly positive but lacks substance."
+  },
+  {
+    "clipId": "P02_high_0_15s_DUP",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 6,
+      "harm": 1
+    },
+    "final_score": 18,
+    "reasoning": "Low information gain as it only announces a viral guest without substantive content. Moderate attention capture due to the excitement and mention of a viral figure. Minimal harm as it's a simple announcement without misinformation or toxicity."
+  },
+  {
+    "clipId": "P04_high_2_340s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 16,
+    "reasoning": "Generic motivational insight with low novelty; decent hook via relatable fear theme; minimal harm."
+  },
+  {
+    "clipId": "P04_high_1_195s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 7,
+      "harm": 2
+    },
+    "final_score": 21,
+    "reasoning": "Emotionally relatable hook about rejection, but lacks concrete information or actionable insight. Low harm, moderate attention."
+  },
+  {
+    "clipId": "P01_negative_converted_2_2s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is a brief, casual greeting in Indonesian with no substantive information, weak hook, and no harmful content."
+  },
+  {
+    "clipId": "P05_negative_converted_3_35s_DUP",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "The transcript provides minimal information—only basic demographic details about a young woman from Indonesia. There's no surprising or useful insight, and the hook is weak with no compelling narrative or emotional pull. However, it contains no harmful content."
+  },
+  {
+    "clipId": "P05_medium_1_245s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 8,
+      "harm": 7
+    },
+    "final_score": 3,
+    "reasoning": "The clip delivers minimal information but uses a shocking, emotionally charged statement as a hook. However, it risks being clickbait without substantive value and could spread fear or misinformation if taken out of context."
+  },
+  {
+    "clipId": "P04_high_0_25s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 6,
+      "harm": 1
+    },
+    "final_score": 23,
+    "reasoning": "The clip opens with a bold, direct statement that challenges a common assumption (that funding is the main problem), which creates mild curiosity. However, the transcript is very short and lacks context, limiting both information gain and sustained attention. No harmful content is present."
+  },
+  {
+    "clipId": "P03_negative_1_17s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 1,
+      "harm": 0
+    },
+    "final_score": 12,
+    "reasoning": "The transcript is extremely short and provides minimal information—only mentioning former ministerial titles without context, explanation, or elaboration. It lacks a hook, narrative, or any engaging element to capture attention. There is no harmful content, but the clip offers almost no value as a s"
+  },
+  {
+    "clipId": "P05_negative_converted_3_35s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "Minimal information provided; vague hook with no surprising or useful content. Low harm but lacks substance."
+  },
+  {
+    "clipId": "P03_high_1_32s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 7,
+      "harm": 2
+    },
+    "final_score": 21,
+    "reasoning": "The clip poses a common question about Indonesia's economy being in crisis, which is somewhat informative but not deeply insightful. The hook is moderately engaging due to the direct question format. There is minimal harm as it does not spread misinformation or toxicity."
+  },
+  {
+    "clipId": "P04_medium_3_490s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 17,
+    "reasoning": "The clip offers a brief financial tip in Indonesian about reinvesting profits before dividing them. The advice is generic and not particularly surprising. The hook is weak as it lacks context or a compelling setup. Minimal harm, though the advice could be considered oversimplified financial guidance"
+  },
+  {
+    "clipId": "P03_high_2_267s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 6,
+      "harm": 5
+    },
+    "final_score": 7,
+    "reasoning": "The clip poses a provocative question about Indonesia going bankrupt, which serves as a strong hook. However, the explanation ('politisasi ekonomi') is vague and lacks substantive evidence, bordering on political opinion without factual backing."
+  },
+  {
+    "clipId": "P02_medium_1_410s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 16,
+    "reasoning": "Generic motivational statement with no new or surprising information. Mildly positive but lacks a strong hook or compelling delivery. No harmful content."
+  },
+  {
+    "clipId": "P01_medium_0_475s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 19,
+    "reasoning": "The clip delivers a generic, low-specificity message about opinions and facts. It lacks concrete examples or surprising insights, limiting information gain. The hook is mild and unlikely to strongly capture attention. No harmful content is present."
+  },
+  {
+    "clipId": "P02_negative_converted_3_182s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 6,
+      "harm": 1
+    },
+    "final_score": 18,
+    "reasoning": "The clip opens with a relatable hook questioning the value of one's content, which captures attention moderately. However, it delivers little concrete information or actionable insight, offering only a vague, introspective prompt without depth or resolution. No significant harm is present, though th"
+  },
+  {
+    "clipId": "P06_high_0_0s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "The opening line is a generic, low-energy hook in Indonesian that introduces a vague topic (failure) without delivering concrete information. It lacks a strong hook or surprising content. No harmful elements detected."
+  },
+  {
+    "clipId": "P01_medium_3_180s",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 6,
+      "harm": 1
+    },
+    "final_score": 28,
+    "reasoning": "Vague teaser with mild curiosity hook but low concrete info; minimal harm."
+  },
+  {
+    "clipId": "P06_negative_1_12s_DUP",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 6,
+      "harm": 0
+    },
+    "final_score": 27,
+    "reasoning": "Generic motivational statement with low novelty, but the opening hook is moderately engaging. No harmful content."
+  },
+  {
+    "clipId": "P02_negative_0_5s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 2
+    },
+    "final_score": 3,
+    "reasoning": "The clip contains a vague threat followed by a joke, offering little useful information. The opening line may briefly grab attention, but the payoff is weak. Mildly aggressive tone but low overall harm."
+  },
+  {
+    "clipId": "P05_medium_0_165s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 9,
+      "harm": 4
+    },
+    "final_score": 17,
+    "reasoning": "Emotionally gripping hook with strong curiosity gap, but delivers almost no concrete information. Risk of clickbait if the full video doesn't substantiate the claim."
+  },
+  {
+    "clipId": "P02_high_2_222s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 16,
+    "reasoning": "The clip starts a personal anecdote about selling somay at 4 AM, which is mildly relatable but lacks a strong hook or surprising information. It's a slow, conversational opening with minimal immediate value."
+  },
+  {
+    "clipId": "P06_high_1_397s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 19,
+    "reasoning": "Short motivational snippet with modest insight; mild hook via humility framing; low harm but limited standalone value."
+  },
+  {
+    "clipId": "P06_medium_0_27s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 16,
+    "reasoning": "Generic motivational platitude with no novel insight. Mildly inspiring but entirely predictable. No harm."
+  },
+  {
+    "clipId": "P01_high_1_37s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The clip opens with a disclaimer that it's not a court of law, which is a mild attention hook but delivers little new information and poses minimal harm."
+  },
+  {
+    "clipId": "P06_high_2_447s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 17,
+    "reasoning": "The clip offers a brief motivational idea about transforming negative energy into inspiration, which is somewhat generic. The hook is moderate, and the content is harmless but lacks depth or novelty."
+  },
+  {
+    "clipId": "P01_negative_converted_3_180s",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 26,
+    "reasoning": "Vague teaser with mild curiosity hook but low concrete info; low harm."
+  },
+  {
+    "clipId": "P02_negative_2_27s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 11,
+    "reasoning": "The clip is a casual greeting with no substantive information. It has mild attention capture due to a personal tone, but offers no real value or insight."
+  },
+  {
+    "clipId": "P02_high_1_72s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 7,
+      "harm": 2
+    },
+    "final_score": 21,
+    "reasoning": "The clip expresses personal frustration about online harassment, which is relatable and emotionally engaging, but offers little new or surprising information. The hook is moderately strong due to emotional honesty. Minimal harm, though it touches on negative experiences."
+  },
+  {
+    "clipId": "P01_negative_converted_0_475s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 19,
+    "reasoning": "Generic statement about opinions and facts; low novelty, mild hook, minimal harm."
+  },
+  {
+    "clipId": "P03_negative_0_17s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 10,
+    "reasoning": "The transcript is a very short, vague statement in Indonesian mentioning former trade and economic ministers without providing any specific information, context, or details. It lacks substance, has no clear hook, and delivers minimal useful content."
+  },
+  {
+    "clipId": "P04_negative_0_10s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 7,
+      "harm": 1
+    },
+    "final_score": 25,
+    "reasoning": "The clip poses a relatable question about starting a business with limited capital, which hooks curiosity but delivers no actual information or actionable advice. It functions purely as a teaser, creating anticipation without substance. Low harm as it's a benign prompt, though it risks mild clickbai"
+  },
+  {
+    "clipId": "P05_medium_3_35s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "The clip provides minimal new or surprising information, with a weak hook that only introduces a vague character. No harmful content detected."
+  },
+  {
+    "clipId": "P01_negative_1_10s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 7,
+      "harm": 3
+    },
+    "final_score": 12,
+    "reasoning": "The clip opens with a strong hook promising to discuss a trending topic, which captures attention. However, it delivers no actual information yet—only a teaser. The vague reference to something 'hot' on Twitter without specifics risks mild clickbait, contributing to low information gain and slight h"
+  },
+  {
+    "clipId": "P01_high_3_95s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The clip is vague and lacks concrete details, offering little actionable or surprising information. The personal anecdote hook ('gue sendiri pernah ngalamin') creates mild curiosity but is too generic to strongly capture attention. No clear misinformation or toxicity is present."
+  },
+  {
+    "clipId": "P02_medium_3_182s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The clip opens with a relatable hook questioning if the viewer's content feels meaningless, which has moderate attention value. However, it delivers little concrete information or insight. The rhetorical question format is a common engagement tactic but lacks depth. Minimal harm, though the vague ph"
+  },
+  {
+    "clipId": "P01_negative_2_79s",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 8,
+      "harm": 2
+    },
+    "final_score": 28,
+    "reasoning": "Strong hook with emotional urgency ('bahaya banget', 'hancur dalam semalam'), but lacks concrete details or actionable insight. Low harm as it's a general warning without misinformation."
+  },
+  {
+    "clipId": "P02_negative_converted_0_267s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 5,
+      "harm": 3
+    },
+    "final_score": 8,
+    "reasoning": "Low information gain as it's a vague motivational statement without concrete details. Moderate attention capture due to provocative hook about earning money. Mild harm from potential oversimplification of success."
+  },
+  {
+    "clipId": "P01_negative_3_47s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 17,
+    "reasoning": "The clip makes a general commentary about online judgment without full facts, offering modest insight. The hook is moderately engaging due to relatable social media frustration. Low harm as it encourages critical thinking rather than spreading misinformation."
+  },
+  {
+    "clipId": "P05_high_1_435s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 8,
+      "harm": 2
+    },
+    "final_score": 23,
+    "reasoning": "Vague teaser with no concrete facts limits information gain, but the hook is strong and attention-grabbing. Low harm as it's generic suspense without clear misinformation."
+  },
+  {
+    "clipId": "P05_negative_converted_2_15s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 7,
+      "harm": 2
+    },
+    "final_score": 21,
+    "reasoning": "Vague teaser with minimal concrete info, but the contrast hook ('love story' to 'dark turn') creates curiosity. Low harm as it's just a genre tease without misinformation."
+  },
+  {
+    "clipId": "P05_high_2_540s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 7,
+      "harm": 3
+    },
+    "final_score": 12,
+    "reasoning": "Vague hook with no specifics; curiosity gap creates intrigue but delivers little substance; low harm but borderline clickbait."
+  },
+  {
+    "clipId": "P02_high_0_15s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 6,
+      "harm": 1
+    },
+    "final_score": 18,
+    "reasoning": "Low information gain as it only announces a guest without context or value. Moderate attention capture due to viral hook and guest mention. Minimal harm as it's a simple announcement."
+  },
+  {
+    "clipId": "P01_high_2_65s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 17,
+    "reasoning": "The clip expresses personal emotion and a vague social observation but lacks concrete, verifiable information. The emotional hook is moderate. Low harm, though it risks mild generalization."
+  },
+  {
+    "clipId": "P02_negative_3_27s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "The clip is a casual greeting with minimal informational value, low engagement, and no apparent harm."
+  },
+  {
+    "clipId": "P04_medium_2_435s",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 7,
+      "harm": 1
+    },
+    "final_score": 40,
+    "reasoning": "Delivers a clear, actionable business insight (solve problems, not just sell goods) that is useful for entrepreneurs. The hook is direct and concise, likely to grab attention quickly. No harmful content detected."
+  },
+  {
+    "clipId": "P02_medium_2_0s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 4
+    },
+    "final_score": 0,
+    "reasoning": "The clip shows a brief, ambiguous exchange in Indonesian with minimal context, offering little useful information. The hook is weak due to lack of clear narrative or emotional pull. Mild harm potential due to unclear intent and possible normalization of smoking near children."
+  },
+  {
+    "clipId": "P04_medium_0_175s",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 7,
+      "harm": 1
+    },
+    "final_score": 40,
+    "reasoning": "The clip promises practical, non-academic knowledge (customer approach), which is moderately useful. The hook is strong due to curiosity gap ('not taught in college'). Low harm: no misinformation or toxicity detected."
+  },
+  {
+    "clipId": "P03_high_0_5s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 16,
+    "reasoning": "The clip is a standard welcome introduction with minimal new information. It has mild attention value due to a guest mention, but lacks a strong hook. No harmful content detected."
+  },
+  {
+    "clipId": "P04_high_1_195s_DUP",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 7,
+      "harm": 1
+    },
+    "final_score": 25,
+    "reasoning": "The clip opens with a strong emotional hook about being rejected 50 times in a day, which captures attention. However, the information gain is low as it's a brief personal anecdote without deeper insight. Minimal harm as it's a relatable human experience."
+  },
+  {
+    "clipId": "P03_medium_0_107s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 3
+    },
+    "final_score": 6,
+    "reasoning": "The clip makes a vague, unsubstantiated claim about distrust in government data without providing evidence or specifics. It has mild attention value due to the provocative topic but offers little concrete information. The generalization could mildly fuel unwarranted distrust without basis."
+  },
+  {
+    "clipId": "P01_negative_converted_1_495s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 19,
+    "reasoning": "The clip delivers a brief, generic message about thinking before tweeting hurtful content. It offers minimal new information but has moderate attention capture due to its direct, personal tone. Low harm as it promotes responsible behavior."
+  },
+  {
+    "clipId": "P06_high_3_47s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 6
+    },
+    "final_score": -8,
+    "reasoning": "The clip makes a broad, unsubstantiated generalization about young people being mentally weak, offering little useful information. The statement is provocative but lacks evidence or nuance, and it risks promoting harmful stereotypes without constructive value."
+  },
+  {
+    "clipId": "P02_medium_0_267s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 6,
+      "harm": 3
+    },
+    "final_score": 10,
+    "reasoning": "Low information gain as it's a vague motivational statement without specifics. Moderate attention capture due to bold claim about earning money. Mild harm potential as it could imply unrealistic financial expectations."
+  },
+  {
+    "clipId": "P01_high_0_22s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 6,
+      "harm": 4
+    },
+    "final_score": 6,
+    "reasoning": "The clip references a viral case (Reza Arap) to hook curiosity, but delivers no actual information—pure clickbait setup with no payoff shown."
+  },
+  {
+    "clipId": "P01_medium_1_495s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 21,
+    "reasoning": "The clip delivers a brief, generic message about thinking before tweeting hurtful content. While the advice is positive, it lacks depth or novelty. The hook is moderate—it's a direct address but not particularly gripping. The message is harmless and promotes responsible behavior, so harm is low."
+  },
+  {
+    "clipId": "P03_medium_3_292s",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 22,
+    "reasoning": "The clip makes a general claim about economics being used as a political tool and data being manipulated, which is not particularly new or surprising. The hook is moderately engaging but lacks specificity. The statement could be seen as mildly conspiratorial but is not overtly harmful."
+  },
+  {
+    "clipId": "P04_medium_1_220s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 19,
+    "reasoning": "Generic motivational quote with low specificity; mild hook but lacks concrete detail."
+  },
+  {
+    "clipId": "P06_medium_1_92s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 19,
+    "reasoning": "Generic motivational advice with low novelty; mild hook via list structure; no significant harm."
+  }
+]

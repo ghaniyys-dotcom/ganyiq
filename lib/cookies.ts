@@ -110,8 +110,8 @@ function parseNetscapeCookieFile(filePath: string): Map<string, string> {
     const name = parts[5];
     const value = parts.slice(6).join(' ');
 
-    // Only keep YouTube and Google cookies
-    if (domain.includes('youtube.com') || domain.includes('.google.com') || domain.includes('google.com')) {
+    // Only keep YouTube and Google cookies (including regional domains like .google.co.id)
+    if (domain.includes('youtube.com') || domain.includes('.google.com') || domain.includes('google')) {
       cookies.set(name, value);
     }
   }
@@ -143,7 +143,7 @@ function buildCookieHeader(cookies: Map<string, string>): string {
 
   for (const name of priorityOrder) {
     if (cookies.has(name) && !included.has(name)) {
-      parts.push(`${encodeURIComponent(name)}=${encodeURIComponent(cookies.get(name)!)}`);
+      parts.push(`${encodeURIComponent(name)}=${cookies.get(name)!}`);
       included.add(name);
     }
   }
@@ -151,7 +151,7 @@ function buildCookieHeader(cookies: Map<string, string>): string {
   // Second pass: any remaining YouTube cookies not already included
   for (const [name] of cookies) {
     if (!included.has(name)) {
-      parts.push(`${encodeURIComponent(name)}=${encodeURIComponent(cookies.get(name)!)}`);
+      parts.push(`${encodeURIComponent(name)}=${cookies.get(name)!}`);
       included.add(name);
     }
   }
@@ -254,6 +254,23 @@ export function loadYoutubeCookies(): YoutubeCookies {
 
 /** Debug flag for cookie logging */
 const DEBUG_COOKIE = process.env.DEBUG_COOKIE === 'true' || process.env.DEBUG_TRANSCRIPT === 'true';
+
+/**
+ * Extract the raw SAPISID cookie value from the cookie file.
+ * Used for computing the SAPISIDHASH Authorization header for InnerTube API calls.
+ *
+ * @returns The raw SAPISID value, or null if not found.
+ */
+export function getSapisidValue(): string | null {
+  const sourcePath = resolveCookiePath();
+  if (!sourcePath) return null;
+  try {
+    const parsed = parseNetscapeCookieFile(sourcePath);
+    return parsed.get('SAPISID') ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Clear the cached cookie data, forcing a re-read on the next call.

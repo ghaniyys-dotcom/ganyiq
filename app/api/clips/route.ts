@@ -41,8 +41,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       video_id: string;
       youtube_id: string;
       youtube_url?: string;
+      final_score?: number;
+      viral_score?: number;
+      information_gain?: number;
+      attention_capture?: number;
+      harm?: number;
     }>(
-      `SELECT m.id, m.start_time, m.end_time, a.video_id, v.youtube_id
+      `SELECT m.id, m.start_time, m.end_time, a.video_id, v.youtube_id,
+              m.final_score, m.viral_score, m.information_gain, m.attention_capture, m.harm
        FROM moments m
        JOIN analyses a ON a.id = m.analysis_id
        JOIN videos v ON v.id = a.video_id
@@ -85,6 +91,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       startTime: finalStartTime,
       endTime: finalEndTime,
       renderMode: finalRenderMode,
+      final_score: moment.final_score,
+      viral_score: moment.viral_score,
+      information_gain: moment.information_gain,
+      attention_capture: moment.attention_capture,
+      harm: moment.harm,
     };
     if (subtitleStyle) {
       clipParams.subtitleStyle = subtitleStyle;

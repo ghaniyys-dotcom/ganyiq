@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-06-19T18:01:32.593Z",
+  "totalClips": 80,
+  "evaluated": 80,
+  "successfulEvaluations": 80,
+  "failedEvaluations": 0,
+  "runtimeSeconds": 31.9,
+  "metrics": {
+    "precisionAt5": 0.8,
+    "precisionAt10": 0.9,
+    "ndcgAt10": 0.397,
+    "falsePositiveReduction": 0,
+    "strongHitLoss": 0.5
+  },
+  "model": "openrouter/owl-alpha"
+}

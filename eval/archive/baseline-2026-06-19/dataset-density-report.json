@@ -1,0 +1,33 @@
+{
+  "totalClips": 80,
+  "averageTranscriptLength": 120,
+  "averageWordCount": 22,
+  "averageSentenceCount": 2.1,
+  "elementPrevalence": {
+    "specificFacts": { "percent": 6.3, "count": 5 },
+    "actionableAdvice": { "percent": 2.5, "count": 2 },
+    "frameworks": { "percent": 0.0, "count": 0 },
+    "techniques": { "percent": 0.0, "count": 0 },
+    "novelInsights": { "percent": 0.0, "count": 0 }
+  },
+  "densityDistribution": {
+    "0/5": 75,
+    "1/5": 5,
+    ">=2/5": 0
+  },
+  "top20HighestDensity": [
+    { "clipId": "P03_high_3_77s", "density": "1/5", "humanScore": 7 },
+    { "clipId": "P03_medium_2_247s", "density": "1/5", "humanScore": 7 },
+    { "clipId": "P04_high_1_195s", "density": "1/5", "humanScore": 7 },
+    { "clipId": "P05_negative_converted_3_35s_DUP", "density": "1/5", "humanScore": 3 },
+    { "clipId": "P05_medium_1_245s", "density": "1/5", "humanScore": 5 }
+  ],
+  "bottom20LowestDensity": [
+    { "clipId": "P03_medium_3_292s", "density": "0/5", "humanScore": 5 },
+    { "clipId": "P01_high_0_22s", "density": "0/5", "humanScore": 7 },
+    { "clipId": "P02_medium_0_267s", "density": "0/5", "humanScore": 5 },
+    { "clipId": "P06_high_3_47s", "density": "0/5", "humanScore": 9 },
+    { "clipId": "P03_medium_0_107s", "density": "0/5", "humanScore": 7 }
+  ],
+  "rootCause": "B. Dataset quality issue"
+}

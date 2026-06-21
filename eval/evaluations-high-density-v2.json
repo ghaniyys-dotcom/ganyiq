@@ -1,0 +1,1102 @@
+[
+  {
+    "clipId": "HDV2_ACT_043",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The transcript offers a useful and practical takeaway—weekly goal review on Sunday evenings—backed by a reference to research. This is actionable advice with a concrete timing suggestion, but it is relatively common self-improvement advice and lacks depth, specificity, or novel insight. The claim ab",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_ACT_045",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 19,
+    "reasoning": "The transcript delivers a common productivity tip (writing down top 3 priorities the night before) that is widely known and generic, lacking specific techniques, novel insights, or actionable depth beyond the basic advice itself. The delivery is a flat statement with no hook, storytelling, or engagi",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_ACT_031",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 33,
+    "reasoning": "The transcript delivers a useful and actionable productivity tip—batching similar tasks to reduce context switching—which is a concrete technique with real-world utility. However, it lacks depth, specificity, or a novel framing, placing it in the mid-range for information gain. Attention capture is ",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_FAC_010",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 2
+    },
+    "final_score": 18,
+    "reasoning": "The transcript delivers a basic explanation of the Dunning-Kruger effect, which is useful but not novel or deeply actionable. It lacks a strong hook or engaging delivery, resulting in moderate attention capture. The claim about research support is vague and slightly misleading without citation, warr",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FRA_065",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 11,
+    "reasoning": "The transcript only mentions the SCARF model and one of its components (Status) but delivers no explanation, no actionable insight, no concrete technique, and no meaningful information. It reads as a teaser or incomplete fragment with no delivered value. The mention of a known framework provides mil",
+    "category": "Autonomy"
+  },
+  {
+    "clipId": "HDV2_ACT_041",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable productivity technique (task batching) backed by research, which constitutes concrete and useful advice. However, it is brief and lacks depth or elaboration, limiting its information density. The statement is straightforward without a strong hook or eng",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_EDU_084",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 31,
+    "reasoning": "The transcript delivers a useful insight about elaboration and memory, offering a practical takeaway. However, it lacks depth, specificity, or a concrete technique, limiting its information gain. The delivery is straightforward and lacks a strong hook, resulting in average attention capture. There i",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_FRA_061",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The transcript introduces the Eisenhower Matrix, a well-known productivity framework, and claims research supports it. This provides a useful but widely known insight with no specific actionable detail, concrete technique, or novel perspective. The delivery is plain and lacks a compelling hook or en",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_FAC_009",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 27,
+    "reasoning": "The transcript delivers a specific, research-backed fact about habit formation (66 days), which provides useful and somewhat actionable insight. However, it lacks depth, context, or elaboration—such as variability across individuals or types of habits—limiting its information density. Attention capt",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FRA_070",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is an incomplete sentence that introduces the Cynefin framework but delivers no meaningful information, actionable insight, or resolution. It functions only as a teaser with no payoff. No harmful content is present.",
+    "category": "complex"
+  },
+  {
+    "clipId": "HDV2_EDU_088",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 36,
+    "reasoning": "The transcript delivers a specific, research-backed concept (spacing effect) with a clear takeaway about learning retention, qualifying as actionable knowledge. However, it lacks a strong hook or engaging delivery, resulting in low attention capture. There is no harmful content.",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_EDU_076",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is only a fragment — 'When learning a skill' — which delivers no meaningful information, no actionable advice, and no concrete insight. It functions as a setup or teaser with zero delivered value. Attention capture is minimal as there is nothing engaging beyond a vague opening phrase.",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_FRA_064",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 1,
+      "harm": 0
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is only a title fragment — 'The GROW model for coaching: Goal' — with no actual content, explanation, or insight delivered. It functions as a teaser/setup with zero delivered value. No information is conveyed, no hook is executed, and there is no harmful content.",
+    "category": "Options"
+  },
+  {
+    "clipId": "HDV2_ACT_044",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 29,
+    "reasoning": "The transcript delivers a specific, actionable productivity technique (turning off notifications for 90-minute deep work blocks) and adds credibility by noting that many high performers use it. This provides a useful, practical takeaway, warranting a mid-range information gain score. The attention c",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_FAC_001",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 19,
+    "reasoning": "The transcript delivers a single factual claim about the origin of the Pomodoro technique, which is common knowledge for productivity enthusiasts. It lacks actionable advice, concrete techniques, or novel insights. The statement is delivered flatly without a hook or engaging delivery, resulting in l",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FRA_075",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 11,
+    "reasoning": "The transcript only mentions the SCARF model and one of its components (Status) but delivers no explanation, no actionable insight, no concrete technique, and no meaningful information. It reads as a teaser or incomplete fragment with no delivered value. The mention of a known framework provides mil",
+    "category": "Autonomy"
+  },
+  {
+    "clipId": "HDV2_FRA_056",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is an incomplete fragment — it only introduces the OODA Loop concept by name and begins to mention 'Observe' but delivers no meaningful information, no explanation, no actionable insight, and no payoff. It functions as a teaser or setup with zero delivered value. Attention capture is ",
+    "category": "Decide"
+  },
+  {
+    "clipId": "HDV2_FRA_067",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 19,
+    "reasoning": "The transcript mentions the Build-Measure-Learn loop and the Lean Startup methodology, which is common knowledge for those familiar with startup practices. It provides a generic recommendation ('implement this consistently') but offers no specific facts, actionable steps, concrete techniques, or nov",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_ACT_048",
+    "scores": {
+      "information_gain": 0,
+      "attention_capture": 1,
+      "harm": 0
+    },
+    "final_score": 2,
+    "reasoning": "The transcript is only a fragment — 'Before starting any project' — which delivers no meaningful information, offers no actionable insight, and contains no complete thought. It functions as a setup/teaser with zero delivered value. Attention capture is minimal as there is nothing substantive to enga",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_ACT_034",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 34,
+    "reasoning": "The transcript delivers a specific, actionable productivity technique (turning off notifications for 90-minute deep work blocks) with a clear implementation instruction. This constitutes concrete, practical advice with real-world utility, warranting a solid information gain score. However, it lacks ",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_ACT_030",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 31,
+    "reasoning": "The transcript delivers a concrete, actionable technique ('eat the frog' method) with a specific recommendation, earning moderate information gain. However, the claim that 'research supports this approach strongly' is vague and unsourced, preventing a higher score. The hook is straightforward but no",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_EDU_082",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable insight grounded in cognitive science (dual coding theory), which qualifies as useful and concrete knowledge. However, it lacks a strong hook or engaging delivery to capture attention effectively. There is no harmful content present.",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_FAC_003",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 16,
+    "reasoning": "The transcript states a commonly cited statistic about attention span (common knowledge) and vaguely references 'this method' without specifying what it is. No actionable advice, concrete technique, or novel insight is delivered. The hook is moderately engaging due to the curiosity gap about 'this m",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_EDU_092",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The transcript delivers a useful insight — dual coding theory and its application to learning — which is a concrete, research-backed concept. However, it's stated at a high level without specific examples, actionable steps, or deeper explanation, limiting its information density. The delivery is fla",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_FAC_005",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 22,
+    "reasoning": "The transcript cites a Stanford research finding (Pareto principle variant) which provides a useful insight, but the 'method' referenced is never named or explained, leaving the core value undelivered. The hook is moderately engaging due to the surprising statistic, but the lack of payoff limits att",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FAC_016",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The transcript delivers a useful psychological concept (Zeigarnik effect) with a brief explanation and a claim about its broad applicability. This constitutes a useful insight, but lacks specific examples, actionable advice, or deeper explanation that would push it into higher information gain terri",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_EDU_087",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable insight about deliberate practice—immediate feedback and focusing on weak areas—which constitutes useful, concrete knowledge. However, it is a single sentence without elaboration, limiting its depth. Attention capture is moderate; the statement is clear",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_FAC_021",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The clip delivers a specific historical fact about the Pomodoro technique and a general recommendation to implement it consistently. This provides useful context and a practical takeaway, but lacks deeper actionable detail (e.g., how to apply it, why it works, or concrete steps). The delivery is str",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_EDU_098",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable learning principle (spacing effect) with a clear implementation instruction, earning solid information gain. However, it lacks a strong hook or engaging delivery, limiting attention capture. The content is factual and benign, with no harmful elements.",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_EDU_085",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 5,
+      "harm": 0
+    },
+    "final_score": 40,
+    "reasoning": "The clip delivers a specific, actionable insight (the protégé effect) with a concrete example of how high performers use it. This provides useful knowledge, though it lacks deeper explanation or novelty. Attention capture is moderate—the statement is clear but lacks a strong hook or engaging deliver",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_FAC_023",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 16,
+    "reasoning": "The transcript states a commonly cited statistic about attention span (common knowledge) and vaguely references 'this method' without specifying what it is. No actionable advice, concrete technique, or novel insight is delivered. The hook is moderately engaging due to the curiosity gap about 'this m",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FRA_066",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is an incomplete fragment — it only introduces the OODA Loop concept by name and begins to mention 'Observe' but delivers no meaningful information, no explanation, no actionable insight, and no payoff. It functions as a teaser or setup with zero delivered value. Attention capture is ",
+    "category": "Decide"
+  },
+  {
+    "clipId": "HDV2_EDU_091",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 36,
+    "reasoning": "The transcript delivers a specific, actionable insight — the testing effect — which is a concrete, research-backed learning technique. This qualifies as useful, specific knowledge (score 6). However, it lacks a strong hook or engaging delivery mechanism, resulting in low attention capture (score 3).",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_ACT_042",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 31,
+    "reasoning": "The transcript delivers a clear, actionable technique (Pomodoro-style timeboxing) with a specific duration and instruction, providing practical value. However, it is a well-known method with no novel insight or deeper explanation. Attention capture is average—no hook or engaging framing. No harm det",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_EDU_095",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 31,
+    "reasoning": "The transcript delivers a useful insight about the protégé effect, which is a recognized cognitive science concept. It provides a novel perspective that teaching others benefits the teacher, which is a practical takeaway. However, it's a single sentence with no elaboration, concrete examples, or act",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_ACT_046",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is only a brief topic introduction with no actual content, technique, or insight delivered. It promises a takeaway about remembering names but provides nothing of substance, resulting in minimal information gain and poor attention capture.",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_FRA_069",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 14,
+    "reasoning": "The transcript only provides a brief, surface-level mention of the MoSCoW method without explaining what it is, how to apply it, or what the categories (Must, Should, Could, Won't) mean. It reads as a fragment or teaser rather than delivering meaningful information. No actionable knowledge, concrete",
+    "category": "Could"
+  },
+  {
+    "clipId": "HDV2_FRA_053",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 26,
+    "reasoning": "The transcript introduces the 80/20 Principle (Pareto) and mentions research support, providing a useful but general framework. It lacks specific actionable steps or concrete examples, limiting its information gain. The mention of research adds mild credibility, but the content is largely common kno",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_EDU_097",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable insight about deliberate practice—immediate feedback and focusing on weak areas—which constitutes useful, concrete knowledge. However, it is a single sentence without elaboration, limiting its depth. Attention capture is moderate; the statement is clear",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_FRA_062",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 33,
+    "reasoning": "The transcript introduces the Feynman Technique by name and gives a brief, accurate description of its core idea — explaining complex concepts in simple language to test understanding. This is a useful, practical takeaway that many viewers may not know by name, warranting a mid-range information gai",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_FAC_020",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 22,
+    "reasoning": "The transcript delivers a basic definition of the Dunning-Kruger effect, which is a useful psychological concept, but it is presented as common knowledge without specific examples, actionable advice, or novel framing. The statement 'applies across many domains' is vague and adds no concrete value. A",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FAC_014",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 21,
+    "reasoning": "The transcript states a well-known principle (the compound effect) in very generic terms without providing specific examples, actionable steps, concrete techniques, or novel framing. It delivers common knowledge that most audiences have encountered before, resulting in low information gain. The deli",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_EDU_078",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 29,
+    "reasoning": "The transcript introduces the spacing effect and links it to high performers, offering a useful insight. However, it lacks depth, actionable steps, or concrete examples, limiting its information gain. Attention capture is moderate due to the mention of high performers but lacks a strong hook. No har",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_ACT_047",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 33,
+    "reasoning": "The transcript delivers a single actionable productivity tip (the 2-minute rule), which is a concrete technique with practical utility. However, it lacks depth, context, or elaboration, limiting its information density. The hook is minimal and the delivery is brief, resulting in moderate attention c",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_FRA_051",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The transcript introduces the Eisenhower Matrix, a well-known productivity framework, and claims research supports it. This provides a useful but widely known insight with no specific actionable detail, concrete technique, or novel perspective. The delivery is plain and lacks a compelling hook or en",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_EDU_094",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 31,
+    "reasoning": "The transcript delivers a useful insight about how elaboration aids memory by linking new information to prior knowledge. This is a practical takeaway grounded in cognitive science, warranting a moderate information gain score. However, it lacks a strong hook or engaging delivery, resulting in avera",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_FRA_060",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is an incomplete sentence that introduces the Cynefin framework but delivers no meaningful information, actionable insight, or resolution. It functions only as a teaser with no payoff. No harmful content is present.",
+    "category": "complex"
+  },
+  {
+    "clipId": "HDV2_ACT_028",
+    "scores": {
+      "information_gain": 0,
+      "attention_capture": 1,
+      "harm": 0
+    },
+    "final_score": 2,
+    "reasoning": "The transcript is only a fragment — 'Before starting any project' — which delivers no meaningful information, offers no actionable insight, and contains no complete thought. It functions as a setup/teaser with zero delivered value. Attention capture is minimal as there is nothing substantive to enga",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_ACT_050",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 31,
+    "reasoning": "The transcript delivers a concrete, actionable technique ('eat the frog' method) with a specific recommendation, earning moderate information gain. However, the claim that 'research supports this approach strongly' is vague and unsourced, preventing a higher score. The hook is straightforward but no",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_ACT_038",
+    "scores": {
+      "information_gain": 0,
+      "attention_capture": 1,
+      "harm": 0
+    },
+    "final_score": 2,
+    "reasoning": "The transcript is only a fragment — 'Before starting any project' — which delivers no meaningful information, offers no actionable insight, and contains no complete thought. It functions as a setup/teaser with zero delivered value. Attention capture is minimal as there is nothing substantive to enga",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_FRA_055",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 11,
+    "reasoning": "The transcript only mentions the SCARF model and one of its components (Status) but delivers no explanation, no actionable insight, no concrete technique, and no meaningful information. It reads as a teaser or incomplete fragment with no delivered value. The mention of a known framework provides mil",
+    "category": "Autonomy"
+  },
+  {
+    "clipId": "HDV2_EDU_079",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable insight grounded in cognitive science — that active recall outperforms passive re-reading for long-term retention. This is a concrete, evidence-backed learning technique with real-world utility, warranting a solid information gain score. However, it is ",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_FAC_018",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 22,
+    "reasoning": "The transcript delivers a specific, credible fact about working memory capacity (4-7 items), which provides a useful cognitive insight. However, the second sentence ('Implement this consistently for best results') is vague and does not specify what 'this' refers to, leaving the actionable value inco",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_ACT_026",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is only a brief topic introduction with no actual content, technique, or insight delivered. It promises a takeaway about remembering names but provides nothing of substance, resulting in minimal information gain and poor attention capture.",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_ACT_037",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 33,
+    "reasoning": "The transcript delivers a single actionable productivity tip (the 2-minute rule), which is a concrete technique with practical utility. However, it lacks depth, context, or elaboration, limiting its information density. The hook is minimal and the delivery is brief, resulting in moderate attention c",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_EDU_096",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is only a fragment — 'When learning a skill' — which delivers no meaningful information, no actionable advice, and no concrete insight. It functions as a setup or teaser with zero delivered value. Attention capture is minimal as there is nothing engaging beyond a vague opening phrase.",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_ACT_032",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 31,
+    "reasoning": "The transcript delivers a clear, actionable technique (the Pomodoro method) that is useful and practical. However, it is a single sentence with no hook, no elaboration, and no payoff—just a flat instruction. It provides a concrete takeaway but lacks depth, novelty, or framing to elevate it beyond ba",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_ACT_035",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 19,
+    "reasoning": "The transcript delivers a common productivity tip (writing down top 3 priorities the night before) that is widely known and generic, lacking specific techniques, novel insights, or actionable depth beyond the basic advice itself. The delivery is a flat statement with no hook, storytelling, or engagi",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_FAC_012",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The transcript delivers a specific, factual claim about Python 3.12's performance improvement (5-10% over 3.11), which constitutes a useful insight for developers considering upgrades. However, it lacks actionable depth, context, or explanation of what drives the improvement, limiting its informatio",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FRA_054",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 1,
+      "harm": 0
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is only a title fragment — 'The GROW model for coaching: Goal' — with no actual content, explanation, or insight delivered. It functions as a teaser/setup with zero delivered value. No information is conveyed, no hook is executed, and there is no harmful content.",
+    "category": "Options"
+  },
+  {
+    "clipId": "HDV2_EDU_093",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable cognitive science concept (the generation effect) with a clear implementation tip, earning solid information gain. However, it lacks a compelling hook or engaging delivery, limiting attention capture. There is no harmful content.",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_ACT_033",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The transcript offers a practical and actionable piece of advice—reviewing weekly goals every Sunday evening—which provides a useful takeaway for personal productivity. However, it is a fairly common self-improvement tip with no novel insight, specific technique, or deeper explanation, limiting its ",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_FAC_002",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The transcript delivers a specific, factual claim about Python 3.12's performance improvement (5-10% over 3.11), which constitutes a useful insight for developers considering upgrades. However, it lacks actionable depth, context, or explanation of what drives the improvement, limiting its informatio",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FAC_019",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 15,
+    "reasoning": "The transcript mentions a specific fact (66 days for habit formation), but this is widely known common knowledge. The second sentence is a vague teaser about 'this method' without delivering any concrete technique or actionable advice. The clip promises value but does not deliver it. Attention captu",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FRA_052",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable learning technique (the Feynman Technique) with a concrete description of how to apply it, plus a credibility boost from citing research. This constitutes useful, practical knowledge. However, it lacks deeper explanation, examples, or nuance that would ",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_FRA_068",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 29,
+    "reasoning": "The transcript delivers a useful and practical takeaway by introducing the 5 Whys technique for root cause analysis, which is a concrete and actionable framework. However, it lacks depth, examples, or novel insight, limiting its information density. The statement is straightforward but not particula",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_FAC_013",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 4,
+      "harm": 2
+    },
+    "final_score": 15,
+    "reasoning": "The transcript delivers a single, commonly cited statistic about human attention span on digital content. While this is a recognizable fact, it lacks depth, actionable advice, or novel insight. It serves as a basic attention-grabbing statement but does not provide substantial information or a clear ",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_EDU_100",
+    "scores": {
+      "information_gain": 7,
+      "attention_capture": 5,
+      "harm": 0
+    },
+    "final_score": 45,
+    "reasoning": "The transcript delivers a specific, actionable study technique (interleaving) backed by research, providing concrete and useful knowledge. However, it lacks a strong hook or engaging delivery to capture attention. There is no harmful content present.",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_FAC_008",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 22,
+    "reasoning": "The transcript delivers a specific, credible fact about working memory capacity (4-7 items), which provides a useful cognitive insight. However, the second sentence ('Implement this consistently for best results') is vague and does not specify what 'this' refers to, leaving the actionable value inco",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FAC_024",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 19,
+    "reasoning": "The transcript mentions the compound effect and claims many high performers use it, but delivers no specific facts, actionable advice, concrete techniques, or novel insights. It's a vague, generic motivational statement with no meaningful explanation of how to apply the compound effect. The hook is ",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FRA_074",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 1,
+      "harm": 0
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is only a title fragment — 'The GROW model for coaching: Goal' — with no actual content, explanation, or insight delivered. It functions as a teaser/setup with zero delivered value. No information is conveyed, no hook is executed, and there is no harmful content.",
+    "category": "Options"
+  },
+  {
+    "clipId": "HDV2_ACT_027",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 33,
+    "reasoning": "The transcript delivers a single actionable productivity tip (the 2-minute rule), which is a concrete technique with practical utility. However, it lacks depth, context, or elaboration, limiting its information density. The hook is minimal and the delivery is brief, resulting in moderate attention c",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_FRA_059",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 14,
+    "reasoning": "The transcript only provides a brief, surface-level mention of the MoSCoW method without explaining what it is, how to apply it, or what the categories (Must, Should, Could, Won't) mean. It reads as a fragment or teaser rather than delivering meaningful information. No actionable knowledge, concrete",
+    "category": "Could"
+  },
+  {
+    "clipId": "HDV2_ACT_040",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 29,
+    "reasoning": "The transcript delivers a well-known productivity tip ('eat the frog') with a clear actionable instruction, but it lacks depth, novelty, or explanation of why the method works. It provides moderate practical value but no framework or surprising insight. Attention capture is average—the statement is ",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_EDU_080",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable study technique (interleaving) with a clear benefit (improved discrimination and retention), which constitutes concrete, useful knowledge. However, it lacks depth — no explanation of how to implement interleaving, no examples, and the 'high performers' ",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_FAC_015",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 27,
+    "reasoning": "The transcript references a well-known principle (Pareto/80-20 rule) attributed to Stanford, which is a useful but not novel insight. The advice to 'implement this consistently' is vague and lacks concrete steps, limiting actionable value. The claim is attention-grabbing due to the statistic but off",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FRA_072",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 36,
+    "reasoning": "The transcript introduces the Feynman Technique with a clear, actionable definition—explaining complex concepts in simple language to test understanding—which constitutes a concrete learning strategy. The mention that 'many high performers use this method daily' adds mild social proof but no additio",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_EDU_086",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is only a fragment — 'When learning a skill' — which delivers no meaningful information, no actionable advice, and no concrete insight. It functions as a setup or teaser with zero delivered value. Attention capture is minimal as there is nothing engaging beyond a vague opening phrase.",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_EDU_089",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 33,
+    "reasoning": "The transcript delivers a useful, evidence-backed insight about active recall vs. passive re-reading, which is a practical takeaway for learners. However, it remains somewhat generic — it doesn't explain how to implement active recall, provide concrete techniques, or offer a framework, limiting it t",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_FAC_022",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The clip delivers a specific, verifiable fact about Python 3.12's performance improvement over 3.11, which constitutes useful and actionable information for developers considering upgrades. However, the second sentence is vague and generic, diluting the overall information density. The hook is mild ",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FRA_073",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The transcript states the 80/20 Principle (Pareto) and advises focusing on the 20% of inputs that produce 80% of results. This is a well-known concept, so the information gain is moderate — it's a useful framework but not novel or deeply actionable without further elaboration. Attention capture is a",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_FAC_004",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 17,
+    "reasoning": "The transcript mentions the compound effect concept, which is common self-help knowledge. It states that small daily improvements lead to massive results over time — a generic motivational claim with no specific facts, actionable techniques, concrete examples, or novel insights. The advice to 'imple",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FAC_011",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The clip delivers a specific historical fact about the Pomodoro technique and a general recommendation to implement it consistently. This provides useful context and a practical takeaway, but lacks deeper actionable detail (e.g., how to apply it, why it works, or concrete steps). The delivery is str",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_EDU_083",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable cognitive science concept (the generation effect) with a clear implementation tip, earning solid information gain. However, it lacks a compelling hook or engaging delivery, limiting attention capture. There is no harmful content.",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_EDU_090",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 36,
+    "reasoning": "The transcript delivers a specific, actionable study technique (interleaving) with a clear mechanism (improves discrimination and retention), earning solid information gain. However, it is delivered as a flat, declarative statement with no hook, storytelling, or engaging delivery, resulting in low a",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_EDU_077",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, actionable insight about deliberate practice—immediate feedback and focusing on weak areas—which constitutes useful, concrete knowledge. However, it is a single sentence without elaboration, limiting its depth. Attention capture is moderate; the statement is clear",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_FAC_006",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 27,
+    "reasoning": "The transcript introduces the Zeigarnik effect, which is a useful psychological concept, and gives a vague suggestion to 'implement this consistently.' However, it lacks specific actionable steps, concrete examples, or a clear explanation of how to apply the effect. The information is somewhat usefu",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FAC_017",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 26,
+    "reasoning": "The transcript delivers a specific, credible statistic (40% productivity reduction) with a cited basis (multiple studies), which provides a useful insight. However, it's a brief, surface-level statement without actionable advice, concrete techniques, or deeper explanation, limiting its information g",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_FRA_058",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 29,
+    "reasoning": "The transcript introduces the 5 Whys technique, which is a known problem-solving framework, and mentions its use by high performers. This provides a useful but not novel insight. The delivery is straightforward without a strong hook or engaging narrative, limiting attention capture. There is no harm",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_FAC_007",
+    "scores": {
+      "information_gain": 5,
+      "attention_capture": 4,
+      "harm": 2
+    },
+    "final_score": 25,
+    "reasoning": "The transcript delivers a specific, research-backed claim about multitasking reducing productivity by up to 40%, which constitutes a useful insight with moderate specificity. However, it lacks actionable advice, concrete techniques, or deeper explanation of the underlying mechanism, limiting its inf",
+    "category": "factual"
+  },
+  {
+    "clipId": "HDV2_ACT_029",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 22,
+    "reasoning": "The transcript delivers a practical and actionable tip about scheduling important tasks in the morning when energy is highest, which qualifies as useful advice. However, it is fairly generic and lacks depth, specificity, or a novel framework, limiting its information gain. The attention capture is a",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_ACT_039",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 22,
+    "reasoning": "The transcript delivers a practical and actionable tip about scheduling important tasks in the morning when energy is highest, which qualifies as useful advice. However, it is fairly generic and lacks depth, specificity, or a novel framework, limiting its information gain. The attention capture is a",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_FRA_057",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 17,
+    "reasoning": "The transcript mentions the Build-Measure-Learn loop and the Lean Startup methodology, which is useful context, but provides no specific facts, actionable advice, concrete techniques, or novel insights. It states that 'many high performers use this method daily' without evidence or elaboration. The ",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_FRA_071",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 26,
+    "reasoning": "The transcript mentions the Eisenhower Matrix and its two defining axes (urgent/important), providing a recognizable framework with mild practical value. However, it offers no concrete examples, no actionable steps, and no deeper insight beyond surface-level awareness. The claim about high performer",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_EDU_099",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 4,
+      "harm": 0
+    },
+    "final_score": 38,
+    "reasoning": "The transcript delivers a specific, research-backed insight about active recall vs. passive re-reading, providing actionable knowledge with real-world utility. However, it lacks a strong hook or engaging delivery to capture attention. There is no harmful content.",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_ACT_049",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 21,
+    "reasoning": "The transcript delivers generic, widely known productivity advice (eat the frog / morning energy principle) with no specific facts, concrete techniques, actionable steps, or novel insights. It merely restates common knowledge without elaboration or evidence. The delivery is flat and declarative with",
+    "category": "actionable_advice"
+  },
+  {
+    "clipId": "HDV2_FRA_063",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 17,
+    "reasoning": "The transcript states the 80/20 principle in a generic way without specific examples, actionable steps, or novel insights. It delivers common knowledge with minimal depth. The hook is weak, and the delivery is brief with no payoff. No harmful content is present.",
+    "category": "framework_technique"
+  },
+  {
+    "clipId": "HDV2_ACT_036",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is only a brief topic introduction with no actual content, technique, or insight delivered. It promises a takeaway about remembering names but provides nothing of substance, resulting in minimal information gain and poor attention capture.",
+    "category": "synthetic_high_density"
+  },
+  {
+    "clipId": "HDV2_EDU_081",
+    "scores": {
+      "information_gain": 6,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 36,
+    "reasoning": "The transcript delivers a specific, actionable insight from cognitive science — the testing effect — which is a concrete and useful framework for learning. It names a real phenomenon and implies a practical takeaway (retrieval > restudying), warranting a solid information gain score. However, it is ",
+    "category": "educational_explanation"
+  },
+  {
+    "clipId": "HDV2_FAC_025",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 22,
+    "reasoning": "The transcript cites a Stanford research finding (Pareto principle variant) which provides a useful insight, but the 'method' referenced is never named or explained, leaving the core value undelivered. The hook is moderately engaging due to the surprising statistic, but the lack of payoff limits att",
+    "category": "factual"
+  }
+]

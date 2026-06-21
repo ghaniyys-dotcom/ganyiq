@@ -1,0 +1,10 @@
+[
+  {"clipId":"P01_high_info_01","scores":{"information_gain":3,"attention_capture":4,"harm":0},"final_score":19,"reasoning":""},
+  {"clipId":"P02_high_info_02","scores":{"information_gain":5,"attention_capture":5,"harm":1},"final_score":28,"reasoning":""},
+  {"clipId":"P03_high_info_03","scores":{"information_gain":0,"attention_capture":1,"harm":0},"final_score":2,"reasoning":""},
+  {"clipId":"P04_high_info_04","scores":{"information_gain":5,"attention_capture":3,"harm":0},"final_score":31,"reasoning":""},
+  {"clipId":"P05_high_info_05","scores":{"information_gain":7,"attention_capture":6,"harm":0},"final_score":47,"reasoning":""},
+  {"clipId":"P06_high_info_06","scores":{"information_gain":4,"attention_capture":3,"harm":0},"final_score":26,"reasoning":""},
+  {"clipId":"P08_high_info_08","scores":{"information_gain":3,"attention_capture":4,"harm":1},"final_score":17,"reasoning":""},
+  {"clipId":"P09_high_info_09","scores":{"information_gain":7,"attention_capture":5,"harm":0},"final_score":45,"reasoning":""}
+]

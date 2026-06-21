@@ -1,0 +1,792 @@
+[
+  {
+    "clipId": "ANCHOR_BAD",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a brief sign-off in Indonesian meaning 'That's all from me. Thanks for watching. Don't forget to subscribe.' It contains no specific facts, actionable advice, concrete techniques, novel insights, useful frameworks, or meaningful explanations. It is a generic closing statement with "
+  },
+  {
+    "clipId": "ANCHOR_AVG",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is a single question asking how to start a business with limited capital. It contains no concrete information, no actionable advice, no specific facts, and no novel insight. It functions purely as a curiosity gap/teaser with no delivered value. Information gain must be <= 2 for questi"
+  },
+  {
+    "clipId": "ANCHOR_EXCELLENT",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is a personal anecdote and teaser that poses a question-like setup without delivering any concrete information, actionable advice, specific facts, or novel insights. It creates curiosity about why the speaker cried due to angry mentions despite positive content, but provides no payoff"
+  },
+  {
+    "clipId": "P02_negative_converted_2_0s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 3
+    },
+    "final_score": -3,
+    "reasoning": "The transcript is a brief, informal conversational exchange in Indonesian with no concrete information, actionable advice, specific facts, or novel insights delivered. It appears to be a casual dialogue snippet with no informational payload. The mild reference to smoking ('ngerokok') in a casual con"
+  },
+  {
+    "clipId": "P01_negative_3_47s_DUP",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 3
+    },
+    "final_score": 1,
+    "reasoning": "The transcript is a rhetorical observation about netizens judging without full facts. It poses no concrete information, actionable advice, or novel insight—merely a vague social commentary framed as a question/statement. It lacks depth and specifics, so information_gain must not exceed 2. Attention "
+  },
+  {
+    "clipId": "P02_negative_1_60s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is a question directed at a content creator, asking why their views are low despite having good content. It provides no concrete information, actionable advice, or novel insight. It is purely a question with no payoff, so information_gain is minimal. Attention capture is low because i"
+  },
+  {
+    "clipId": "P04_high_3_45s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The transcript states a vague, generic observation about mentality and wanting to get rich quickly without going through the process. This is a common platitude with no concrete information, actionable advice, specific facts, or novel insight. It lacks depth and specifics, so information_gain must n"
+  },
+  {
+    "clipId": "P06_negative_1_12s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 16,
+    "reasoning": "The transcript opens with a question ('Banyak dari kita takut gagal') and follows with a rhetorical question/claim ('kegagalan itu guru') that is a generic motivational platitude. No concrete information, actionable advice, novel insight, or specific facts are delivered. It relies on a curiosity gap"
+  },
+  {
+    "clipId": "P01_negative_0_540s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a brief sign-off in Indonesian meaning 'That's all from me. Thanks for watching. Don't forget to subscribe.' It contains no specific facts, actionable advice, concrete techniques, novel insights, useful frameworks, or meaningful explanations. It is a generic closing statement with "
+  },
+  {
+    "clipId": "P01_medium_2_2s",
+    "scores": {
+      "information_gain": 0,
+      "attention_capture": 1,
+      "harm": 0
+    },
+    "final_score": 2,
+    "reasoning": "The transcript is a brief greeting in Indonesian thanking viewers for stopping by, mentioning Panji, Pragi Waksono, and Reza Arap. It contains no specific facts, actionable advice, concrete techniques, novel insights, useful frameworks, or meaningful explanations. It is purely a social pleasantry wi"
+  },
+  {
+    "clipId": "P02_high_3_285s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 2
+    },
+    "final_score": 3,
+    "reasoning": "The transcript is a vague, emotionally-driven statement in Indonesian expressing that depression sometimes comes without reason, paired with a note of gratitude. It contains no specific facts, actionable advice, concrete techniques, novel insights, or useful frameworks. It is essentially a generic e"
+  },
+  {
+    "clipId": "P03_high_3_77s",
+    "scores": {
+      "information_gain": 3,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 19,
+    "reasoning": "The transcript makes a vague claim about Indonesia's economic resilience based on fundamental data but provides no specific facts, figures, or concrete evidence. It lacks actionable advice, novel insights, or meaningful explanations. The statement is too generic to deliver substantial information. A"
+  },
+  {
+    "clipId": "P06_medium_3_177s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 11,
+    "reasoning": "The transcript is a generic motivational statement about rising up and having responsibility. It contains no specific facts, actionable advice, concrete techniques, novel insights, or useful frameworks. It is purely emotional encouragement and a common life lesson, which caps information_gain at 1. "
+  },
+  {
+    "clipId": "P03_medium_1_157s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "The transcript is a vague, generic statement offering no concrete facts, actionable advice, novel insights, or specific information. It merely acknowledges a perspective without delivering substance. It poses no strong hook and contains no sensationalism or manipulation."
+  },
+  {
+    "clipId": "P05_high_0_110s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is a pure teaser with no delivered information, facts, or insights. It only promises future content ('details are insane') without providing any substance. This is a classic curiosity gap with zero informational payload."
+  },
+  {
+    "clipId": "P05_medium_2_15s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is a pure teaser with no delivered information, facts, or insights. It poses a vague curiosity gap about a story's dark turn without providing any substance. This limits information_gain to <=2 and attention_capture to <=6. Mild sensationalism warrants a low harm score."
+  },
+  {
+    "clipId": "P04_negative_1_10s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is a single question asking how to start a business with limited capital. It contains no concrete information, no actionable advice, no specific facts, and no novel insight. It functions purely as a curiosity gap/teaser with no delivered value. Information gain must be <= 2 for questi"
+  },
+  {
+    "clipId": "P06_medium_2_122s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The transcript contains a generic motivational statement in Indonesian: 'Dreams without action are just fantasies. Action without consistency will not get you there.' This is a common platitude offering no specific facts, actionable advice, concrete techniques, or novel insights. It is vague, lacks "
+  },
+  {
+    "clipId": "P06_negative_0_12s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 16,
+    "reasoning": "The transcript opens with a question ('Banyak dari kita takut gagal') and follows with a rhetorical question/claim ('kegagalan itu guru') that is a generic motivational platitude. No concrete information, actionable advice, novel insight, or specific facts are delivered. It relies on a curiosity gap"
+  },
+  {
+    "clipId": "P05_high_3_0s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 5,
+      "harm": 3
+    },
+    "final_score": 3,
+    "reasoning": "The transcript contains no concrete information, no specific facts, and no actionable content. It is a vague teaser that promises a disturbing case but delivers nothing. It relies on emotional shock value without context, which slightly increases harm due to sensationalism."
+  },
+  {
+    "clipId": "P02_negative_converted_1_410s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "The transcript is a generic motivational statement ('Don't give up, there's always a new opportunity tomorrow') with no concrete information, actionable advice, specific facts, or novel insight. It is a common life lesson / perseverance platitude. It does not pose a question or create a strong curio"
+  },
+  {
+    "clipId": "P02_high_0_15s_DUP",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is a brief introduction/teaser announcing a viral guest ('Fajar Sadboy') without delivering any concrete information, facts, actionable advice, or novel insights. It functions purely as a setup with no payoff, limiting information_gain to <=2. The mention of a viral guest creates mild"
+  },
+  {
+    "clipId": "P04_high_2_340s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "The transcript only poses a vague observation about people overthinking without delivering any specific facts, actionable advice, concrete techniques, novel insights, or meaningful explanations. It lacks depth and specifics, functioning as a generic teaser that identifies a problem but offers no res"
+  },
+  {
+    "clipId": "P04_high_1_195s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 11,
+    "reasoning": "The transcript is a brief emotional anecdote stating 'I was rejected 50 times in one day. I went home crying.' It contains no concrete information, actionable advice, specific facts, novel insights, or useful frameworks. It is purely emotional storytelling without informational payload. It poses no "
+  },
+  {
+    "clipId": "P01_negative_converted_2_2s",
+    "scores": {
+      "information_gain": 0,
+      "attention_capture": 1,
+      "harm": 0
+    },
+    "final_score": 2,
+    "reasoning": "The transcript is a brief greeting in Indonesian thanking viewers for stopping by, mentioning Panji, Pragi Waksono, and Reza Arap. It contains no specific facts, actionable advice, concrete techniques, novel insights, useful frameworks, or meaningful explanations. It is purely a social pleasantry wi"
+  },
+  {
+    "clipId": "P05_negative_converted_3_35s_DUP",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a vague setup with no concrete information, actionable advice, specific facts, or novel insight. It poses a narrative premise without delivering any substance, functioning as a teaser or curiosity gap. Attention is mildly generated by the open-ended setup but not by a strong hook o"
+  },
+  {
+    "clipId": "P05_medium_1_245s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 5,
+      "harm": 6
+    },
+    "final_score": -9,
+    "reasoning": "The transcript is a vague, context-free shocking statement with no concrete information, no explanation, no actionable content, and no resolution. It delivers no actual knowledge—only a disturbing claim stripped of context. This constitutes sensationalism and exploitative emotional content, warranti"
+  },
+  {
+    "clipId": "P04_high_0_25s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 16,
+    "reasoning": "The transcript is a teaser/setup that promises to answer a question honestly but delivers no concrete information, facts, actionable advice, or novel insight. It creates a curiosity gap ('modal itu bukan masalah utama') without providing the actual main problem or any substance. This is a classic cu"
+  },
+  {
+    "clipId": "P03_negative_1_17s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a brief, context-free mention of former Indonesian government positions with no explanation, facts, or insight. It delivers no concrete information, actionable advice, or novel content. It lacks a hook, payoff, or any meaningful substance. There is no harm, but also no value."
+  },
+  {
+    "clipId": "P05_negative_converted_3_35s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a vague setup with no concrete information, actionable advice, specific facts, or novel insight. It poses a narrative premise without delivering any substance, functioning as a teaser or curiosity gap. Attention is mildly generated by the open-ended setup but not by a strong hook o"
+  },
+  {
+    "clipId": "P03_high_1_32s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 9,
+    "reasoning": "The transcript only poses a question about Indonesia's economic crisis without delivering any facts, analysis, or insight. It is a pure curiosity-gap opener with no informational payload. Attention capture is moderate due to the provocative question but lacks a hook with payoff. Minimal harm as it i"
+  },
+  {
+    "clipId": "P04_medium_3_490s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The transcript delivers a single actionable piece of advice (reinvest profits before distributing them), which provides some concrete guidance. However, it lacks depth, explanation, or context—no specifics on how much to reinvest, in what, or why. It's a brief tip without elaboration, limiting its i"
+  },
+  {
+    "clipId": "P03_high_2_267s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 5,
+      "harm": 3
+    },
+    "final_score": 8,
+    "reasoning": "The transcript poses a question and offers a vague, unsubstantiated claim ('politisasi ekonomi') as the sole explanation for why people say Indonesia is bankrupt. It lacks concrete data, specific examples, or actionable insight. The statement is generic and lacks depth, failing to deliver meaningful"
+  },
+  {
+    "clipId": "P02_medium_1_410s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "The transcript is a generic motivational statement ('Don't give up, there's always a new opportunity tomorrow') with no concrete information, actionable advice, specific facts, or novel insight. It is a common life lesson / perseverance platitude. It does not pose a question or create a strong curio"
+  },
+  {
+    "clipId": "P01_medium_0_475s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The transcript states a generic principle about opinions being based on facts. It lacks specific facts, actionable advice, concrete techniques, or novel insights. It is a common life lesson/success platitude that delivers minimal informational payload. No substantial knowledge is conveyed."
+  },
+  {
+    "clipId": "P02_negative_converted_3_182s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is a rhetorical question in Indonesian asking if the viewer has ever felt their content is meaningless. It delivers no concrete information, no actionable advice, no specific facts, and no novel insight. It functions purely as a curiosity hook or teaser with no payoff. Therefore, info"
+  },
+  {
+    "clipId": "P06_high_0_0s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is a vague setup/teaser that only announces an intention to talk about failure. It delivers no concrete information, no specific facts, no actionable advice, and no novel insight. It is purely a curiosity gap with no payoff. Information gain is minimal. Attention capture is low as the"
+  },
+  {
+    "clipId": "P01_medium_3_180s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 11,
+    "reasoning": "The transcript is a vague teaser that hints at a pattern observed abroad and compares it to Indonesia, but delivers no specific facts, actionable advice, concrete techniques, novel insights, or meaningful explanations. It creates a curiosity gap without payoff. It contains no concrete information, l"
+  },
+  {
+    "clipId": "P06_negative_1_12s_DUP",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 16,
+    "reasoning": "The transcript opens with a question ('Banyak dari kita takut gagal') and follows with a rhetorical question/claim ('kegagalan itu guru') that is a generic motivational platitude. No concrete information, actionable advice, novel insight, or specific facts are delivered. It relies on a curiosity gap"
+  },
+  {
+    "clipId": "P02_negative_0_5s",
+    "scores": {
+      "information_gain": 0,
+      "attention_capture": 2,
+      "harm": 3
+    },
+    "final_score": -8,
+    "reasoning": "The transcript is a casual, informal Indonesian phrase meaning 'Watch out, don't mess with me. Haha just kidding.' It contains no concrete information, actionable advice, novel insight, or meaningful content. It is purely conversational banter with no informational value. The mild threatening tone ("
+  },
+  {
+    "clipId": "P05_medium_0_165s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 5,
+      "harm": 4
+    },
+    "final_score": -1,
+    "reasoning": "The transcript is a pure emotional teaser with no delivered information, no facts, no resolution, and no actionable content. It poses an implicit question and relies on shock and emotional manipulation to provoke curiosity. This limits information_gain to ≤2 and attention_capture to ≤6. The content "
+  },
+  {
+    "clipId": "P02_high_2_222s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 11,
+    "reasoning": "The transcript is a personal anecdote setup with no delivered information, actionable advice, or concrete insight. It functions purely as a teaser or curiosity hook without payoff. No specific facts, techniques, or novel knowledge are provided. Attention capture is minimal as the hook is weak and la"
+  },
+  {
+    "clipId": "P06_high_1_397s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The transcript is a generic motivational statement in Indonesian ('Not to show off, but to learn. Absorb their good habits.') that offers no concrete information, actionable advice, specific facts, or novel insight. It is a vague, inspirational platitude without depth or specifics. It does not pose "
+  },
+  {
+    "clipId": "P06_medium_0_27s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The transcript is a generic motivational platitude about success and failure. It contains no specific facts, actionable advice, concrete techniques, novel insights, or meaningful explanations. It is a common life lesson that delivers no new knowledge. The statement is mildly positive but lacks any i"
+  },
+  {
+    "clipId": "P01_high_1_37s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a brief disclaimer that sets context but delivers no concrete information, actionable advice, or novel insight. It functions as a setup/teaser without substance, limiting information_gain to 1. Attention capture is minimal as there is no strong hook or payoff. Harm is negligible as"
+  },
+  {
+    "clipId": "P06_high_2_447s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 2
+    },
+    "final_score": 3,
+    "reasoning": "The transcript is a vague motivational platitude with no concrete information, actionable advice, or novel insight. It offers a generic self-improvement slogan without specifics or depth. It does not deliver actual knowledge. The hook is weak and relies on a superficial inspirational statement. Whil"
+  },
+  {
+    "clipId": "P01_negative_converted_3_180s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 0
+    },
+    "final_score": 11,
+    "reasoning": "The transcript is a vague teaser that hints at a pattern observed abroad and compares it to Indonesia, but delivers no specific facts, actionable advice, concrete techniques, novel insights, or meaningful explanations. It creates a curiosity gap without payoff. It contains no concrete information, l"
+  },
+  {
+    "clipId": "P02_negative_2_27s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a casual greeting and a question asking about someone's well-being and absence from content creation. It contains no concrete information, actionable advice, novel insights, or meaningful explanations. It is purely a conversational opener with no delivered value."
+  },
+  {
+    "clipId": "P02_high_1_72s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is a personal emotional statement expressing frustration about being criticized online. It contains no concrete information, actionable advice, novel insights, or specific facts. It poses no question but offers no substance—merely a venting statement with no resolution, technique, or "
+  },
+  {
+    "clipId": "P01_negative_converted_0_475s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The transcript states a generic principle about opinions being based on facts. It lacks specific facts, actionable advice, concrete techniques, or novel insights. It is a common life lesson/success platitude that delivers minimal informational payload. No substantial knowledge is conveyed."
+  },
+  {
+    "clipId": "P03_negative_0_17s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a brief, context-free mention of former Indonesian government positions with no explanation, facts, or insight. It delivers no concrete information, actionable advice, or novel content. It lacks a hook, payoff, or any meaningful substance. There is no harm, but also no value."
+  },
+  {
+    "clipId": "P04_negative_0_10s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is a single question asking how to start a business with limited capital. It contains no concrete information, no actionable advice, no specific facts, and no novel insight. It functions purely as a curiosity gap/teaser with no delivered value. Information gain must be <= 2 for questi"
+  },
+  {
+    "clipId": "P05_medium_3_35s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a vague setup with no concrete information, actionable advice, specific facts, or novel insight. It poses a narrative premise without delivering any substance, functioning as a teaser or curiosity gap. Attention is mildly generated by the open-ended setup but not by a strong hook o"
+  },
+  {
+    "clipId": "P01_negative_1_10s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 2
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a pure teaser that promises to discuss a trending topic but delivers zero concrete information, facts, or insights. It only creates curiosity without any payoff. The vague reference to something 'hot' on Twitter is a classic curiosity gap with no substance. Information gain must be"
+  },
+  {
+    "clipId": "P01_high_3_95s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is in Indonesian and translates roughly to 'I've experienced it too. At that time I made content that was misinterpreted.' This is a personal anecdote setup with no specific facts, actionable advice, concrete techniques, novel insights, or useful frameworks delivered. It poses a vague"
+  },
+  {
+    "clipId": "P02_medium_3_182s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is a rhetorical question in Indonesian asking if the viewer has ever felt their content is meaningless. It delivers no concrete information, no actionable advice, no specific facts, and no novel insight. It functions purely as a curiosity hook or teaser with no payoff. Therefore, info"
+  },
+  {
+    "clipId": "P01_negative_2_79s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 6,
+      "harm": 4
+    },
+    "final_score": 6,
+    "reasoning": "The transcript is a vague teaser that poses a dramatic warning without delivering any concrete information, specific facts, actionable advice, or novel insight. It relies on fear-based curiosity ('your career can be destroyed overnight by one tweet') without explaining how, why, or providing any mea"
+  },
+  {
+    "clipId": "P02_negative_converted_0_267s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 3
+    },
+    "final_score": 1,
+    "reasoning": "The transcript is a vague, emotionally charged statement implying that simply talking for 15 minutes yields hundreds of millions as a 'blessing.' It delivers no concrete facts, actionable advice, or novel insights—only a sensationalized, unsubstantiated claim. This constitutes mild clickbait with po"
+  },
+  {
+    "clipId": "P01_negative_3_47s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 3
+    },
+    "final_score": 1,
+    "reasoning": "The transcript is a rhetorical observation about netizens judging without full facts. It poses no concrete information, actionable advice, or novel insight—merely a vague social commentary framed as a question/statement. It lacks depth and specifics, so information_gain must not exceed 2. Attention "
+  },
+  {
+    "clipId": "P05_high_1_435s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 5,
+      "harm": 3
+    },
+    "final_score": 3,
+    "reasoning": "The transcript is a pure teaser with no delivered information, only posing a vague, suspenseful setup. It lacks concrete facts, actionable advice, or novel insight. Attention capture is moderate due to the hook, but it relies on curiosity without payoff. Harm is mild, as it uses sensationalism and e"
+  },
+  {
+    "clipId": "P05_negative_converted_2_15s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is a pure teaser with no delivered information, facts, or insights. It poses a vague curiosity gap about a story's dark turn without providing any substance. This limits information_gain to <=2 and attention_capture to <=6. Mild sensationalism warrants a low harm score."
+  },
+  {
+    "clipId": "P05_high_2_540s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 5,
+      "harm": 3
+    },
+    "final_score": 3,
+    "reasoning": "The transcript is a pure teaser with no delivered information. It references a viral case but provides no facts, details, or resolution. It relies entirely on curiosity and vague suspense ('people couldn't believe someone could be so calculated') without delivering any concrete knowledge. This is a "
+  },
+  {
+    "clipId": "P02_high_0_15s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 7,
+    "reasoning": "The transcript is a brief introduction/teaser announcing a viral guest ('Fajar Sadboy') without delivering any concrete information, facts, actionable advice, or novel insights. It functions purely as a setup with no payoff, limiting information_gain to <=2. The mention of a viral guest creates mild"
+  },
+  {
+    "clipId": "P01_high_2_65s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 2
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a vague emotional statement about people judging without cross-checking. It contains no specific facts, actionable advice, concrete techniques, or novel insights. It relies on emotional expression without delivering substance. The mild generalization about a group could carry sligh"
+  },
+  {
+    "clipId": "P02_negative_3_27s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 1
+    },
+    "final_score": 5,
+    "reasoning": "The transcript is a casual greeting and a question asking about someone's well-being and absence from content creation. It contains no concrete information, actionable advice, novel insights, or meaningful explanations. It is purely a conversational opener with no delivered value."
+  },
+  {
+    "clipId": "P04_medium_2_435s",
+    "scores": {
+      "information_gain": 4,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 26,
+    "reasoning": "The transcript delivers a single actionable principle: 'solve a problem, don't just sell products.' This is a concrete, specific piece of business advice that challenges a common mindset. However, it is brief, lacks elaboration, no examples, no framework, and no deeper explanation of how to implemen"
+  },
+  {
+    "clipId": "P02_medium_2_0s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 3
+    },
+    "final_score": -3,
+    "reasoning": "The transcript is a brief, informal conversational exchange in Indonesian with no concrete information, actionable advice, specific facts, or novel insights delivered. It appears to be a casual dialogue snippet with no informational payload. The mild reference to smoking ('ngerokok') in a casual con"
+  },
+  {
+    "clipId": "P04_medium_0_175s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 6,
+      "harm": 1
+    },
+    "final_score": 18,
+    "reasoning": "The transcript is a teaser that promises to share something not taught in college about approaching customers, but delivers no actual information, technique, or insight. It poses a curiosity gap without payoff. Information gain is minimal as no concrete knowledge is delivered. Attention capture is m"
+  },
+  {
+    "clipId": "P03_high_0_5s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 2,
+      "harm": 0
+    },
+    "final_score": 9,
+    "reasoning": "The transcript is a brief welcome message introducing a guest on a show. It contains no specific facts, actionable advice, novel insights, or concrete information. It functions purely as an introduction/setup with no delivered knowledge or payoff."
+  },
+  {
+    "clipId": "P04_high_1_195s_DUP",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 5,
+      "harm": 1
+    },
+    "final_score": 11,
+    "reasoning": "The transcript is a brief emotional anecdote stating 'I was rejected 50 times in one day. I went home crying.' It contains no concrete information, actionable advice, specific facts, novel insights, or useful frameworks. It is purely emotional storytelling without informational payload. It poses no "
+  },
+  {
+    "clipId": "P03_medium_0_107s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 3
+    },
+    "final_score": -1,
+    "reasoning": "The transcript is a vague teaser in Indonesian that merely introduces the topic of government data skepticism without delivering any specific facts, actionable advice, concrete techniques, or novel insights. It poses an implied curiosity gap but provides no payoff. The claim about many people not tr"
+  },
+  {
+    "clipId": "P01_negative_converted_1_495s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "The transcript is a generic moral reminder to think before posting hurtful tweets. It contains no specific facts, actionable advice, novel insights, or concrete techniques. It is a common life lesson delivered as a vague platitude, which rarely exceeds information_gain of 2. The message lacks a stro"
+  },
+  {
+    "clipId": "P06_high_3_47s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 3,
+      "harm": 2
+    },
+    "final_score": 3,
+    "reasoning": "The clip only makes a vague, generic observation about young people being mentally weak and giving up easily. It poses no specific question but offers no concrete information, actionable advice, novel insight, or meaningful explanation. It is essentially a generic motivational/self-improvement plati"
+  },
+  {
+    "clipId": "P02_medium_0_267s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 3
+    },
+    "final_score": 1,
+    "reasoning": "The transcript is a vague, emotionally charged statement implying that simply talking for 15 minutes yields hundreds of millions as a 'blessing.' It delivers no concrete facts, actionable advice, or novel insights—only a sensationalized, unsubstantiated claim. This constitutes mild clickbait with po"
+  },
+  {
+    "clipId": "P01_high_0_22s",
+    "scores": {
+      "information_gain": 1,
+      "attention_capture": 4,
+      "harm": 3
+    },
+    "final_score": 1,
+    "reasoning": "The transcript is a pure teaser that references a viral case but delivers zero information, facts, or actionable content. It only poses a question and creates a curiosity gap without any payoff. The reference to a sensational viral case (Reza Arap) leverages public controversy to provoke curiosity, "
+  },
+  {
+    "clipId": "P01_medium_1_495s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 3,
+      "harm": 1
+    },
+    "final_score": 12,
+    "reasoning": "The transcript is a generic moral reminder to think before posting hurtful tweets. It contains no specific facts, actionable advice, novel insights, or concrete techniques. It is a common life lesson delivered as a vague platitude, which rarely exceeds information_gain of 2. The message lacks a stro"
+  },
+  {
+    "clipId": "P03_medium_3_292s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 5,
+      "harm": 2
+    },
+    "final_score": 12,
+    "reasoning": "The transcript makes a broad, somewhat cynical observation about politics and economics. It offers a mild insight about data manipulation but lacks specifics, actionable advice, or concrete examples. The statement is vague and generic, not delivering substantial knowledge. It captures moderate atten"
+  },
+  {
+    "clipId": "P04_medium_1_220s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The transcript contains a generic motivational platitude ('rejection is the best teacher') and a personal reflection ('now I am grateful'). It lacks specific facts, actionable advice, concrete techniques, novel insights, or meaningful explanations. The statement is a common life lesson without depth"
+  },
+  {
+    "clipId": "P06_medium_1_92s",
+    "scores": {
+      "information_gain": 2,
+      "attention_capture": 4,
+      "harm": 1
+    },
+    "final_score": 14,
+    "reasoning": "The transcript offers generic motivational advice ('big dreams, discipline, consistency') without specific facts, actionable techniques, or novel insights. It lacks concrete information and relies on common self-improvement platitudes. While the triad structure provides mild attention value, it does"
+  }
+]

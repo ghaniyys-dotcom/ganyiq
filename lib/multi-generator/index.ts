@@ -18,6 +18,7 @@ export type {
   MultiGeneratorPipelineConfig,
   IGenerator,
   GeneratorEvalMetrics,
+  PoolConstraints,
 } from './types';
 
 export {
@@ -25,6 +26,7 @@ export {
   DEFAULT_GENERATOR_CONFIGS,
   DEFAULT_AGGREGATION_CONFIG,
   DEFAULT_PIPELINE_CONFIG,
+  DEFAULT_POOL_CONSTRAINTS,
 } from './types';
 
 export {
@@ -35,3 +37,20 @@ export {
 } from './pipeline';
 
 export type { RunPipelineParams } from './pipeline';
+
+// ─── Diversity Types ────────────────────────────────────────────────────────
+
+export type {
+  OverlapScore,
+  ClipPairOverlap,
+  OverlapWeights,
+  MomentCluster,
+  ClusterMap,
+  DiversityScore,
+  DedupResult,
+  DiversityStageResult,
+} from './diversity-types';
+
+export {
+  DEFAULT_OVERLAP_WEIGHTS,
+} from './diversity-types';

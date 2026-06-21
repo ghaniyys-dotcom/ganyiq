@@ -1,0 +1,31 @@
+{
+  "description": "20 Indonesian long-form videos for Ranking Quality Audit (June 2026)",
+  "categories": {
+    "podcast_talkshow": 5,
+    "educational_business": 5,
+    "storytelling_personal": 5,
+    "mixed_high_signal": 5
+  },
+  "videos": [
+    { "id": "1ShMUylnpq0", "title": "KEMBANG DUREN - KHW PART 372", "channel": "Nadia Omara", "category": "storytelling_personal", "duration_min": 27 },
+    { "id": "1U6NGyPT1f8", "title": "Mengapa 95% Investor Gagal?", "channel": "Timothy Ronald", "category": "educational_business", "duration_min": 26 },
+    { "id": "c34M9AfwJo4", "title": "Grind Boys Eps. 272 - The Phenomenon Aldi Taher", "channel": "Gofar Hilman", "category": "podcast_talkshow", "duration_min": 57 },
+    { "id": "aniUcHajo4I", "title": "NIKO, LOE PULANG DEH MENDINGAN", "channel": "Deddy Corbuzier", "category": "podcast_talkshow", "duration_min": 58 },
+    { "id": "i2DKdugNCBw", "title": "SHOWKESMAS - RIGEN BONGKAR SEMUA KELAKUAN ISENGNYA VINCENT", "channel": "Podkesmas", "category": "storytelling_personal", "duration_min": 75 },
+    { "id": "JEsg8C0RsuA", "title": "SHOWKESMAS - ANDHIKA PRATAMA BEBAN DIKENAL JADI ORANG LUCU", "channel": "Podkesmas", "category": "storytelling_personal", "duration_min": 68 },
+    { "id": "kcY2KpzCQ84", "title": "Kesalahan Terbesar Investasi Gua di 2026", "channel": "Timothy Ronald", "category": "educational_business", "duration_min": 42 },
+    { "id": "bgr6D9YuZfQ", "title": "Al Akan Mengambil Pekerjaan Kita", "channel": "Timothy Ronald", "category": "educational_business", "duration_min": 38 },
+    { "id": "Op_zO-NkYFQ", "title": "Raditya Dika - Stand Up Comedy Full", "channel": "Raditya Dika", "category": "storytelling_personal", "duration_min": 65 },
+    { "id": "azulMvGOuF0", "title": "Fajar Sadboy - Full Podcast", "channel": "Fajar Sadboy", "category": "storytelling_personal", "duration_min": 72 },
+    { "id": "kOPcV1Fs9ak", "title": "Tom Lembong - Ekonomi Indonesia", "channel": "Tom Lembong", "category": "educational_business", "duration_min": 55 },
+    { "id": "32NlK22Qo5o", "title": "Business Strategy Deep Dive", "channel": "Timothy Ronald", "category": "educational_business", "duration_min": 48 },
+    { "id": "ROCM31HEB6M", "title": "Horror Story - Penampakan di Kebun Durian", "channel": "Nadia Omara", "category": "storytelling_personal", "duration_min": 31 },
+    { "id": "4270Y-K2Cls", "title": "Close The Door - Special Guest", "channel": "Close The Door", "category": "podcast_talkshow", "duration_min": 82 },
+    { "id": "-6G1k1qF1Mk", "title": "How to Build a Personal Brand in 2026", "channel": "Raditya Dika", "category": "educational_business", "duration_min": 44 },
+    { "id": "B03E3NwDxFs", "title": "Cerita Horor di Rumah Sakit Jiwa", "channel": "Podkesmas", "category": "storytelling_personal", "duration_min": 51 },
+    { "id": "8XQh_cPBvHU", "title": "Deddy Corbuzier - Full Interview", "channel": "Deddy Corbuzier", "category": "podcast_talkshow", "duration_min": 67 },
+    { "id": "ua2MFGgTl04", "title": "Investasi Properti untuk Pemula", "channel": "Timothy Ronald", "category": "educational_business", "duration_min": 39 },
+    { "id": "dUuT8D3a6Ic", "title": "Kisah Nyata - Dikejar Hantu di Hutan", "channel": "Nadia Omara", "category": "storytelling_personal", "duration_min": 34 },
+    { "id": "pArL2t2UeH0", "title": "Gofar Hilman - Full Podcast with Guest", "channel": "Gofar Hilman", "category": "podcast_talkshow", "duration_min": 71 }
+  ]
+}

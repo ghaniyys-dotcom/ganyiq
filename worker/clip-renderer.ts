@@ -1383,26 +1383,21 @@ let _hasNvenc: boolean | null = null;
 function hasNvidiaEncoder(): boolean {
   if (_hasNvenc !== null) return _hasNvenc;
 
+  // Test NVENC by doing a real encode, not just checking the encoder list.
+  // ffmpeg lists h264_nvenc even without a physical NVIDIA GPU, so grep
+  // gives false positives on laptops without NVIDIA hardware.
   try {
-    const out = execSync('ffmpeg -encoders 2>/dev/null | grep -i nvenc', {
-      ...EXEC_OPTS, timeout: 5000, shell: '/bin/sh'
-    });
-    _hasNvenc = (out as string).includes('nvenc');
-    if (_hasNvenc) log('ENCODER', 'NVIDIA NVENC detected — using GPU encoding');
-    return _hasNvenc;
+    // Encode 1 frame of black to null — if NVENC works, this succeeds
+    const testCmd = platform() === 'win32'
+      ? 'ffmpeg -f lavfi -i color=c=black:s=1280x720:d=0.04 -c:v h264_nvenc -frames:v 1 -f null - 2>&1'
+      : 'ffmpeg -f lavfi -i color=c=black:s=1280x720:d=0.04 -c:v h264_nvenc -frames:v 1 -f null - 2>/dev/null';
+    execSync(testCmd, { ...EXEC_OPTS, timeout: 10000 });
+    _hasNvenc = true;
+    log('ENCODER', 'NVIDIA NVENC detected (test encode OK) — using GPU encoding');
+    return true;
   } catch {
-    try {
-      // Windows fallback
-      const out = execSync('ffmpeg -encoders 2>&1 | findstr nvenc', {
-        ...EXEC_OPTS, timeout: 5000, shell: process.env.COMSPEC || 'cmd.exe'
-      });
-      _hasNvenc = (out as string).includes('nvenc');
-      if (_hasNvenc) log('ENCODER', 'NVIDIA NVENC detected — using GPU encoding');
-      return _hasNvenc;
-    } catch {
-      _hasNvenc = false;
-      log('ENCODER', 'NVENC not available — using libx264 CPU encoding');
-      return false;
-    }
+    _hasNvenc = false;
+    log('ENCODER', 'NVENC not available (test encode failed) — using libx264 CPU encoding');
+    return false;
   }
 }

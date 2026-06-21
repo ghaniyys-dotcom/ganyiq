@@ -1,0 +1,316 @@
+clipId,transcript,source,category
+PROD_BUS_053,LTV to CAC ratio above 3:1 is generally considered healthy for most SaaS businesses. I started applying this and saw results within weeks.,ali_abdaal,business
+PROD_EDU_040,Deliberate practice involves focused effort on weaknesses with immediate feedback. I started applying this and saw results within weeks.,ali_abdaal,educational
+PROD_BUS_048,A moat is a sustainable competitive advantage that protects profits over time. Most people overlook this simple mechanism.,alex_hormozi,business
+PROD_EDU_035,Interleaving different topics during practice improves discrimination and transfer of learning. I started applying this and saw results within weeks.,tldv,educational
+PROD_TEC_291,APIs allow different software systems to communicate without exposing their internal code.,andrew_huberman,technology
+PROD_MAR_202,Social proof works because people look to others' behavior when uncertain about their own decisions. This principle shows up repeatedly across high performers.,andrew_huberman,marketing
+PROD_PRO_134,The Eisenhower matrix separates tasks into urgent versus important to prioritize effectively. This principle shows up repeatedly across high performers.,alex_hormozi,productivity
+PROD_SCI_165,Meta-analyses combine results from multiple studies to increase statistical power and reliability. I started applying this and saw results within weeks.,alex_hormozi,science
+PROD_SCI_152,p-hacking occurs when researchers manipulate data analysis until they find a significant result. The research behind this is surprisingly consistent.,andrew_huberman,science
+PROD_PRO_102,"The two-minute rule says if a task takes less than two minutes, do it immediately. This principle shows up repeatedly across high performers.",alex_hormozi,productivity
+PROD_FIN_252,Index funds have historically outperformed most actively managed funds over long periods. I started applying this and saw results within weeks.,andrew_huberman,finance
+PROD_FIN_265,Tax-advantaged accounts like 401(k)s and IRAs compound more efficiently than taxable accounts. This principle shows up repeatedly across high performers.,a16z,finance
+PROD_FIN_267,Dollar cost averaging reduces the impact of volatility by investing fixed amounts at regular intervals. The research behind this is surprisingly consistent.,peter_attia,finance
+PROD_BUS_069,Customer acquisition cost should be recovered within the first three months of a subscription. Most people overlook this simple mechanism.,a16z,business
+PROD_MAR_217,Reciprocity is a powerful principle: giving first increases the likelihood of receiving later.,ali_abdaal,marketing
+PROD_MAR_208,Anchoring happens when the first number presented influences subsequent judgments. Most people overlook this simple mechanism.,peter_attia,marketing
+PROD_PRO_111,Time blocking forces you to assign specific hours to tasks instead of working from a vague list. This principle shows up repeatedly across high performers.,peter_attia,productivity
+PROD_TEC_315,Rate limiting protects APIs from abuse and ensures fair usage among clients. The research behind this is surprisingly consistent.,alex_hormozi,technology
+PROD_TEC_276,Asynchronous processing allows long-running tasks to run in the background without blocking the user. Most people overlook this simple mechanism.,naval,technology
+PROD_PRO_131,Time blocking forces you to assign specific hours to tasks instead of working from a vague list. This principle shows up repeatedly across high performers.,huberman_lab,productivity
+PROD_TEC_298,Encryption at rest protects data stored on disks even if physical media is stolen. The research behind this is surprisingly consistent.,ali_abdaal,technology
+PROD_BUS_065,Burn rate is how quickly a company spends its cash reserves before generating positive cash flow. I started applying this and saw results within weeks.,tldv,business
+PROD_MAR_198,Anchoring happens when the first number presented influences subsequent judgments. This principle shows up repeatedly across high performers.,tldv,marketing
+PROD_EDU_015,Interleaving different topics during practice improves discrimination and transfer of learning. I started applying this and saw results within weeks.,peter_attia,educational
+PROD_EDU_010,Deliberate practice involves focused effort on weaknesses with immediate feedback. This principle shows up repeatedly across high performers.,naval,educational
+PROD_PRO_098,Single-tasking produces higher quality output than attempting to multitask. The research behind this is surprisingly consistent.,youtube_short,productivity
+PROD_FIN_230,Opportunity cost is the value of the next best alternative you give up when making a decision.,peter_attia,finance
+PROD_TEC_285,Rate limiting protects APIs from abuse and ensures fair usage among clients. Most people overlook this simple mechanism.,youtube_short,technology
+PROD_FIN_264,High-interest debt should be paid off before investing because the interest rate exceeds expected returns. I started applying this and saw results within weeks.,a16z,finance
+PROD_EDU_033,Active recall is more effective than passive re-reading because it strengthens neural pathways. I started applying this and saw results within weeks.,andrew_huberman,educational
+PROD_MAR_218,Anchoring happens when the first number presented influences subsequent judgments. This principle shows up repeatedly across high performers.,peter_attia,marketing
+PROD_FIN_257,Dollar cost averaging reduces the impact of volatility by investing fixed amounts at regular intervals. This principle shows up repeatedly across high performers.,andrew_huberman,finance
+PROD_TEC_290,Feature flags let teams deploy code to production while controlling who can see new functionality. This principle shows up repeatedly across high performers.,tldv,technology
+PROD_PRO_101,Time blocking forces you to assign specific hours to tasks instead of working from a vague list.,tldv,productivity
+PROD_PRO_128,Single-tasking produces higher quality output than attempting to multitask. The research behind this is surprisingly consistent.,huberman_lab,productivity
+PROD_SCI_170,Effect size matters more than statistical significance when evaluating practical importance. I started applying this and saw results within weeks.,ali_abdaal,science
+PROD_SCI_149,Double-blind studies are the gold standard because they control for both participant and researcher bias. I started applying this and saw results within weeks.,peter_attia,science
+PROD_BUS_086,The 80/20 rule in business means 80% of revenue often comes from 20% of customers. Most people overlook this simple mechanism.,tldv,business
+PROD_EDU_031,The hippocampus consolidates short-term memories into long-term storage during deep sleep. The research behind this is surprisingly consistent.,a16z,educational
+PROD_BUS_072,Churn rate measures the percentage of customers who stop using a product each month. This principle shows up repeatedly across high performers.,andrew_huberman,business
+PROD_PRO_091,Time blocking forces you to assign specific hours to tasks instead of working from a vague list. I started applying this and saw results within weeks.,peter_attia,productivity
+PROD_FIN_245,Tax-advantaged accounts like 401(k)s and IRAs compound more efficiently than taxable accounts. This principle shows up repeatedly across high performers.,tldv,finance
+PROD_MAR_223,Scarcity and urgency increase perceived value when they are genuine rather than manufactured. Most people overlook this simple mechanism.,naval,marketing
+PROD_TEC_293,Containerization packages an application with all its dependencies so it runs consistently across environments. Most people overlook this simple mechanism.,tldv,technology
+PROD_BUS_079,Customer acquisition cost should be recovered within the first three months of a subscription. I started applying this and saw results within weeks.,tldv,business
+PROD_BUS_052,Churn rate measures the percentage of customers who stop using a product each month. Most people overlook this simple mechanism.,ali_abdaal,business
+PROD_EDU_012,Spaced repetition systems exploit the forgetting curve to maximize retention with minimal reviews. I started applying this and saw results within weeks.,huberman_lab,educational
+PROD_MAR_196,Authority bias makes people more likely to follow recommendations from perceived experts. I started applying this and saw results within weeks.,a16z,marketing
+PROD_FIN_269,The rule of 72 estimates how long it takes for money to double at a given interest rate. This principle shows up repeatedly across high performers.,youtube_short,finance
+PROD_SCI_177,Confirmation bias leads people to seek information that supports their existing beliefs. Most people overlook this simple mechanism.,naval,science
+PROD_MAR_225,Storytelling activates more areas of the brain than factual information alone. This principle shows up repeatedly across high performers.,andrew_huberman,marketing
+PROD_TEC_280,Feature flags let teams deploy code to production while controlling who can see new functionality. I started applying this and saw results within weeks.,ali_abdaal,technology
+PROD_EDU_020,Deliberate practice involves focused effort on weaknesses with immediate feedback.,james_clear,educational
+PROD_MAR_206,Authority bias makes people more likely to follow recommendations from perceived experts. Most people overlook this simple mechanism.,youtube_short,marketing
+PROD_PRO_116,Batching similar tasks reduces context switching costs and improves overall throughput.,tldv,productivity
+PROD_EDU_006,Dual coding theory suggests combining verbal and visual information leads to better understanding. I started applying this and saw results within weeks.,tldv,educational
+PROD_TEC_305,Rate limiting protects APIs from abuse and ensures fair usage among clients.,tldv,technology
+PROD_SCI_175,Meta-analyses combine results from multiple studies to increase statistical power and reliability. This principle shows up repeatedly across high performers.,james_clear,science
+PROD_MAR_182,Social proof works because people look to others' behavior when uncertain about their own decisions. I started applying this and saw results within weeks.,naval,marketing
+PROD_MAR_191,"Hook, value, and call to action form the basic structure of high-converting short-form content. Most people overlook this simple mechanism.",tldv,marketing
+PROD_FIN_259,The rule of 72 estimates how long it takes for money to double at a given interest rate. The research behind this is surprisingly consistent.,a16z,finance
+PROD_SCI_150,Effect size matters more than statistical significance when evaluating practical importance. The research behind this is surprisingly consistent.,youtube_short,science
+PROD_PRO_119,Weekly review helps you see what actually moved the needle versus what felt busy. Most people overlook this simple mechanism.,a16z,productivity
+PROD_SCI_167,Confirmation bias leads people to seek information that supports their existing beliefs. I started applying this and saw results within weeks.,james_clear,science
+PROD_PRO_114,The Eisenhower matrix separates tasks into urgent versus important to prioritize effectively. The research behind this is surprisingly consistent.,james_clear,productivity
+PROD_PRO_107,The 5-minute rule helps overcome procrastination by committing to just five minutes of work. This principle shows up repeatedly across high performers.,a16z,productivity
+PROD_SCI_148,The replication crisis in psychology showed that many classic findings fail to replicate. This principle shows up repeatedly across high performers.,tldv,science
+PROD_MAR_193,Scarcity and urgency increase perceived value when they are genuine rather than manufactured. Most people overlook this simple mechanism.,alex_hormozi,marketing
+PROD_SCI_146,The placebo effect can produce measurable physiological changes even when people know they received a placebo.,huberman_lab,science
+PROD_SCI_143,Correlation does not imply causation without ruling out confounding variables and reverse causality. This principle shows up repeatedly across high performers.,youtube_short,science
+PROD_FIN_239,The rule of 72 estimates how long it takes for money to double at a given interest rate. This principle shows up repeatedly across high performers.,youtube_short,finance
+PROD_BUS_078,A moat is a sustainable competitive advantage that protects profits over time. Most people overlook this simple mechanism.,peter_attia,business
+PROD_EDU_002,Spaced repetition systems exploit the forgetting curve to maximize retention with minimal reviews. I started applying this and saw results within weeks.,ali_abdaal,educational
+PROD_SCI_141,Publication bias means positive results are more likely to be published than null results. This principle shows up repeatedly across high performers.,james_clear,science
+PROD_SCI_179,Double-blind studies are the gold standard because they control for both participant and researcher bias. Most people overlook this simple mechanism.,youtube_short,science
+PROD_SCI_164,The scientific method relies on falsifiability rather than proving hypotheses true. This principle shows up repeatedly across high performers.,alex_hormozi,science
+PROD_FIN_243,Emergency funds should cover three to six months of essential expenses. Most people overlook this simple mechanism.,alex_hormozi,finance
+PROD_TEC_311,APIs allow different software systems to communicate without exposing their internal code. The research behind this is surprisingly consistent.,alex_hormozi,technology
+PROD_MAR_212,Social proof works because people look to others' behavior when uncertain about their own decisions. I started applying this and saw results within weeks.,andrew_huberman,marketing
+PROD_FIN_253,Emergency funds should cover three to six months of essential expenses.,youtube_short,finance
+PROD_MAR_222,Social proof works because people look to others' behavior when uncertain about their own decisions. The research behind this is surprisingly consistent.,tldv,marketing
+PROD_TEC_310,Feature flags let teams deploy code to production while controlling who can see new functionality. I started applying this and saw results within weeks.,james_clear,technology
+PROD_FIN_258,Diversification reduces unsystematic risk by spreading investments across uncorrelated assets.,huberman_lab,finance
+PROD_MAR_192,Social proof works because people look to others' behavior when uncertain about their own decisions. The research behind this is surprisingly consistent.,james_clear,marketing
+PROD_SCI_156,The placebo effect can produce measurable physiological changes even when people know they received a placebo.,youtube_short,science
+PROD_PRO_132,"The two-minute rule says if a task takes less than two minutes, do it immediately. This principle shows up repeatedly across high performers.",a16z,productivity
+PROD_EDU_029,The protégé effect demonstrates that teaching material improves the teacher's own mastery.,alex_hormozi,educational
+PROD_PRO_103,Deep work requires protecting long uninterrupted blocks of focused time from distractions. Most people overlook this simple mechanism.,ali_abdaal,productivity
+PROD_MAR_204,The mere exposure effect shows that repeated contact with a stimulus increases liking.,youtube_short,marketing
+PROD_PRO_127,The 5-minute rule helps overcome procrastination by committing to just five minutes of work. I started applying this and saw results within weeks.,a16z,productivity
+PROD_BUS_077,"Unit economics must be positive before scaling, otherwise growth destroys value. Most people overlook this simple mechanism.",naval,business
+PROD_PRO_105,Eating the frog means completing your most difficult task first thing in the morning. Most people overlook this simple mechanism.,james_clear,productivity
+PROD_BUS_088,A moat is a sustainable competitive advantage that protects profits over time.,andrew_huberman,business
+PROD_SCI_142,p-hacking occurs when researchers manipulate data analysis until they find a significant result.,naval,science
+PROD_BUS_060,Gross margin is the percentage of revenue left after direct costs of goods sold. Most people overlook this simple mechanism.,naval,business
+PROD_MAR_211,"Hook, value, and call to action form the basic structure of high-converting short-form content. I started applying this and saw results within weeks.",james_clear,marketing
+PROD_PRO_118,Single-tasking produces higher quality output than attempting to multitask. Most people overlook this simple mechanism.,huberman_lab,productivity
+PROD_TEC_304,Caching stores frequently accessed data in fast memory to reduce load on slower systems. The research behind this is surprisingly consistent.,andrew_huberman,technology
+PROD_BUS_046,The 80/20 rule in business means 80% of revenue often comes from 20% of customers. This principle shows up repeatedly across high performers.,peter_attia,business
+PROD_EDU_026,Dual coding theory suggests combining verbal and visual information leads to better understanding. Most people overlook this simple mechanism.,naval,educational
+PROD_BUS_089,Customer acquisition cost should be recovered within the first three months of a subscription. The research behind this is surprisingly consistent.,andrew_huberman,business
+PROD_BUS_061,Network effects occur when a product becomes more valuable as more people use it. I started applying this and saw results within weeks.,tldv,business
+PROD_PRO_112,"The two-minute rule says if a task takes less than two minutes, do it immediately. I started applying this and saw results within weeks.",huberman_lab,productivity
+PROD_SCI_169,Double-blind studies are the gold standard because they control for both participant and researcher bias.,youtube_short,science
+PROD_BUS_080,Gross margin is the percentage of revenue left after direct costs of goods sold. Most people overlook this simple mechanism.,peter_attia,business
+PROD_TEC_296,Asynchronous processing allows long-running tasks to run in the background without blocking the user. Most people overlook this simple mechanism.,naval,technology
+PROD_FIN_261,Behavioral finance studies how psychological biases affect investor decision making. Most people overlook this simple mechanism.,alex_hormozi,finance
+PROD_SCI_166,The placebo effect can produce measurable physiological changes even when people know they received a placebo.,ali_abdaal,science
+PROD_MAR_224,The mere exposure effect shows that repeated contact with a stimulus increases liking. This principle shows up repeatedly across high performers.,alex_hormozi,marketing
+PROD_MAR_216,Authority bias makes people more likely to follow recommendations from perceived experts. The research behind this is surprisingly consistent.,naval,marketing
+PROD_BUS_058,A moat is a sustainable competitive advantage that protects profits over time. This principle shows up repeatedly across high performers.,huberman_lab,business
+PROD_PRO_113,Deep work requires protecting long uninterrupted blocks of focused time from distractions.,alex_hormozi,productivity
+PROD_PRO_097,The 5-minute rule helps overcome procrastination by committing to just five minutes of work. I started applying this and saw results within weeks.,naval,productivity
+PROD_SCI_157,Confirmation bias leads people to seek information that supports their existing beliefs.,a16z,science
+PROD_MAR_185,Storytelling activates more areas of the brain than factual information alone. The research behind this is surprisingly consistent.,james_clear,marketing
+PROD_PRO_109,Weekly review helps you see what actually moved the needle versus what felt busy.,huberman_lab,productivity
+PROD_FIN_237,Dollar cost averaging reduces the impact of volatility by investing fixed amounts at regular intervals. The research behind this is surprisingly consistent.,youtube_short,finance
+PROD_PRO_092,"The two-minute rule says if a task takes less than two minutes, do it immediately. This principle shows up repeatedly across high performers.",alex_hormozi,productivity
+PROD_BUS_082,Churn rate measures the percentage of customers who stop using a product each month. This principle shows up repeatedly across high performers.,andrew_huberman,business
+PROD_SCI_173,Correlation does not imply causation without ruling out confounding variables and reverse causality. Most people overlook this simple mechanism.,youtube_short,science
+PROD_FIN_241,Behavioral finance studies how psychological biases affect investor decision making. This principle shows up repeatedly across high performers.,tldv,finance
+PROD_SCI_139,Double-blind studies are the gold standard because they control for both participant and researcher bias. This principle shows up repeatedly across high performers.,naval,science
+PROD_SCI_151,Publication bias means positive results are more likely to be published than null results. Most people overlook this simple mechanism.,ali_abdaal,science
+PROD_FIN_268,Diversification reduces unsystematic risk by spreading investments across uncorrelated assets. I started applying this and saw results within weeks.,james_clear,finance
+PROD_EDU_024,The testing effect shows that retrieving information improves long-term memory more than restudying.,a16z,educational
+PROD_PRO_123,Deep work requires protecting long uninterrupted blocks of focused time from distractions. Most people overlook this simple mechanism.,andrew_huberman,productivity
+PROD_MAR_213,Scarcity and urgency increase perceived value when they are genuine rather than manufactured. I started applying this and saw results within weeks.,naval,marketing
+PROD_FIN_228,Diversification reduces unsystematic risk by spreading investments across uncorrelated assets. The research behind this is surprisingly consistent.,ali_abdaal,finance
+PROD_TEC_309,"Observability combines metrics, logs, and traces to understand system behavior in production. The research behind this is surprisingly consistent.",huberman_lab,technology
+PROD_TEC_297,Microservices architecture splits a large application into smaller independently deployable services.,andrew_huberman,technology
+PROD_EDU_009,The protégé effect demonstrates that teaching material improves the teacher's own mastery. Most people overlook this simple mechanism.,ali_abdaal,educational
+PROD_FIN_266,Compound interest is the process where investment returns generate additional returns over time. I started applying this and saw results within weeks.,tldv,finance
+PROD_SCI_180,Effect size matters more than statistical significance when evaluating practical importance. Most people overlook this simple mechanism.,a16z,science
+PROD_SCI_145,Meta-analyses combine results from multiple studies to increase statistical power and reliability.,tldv,science
+PROD_EDU_042,Spaced repetition systems exploit the forgetting curve to maximize retention with minimal reviews.,huberman_lab,educational
+PROD_EDU_028,"Elaboration connects new information to existing knowledge, creating more retrieval cues. I started applying this and saw results within weeks.",ali_abdaal,educational
+PROD_SCI_168,The replication crisis in psychology showed that many classic findings fail to replicate. Most people overlook this simple mechanism.,alex_hormozi,science
+PROD_FIN_236,Compound interest is the process where investment returns generate additional returns over time.,ali_abdaal,finance
+PROD_PRO_108,Single-tasking produces higher quality output than attempting to multitask. The research behind this is surprisingly consistent.,james_clear,productivity
+PROD_TEC_300,Feature flags let teams deploy code to production while controlling who can see new functionality. This principle shows up repeatedly across high performers.,tldv,technology
+PROD_BUS_071,Network effects occur when a product becomes more valuable as more people use it. This principle shows up repeatedly across high performers.,a16z,business
+PROD_TEC_313,Containerization packages an application with all its dependencies so it runs consistently across environments. Most people overlook this simple mechanism.,tldv,technology
+PROD_EDU_037,The generation effect means people remember self-generated answers better than provided ones. This principle shows up repeatedly across high performers.,tldv,educational
+PROD_SCI_159,Double-blind studies are the gold standard because they control for both participant and researcher bias. I started applying this and saw results within weeks.,a16z,science
+PROD_SCI_162,p-hacking occurs when researchers manipulate data analysis until they find a significant result. Most people overlook this simple mechanism.,ali_abdaal,science
+PROD_TEC_287,Microservices architecture splits a large application into smaller independently deployable services. Most people overlook this simple mechanism.,tldv,technology
+PROD_TEC_289,"Observability combines metrics, logs, and traces to understand system behavior in production. The research behind this is surprisingly consistent.",james_clear,technology
+PROD_PRO_094,The Eisenhower matrix separates tasks into urgent versus important to prioritize effectively.,tldv,productivity
+PROD_SCI_174,The scientific method relies on falsifiability rather than proving hypotheses true.,huberman_lab,science
+PROD_BUS_090,Gross margin is the percentage of revenue left after direct costs of goods sold. The research behind this is surprisingly consistent.,a16z,business
+PROD_SCI_158,The replication crisis in psychology showed that many classic findings fail to replicate. Most people overlook this simple mechanism.,peter_attia,science
+PROD_MAR_189,Loss aversion means people feel losses more intensely than equivalent gains.,a16z,marketing
+PROD_TEC_299,"Observability combines metrics, logs, and traces to understand system behavior in production. Most people overlook this simple mechanism.",ali_abdaal,technology
+PROD_FIN_238,Diversification reduces unsystematic risk by spreading investments across uncorrelated assets. The research behind this is surprisingly consistent.,a16z,finance
+PROD_SCI_160,Effect size matters more than statistical significance when evaluating practical importance. The research behind this is surprisingly consistent.,james_clear,science
+PROD_EDU_041,The hippocampus consolidates short-term memories into long-term storage during deep sleep. This principle shows up repeatedly across high performers.,a16z,educational
+PROD_FIN_255,Tax-advantaged accounts like 401(k)s and IRAs compound more efficiently than taxable accounts. This principle shows up repeatedly across high performers.,tldv,finance
+PROD_SCI_137,Confirmation bias leads people to seek information that supports their existing beliefs. This principle shows up repeatedly across high performers.,peter_attia,science
+PROD_MAR_200,Pattern interrupts break automatic scrolling behavior and force attention back to the content. I started applying this and saw results within weeks.,huberman_lab,marketing
+PROD_TEC_283,Containerization packages an application with all its dependencies so it runs consistently across environments. This principle shows up repeatedly across high performers.,youtube_short,technology
+PROD_TEC_301,APIs allow different software systems to communicate without exposing their internal code. This principle shows up repeatedly across high performers.,james_clear,technology
+PROD_EDU_011,The hippocampus consolidates short-term memories into long-term storage during deep sleep. The research behind this is surprisingly consistent.,andrew_huberman,educational
+PROD_FIN_233,Emergency funds should cover three to six months of essential expenses. This principle shows up repeatedly across high performers.,naval,finance
+PROD_PRO_120,Energy management is often more important than time management for high performance. Most people overlook this simple mechanism.,youtube_short,productivity
+PROD_MAR_219,Loss aversion means people feel losses more intensely than equivalent gains.,a16z,marketing
+PROD_FIN_231,Behavioral finance studies how psychological biases affect investor decision making.,andrew_huberman,finance
+PROD_MAR_197,Reciprocity is a powerful principle: giving first increases the likelihood of receiving later. I started applying this and saw results within weeks.,huberman_lab,marketing
+PROD_FIN_244,High-interest debt should be paid off before investing because the interest rate exceeds expected returns. This principle shows up repeatedly across high performers.,alex_hormozi,finance
+PROD_BUS_054,Product-market fit exists when a significant number of customers are actively using and recommending the product.,naval,business
+PROD_BUS_084,Product-market fit exists when a significant number of customers are actively using and recommending the product. This principle shows up repeatedly across high performers.,james_clear,business
+PROD_TEC_303,Containerization packages an application with all its dependencies so it runs consistently across environments. The research behind this is surprisingly consistent.,james_clear,technology
+PROD_EDU_030,Deliberate practice involves focused effort on weaknesses with immediate feedback. The research behind this is surprisingly consistent.,a16z,educational
+PROD_BUS_056,The 80/20 rule in business means 80% of revenue often comes from 20% of customers. I started applying this and saw results within weeks.,alex_hormozi,business
+PROD_EDU_004,The testing effect shows that retrieving information improves long-term memory more than restudying. I started applying this and saw results within weeks.,ali_abdaal,educational
+PROD_EDU_019,The protégé effect demonstrates that teaching material improves the teacher's own mastery.,peter_attia,educational
+PROD_EDU_001,The hippocampus consolidates short-term memories into long-term storage during deep sleep. The research behind this is surprisingly consistent.,alex_hormozi,educational
+PROD_TEC_275,Rate limiting protects APIs from abuse and ensures fair usage among clients. The research behind this is surprisingly consistent.,huberman_lab,technology
+PROD_EDU_025,Interleaving different topics during practice improves discrimination and transfer of learning. I started applying this and saw results within weeks.,ali_abdaal,educational
+PROD_BUS_057,"Unit economics must be positive before scaling, otherwise growth destroys value. The research behind this is surprisingly consistent.",youtube_short,business
+PROD_TEC_307,Microservices architecture splits a large application into smaller independently deployable services.,peter_attia,technology
+PROD_PRO_106,Batching similar tasks reduces context switching costs and improves overall throughput. The research behind this is surprisingly consistent.,youtube_short,productivity
+PROD_SCI_176,The placebo effect can produce measurable physiological changes even when people know they received a placebo. The research behind this is surprisingly consistent.,ali_abdaal,science
+PROD_FIN_260,Opportunity cost is the value of the next best alternative you give up when making a decision. Most people overlook this simple mechanism.,naval,finance
+PROD_MAR_184,The mere exposure effect shows that repeated contact with a stimulus increases liking. The research behind this is surprisingly consistent.,youtube_short,marketing
+PROD_MAR_190,Pattern interrupts break automatic scrolling behavior and force attention back to the content. I started applying this and saw results within weeks.,andrew_huberman,marketing
+PROD_SCI_172,p-hacking occurs when researchers manipulate data analysis until they find a significant result. The research behind this is surprisingly consistent.,naval,science
+PROD_EDU_021,The hippocampus consolidates short-term memories into long-term storage during deep sleep. I started applying this and saw results within weeks.,peter_attia,educational
+PROD_BUS_075,Burn rate is how quickly a company spends its cash reserves before generating positive cash flow.,youtube_short,business
+PROD_TEC_278,Encryption at rest protects data stored on disks even if physical media is stolen. The research behind this is surprisingly consistent.,huberman_lab,technology
+PROD_FIN_250,Opportunity cost is the value of the next best alternative you give up when making a decision. The research behind this is surprisingly consistent.,youtube_short,finance
+PROD_PRO_122,"The two-minute rule says if a task takes less than two minutes, do it immediately. I started applying this and saw results within weeks.",youtube_short,productivity
+PROD_EDU_008,"Elaboration connects new information to existing knowledge, creating more retrieval cues. This principle shows up repeatedly across high performers.",youtube_short,educational
+PROD_MAR_210,Pattern interrupts break automatic scrolling behavior and force attention back to the content. The research behind this is surprisingly consistent.,a16z,marketing
+PROD_BUS_059,Customer acquisition cost should be recovered within the first three months of a subscription. Most people overlook this simple mechanism.,huberman_lab,business
+PROD_FIN_248,Diversification reduces unsystematic risk by spreading investments across uncorrelated assets. This principle shows up repeatedly across high performers.,alex_hormozi,finance
+PROD_EDU_007,The generation effect means people remember self-generated answers better than provided ones. Most people overlook this simple mechanism.,tldv,educational
+PROD_BUS_066,The 80/20 rule in business means 80% of revenue often comes from 20% of customers.,a16z,business
+PROD_TEC_312,Version control with Git enables multiple developers to collaborate without overwriting each other's work.,ali_abdaal,technology
+PROD_TEC_292,Version control with Git enables multiple developers to collaborate without overwriting each other's work. This principle shows up repeatedly across high performers.,tldv,technology
+PROD_BUS_070,Gross margin is the percentage of revenue left after direct costs of goods sold.,alex_hormozi,business
+PROD_MAR_201,"Hook, value, and call to action form the basic structure of high-converting short-form content.",a16z,marketing
+PROD_PRO_129,Weekly review helps you see what actually moved the needle versus what felt busy. Most people overlook this simple mechanism.,ali_abdaal,productivity
+PROD_PRO_104,The Eisenhower matrix separates tasks into urgent versus important to prioritize effectively. This principle shows up repeatedly across high performers.,a16z,productivity
+PROD_MAR_181,"Hook, value, and call to action form the basic structure of high-converting short-form content. This principle shows up repeatedly across high performers.",a16z,marketing
+PROD_PRO_110,Energy management is often more important than time management for high performance. Most people overlook this simple mechanism.,peter_attia,productivity
+PROD_MAR_199,Loss aversion means people feel losses more intensely than equivalent gains. I started applying this and saw results within weeks.,youtube_short,marketing
+PROD_SCI_144,The scientific method relies on falsifiability rather than proving hypotheses true. The research behind this is surprisingly consistent.,andrew_huberman,science
+PROD_SCI_163,Correlation does not imply causation without ruling out confounding variables and reverse causality. Most people overlook this simple mechanism.,a16z,science
+PROD_FIN_227,Dollar cost averaging reduces the impact of volatility by investing fixed amounts at regular intervals.,ali_abdaal,finance
+PROD_BUS_068,A moat is a sustainable competitive advantage that protects profits over time. This principle shows up repeatedly across high performers.,andrew_huberman,business
+PROD_TEC_273,Containerization packages an application with all its dependencies so it runs consistently across environments. Most people overlook this simple mechanism.,a16z,technology
+PROD_PRO_096,Batching similar tasks reduces context switching costs and improves overall throughput.,huberman_lab,productivity
+PROD_TEC_286,Asynchronous processing allows long-running tasks to run in the background without blocking the user. Most people overlook this simple mechanism.,youtube_short,technology
+PROD_PRO_124,The Eisenhower matrix separates tasks into urgent versus important to prioritize effectively. Most people overlook this simple mechanism.,andrew_huberman,productivity
+PROD_BUS_074,Product-market fit exists when a significant number of customers are actively using and recommending the product. The research behind this is surprisingly consistent.,peter_attia,business
+PROD_FIN_246,Compound interest is the process where investment returns generate additional returns over time.,a16z,finance
+PROD_FIN_242,Index funds have historically outperformed most actively managed funds over long periods. Most people overlook this simple mechanism.,ali_abdaal,finance
+PROD_TEC_284,Caching stores frequently accessed data in fast memory to reduce load on slower systems. The research behind this is surprisingly consistent.,youtube_short,technology
+PROD_BUS_085,Burn rate is how quickly a company spends its cash reserves before generating positive cash flow. The research behind this is surprisingly consistent.,alex_hormozi,business
+PROD_FIN_247,Dollar cost averaging reduces the impact of volatility by investing fixed amounts at regular intervals. The research behind this is surprisingly consistent.,alex_hormozi,finance
+PROD_EDU_038,"Elaboration connects new information to existing knowledge, creating more retrieval cues. The research behind this is surprisingly consistent.",ali_abdaal,educational
+PROD_FIN_234,High-interest debt should be paid off before investing because the interest rate exceeds expected returns.,huberman_lab,finance
+PROD_FIN_263,Emergency funds should cover three to six months of essential expenses. This principle shows up repeatedly across high performers.,peter_attia,finance
+PROD_SCI_171,Publication bias means positive results are more likely to be published than null results.,youtube_short,science
+PROD_BUS_081,Network effects occur when a product becomes more valuable as more people use it. Most people overlook this simple mechanism.,a16z,business
+PROD_FIN_270,Opportunity cost is the value of the next best alternative you give up when making a decision. This principle shows up repeatedly across high performers.,youtube_short,finance
+PROD_BUS_073,LTV to CAC ratio above 3:1 is generally considered healthy for most SaaS businesses. I started applying this and saw results within weeks.,ali_abdaal,business
+PROD_SCI_147,Confirmation bias leads people to seek information that supports their existing beliefs. This principle shows up repeatedly across high performers.,peter_attia,science
+PROD_TEC_306,Asynchronous processing allows long-running tasks to run in the background without blocking the user. The research behind this is surprisingly consistent.,naval,technology
+PROD_FIN_240,Opportunity cost is the value of the next best alternative you give up when making a decision. Most people overlook this simple mechanism.,alex_hormozi,finance
+PROD_PRO_100,Energy management is often more important than time management for high performance. I started applying this and saw results within weeks.,alex_hormozi,productivity
+PROD_MAR_186,Authority bias makes people more likely to follow recommendations from perceived experts. I started applying this and saw results within weeks.,andrew_huberman,marketing
+PROD_EDU_034,The testing effect shows that retrieving information improves long-term memory more than restudying. This principle shows up repeatedly across high performers.,peter_attia,educational
+PROD_TEC_277,Microservices architecture splits a large application into smaller independently deployable services. The research behind this is surprisingly consistent.,a16z,technology
+PROD_MAR_209,Loss aversion means people feel losses more intensely than equivalent gains. This principle shows up repeatedly across high performers.,a16z,marketing
+PROD_SCI_140,Effect size matters more than statistical significance when evaluating practical importance. This principle shows up repeatedly across high performers.,alex_hormozi,science
+PROD_PRO_130,Energy management is often more important than time management for high performance. Most people overlook this simple mechanism.,huberman_lab,productivity
+PROD_TEC_302,Version control with Git enables multiple developers to collaborate without overwriting each other's work. This principle shows up repeatedly across high performers.,huberman_lab,technology
+PROD_PRO_115,Eating the frog means completing your most difficult task first thing in the morning.,naval,productivity
+PROD_PRO_133,Deep work requires protecting long uninterrupted blocks of focused time from distractions.,alex_hormozi,productivity
+PROD_MAR_183,Scarcity and urgency increase perceived value when they are genuine rather than manufactured. This principle shows up repeatedly across high performers.,tldv,marketing
+PROD_TEC_282,Version control with Git enables multiple developers to collaborate without overwriting each other's work. The research behind this is surprisingly consistent.,huberman_lab,technology
+PROD_EDU_005,Interleaving different topics during practice improves discrimination and transfer of learning.,a16z,educational
+PROD_MAR_207,Reciprocity is a powerful principle: giving first increases the likelihood of receiving later. Most people overlook this simple mechanism.,peter_attia,marketing
+PROD_FIN_249,The rule of 72 estimates how long it takes for money to double at a given interest rate.,peter_attia,finance
+PROD_TEC_274,Caching stores frequently accessed data in fast memory to reduce load on slower systems. The research behind this is surprisingly consistent.,alex_hormozi,technology
+PROD_TEC_271,APIs allow different software systems to communicate without exposing their internal code. I started applying this and saw results within weeks.,alex_hormozi,technology
+PROD_BUS_049,Customer acquisition cost should be recovered within the first three months of a subscription. I started applying this and saw results within weeks.,james_clear,business
+PROD_MAR_214,The mere exposure effect shows that repeated contact with a stimulus increases liking.,naval,marketing
+PROD_MAR_188,Anchoring happens when the first number presented influences subsequent judgments. I started applying this and saw results within weeks.,huberman_lab,marketing
+PROD_MAR_215,Storytelling activates more areas of the brain than factual information alone. Most people overlook this simple mechanism.,huberman_lab,marketing
+PROD_BUS_087,"Unit economics must be positive before scaling, otherwise growth destroys value. This principle shows up repeatedly across high performers.",youtube_short,business
+PROD_BUS_083,LTV to CAC ratio above 3:1 is generally considered healthy for most SaaS businesses.,andrew_huberman,business
+PROD_FIN_235,Tax-advantaged accounts like 401(k)s and IRAs compound more efficiently than taxable accounts.,tldv,finance
+PROD_BUS_076,The 80/20 rule in business means 80% of revenue often comes from 20% of customers. I started applying this and saw results within weeks.,ali_abdaal,business
+PROD_EDU_014,The testing effect shows that retrieving information improves long-term memory more than restudying.,andrew_huberman,educational
+PROD_SCI_178,The replication crisis in psychology showed that many classic findings fail to replicate. I started applying this and saw results within weeks.,andrew_huberman,science
+PROD_PRO_125,Eating the frog means completing your most difficult task first thing in the morning. The research behind this is surprisingly consistent.,alex_hormozi,productivity
+PROD_BUS_067,"Unit economics must be positive before scaling, otherwise growth destroys value. I started applying this and saw results within weeks.",peter_attia,business
+PROD_BUS_047,"Unit economics must be positive before scaling, otherwise growth destroys value. The research behind this is surprisingly consistent.",a16z,business
+PROD_SCI_136,The placebo effect can produce measurable physiological changes even when people know they received a placebo. I started applying this and saw results within weeks.,huberman_lab,science
+PROD_SCI_138,The replication crisis in psychology showed that many classic findings fail to replicate. Most people overlook this simple mechanism.,alex_hormozi,science
+PROD_MAR_195,Storytelling activates more areas of the brain than factual information alone.,james_clear,marketing
+PROD_BUS_050,Gross margin is the percentage of revenue left after direct costs of goods sold. The research behind this is surprisingly consistent.,huberman_lab,business
+PROD_PRO_135,Eating the frog means completing your most difficult task first thing in the morning.,alex_hormozi,productivity
+PROD_FIN_256,Compound interest is the process where investment returns generate additional returns over time. I started applying this and saw results within weeks.,a16z,finance
+PROD_BUS_055,Burn rate is how quickly a company spends its cash reserves before generating positive cash flow. This principle shows up repeatedly across high performers.,james_clear,business
+PROD_EDU_016,Dual coding theory suggests combining verbal and visual information leads to better understanding. Most people overlook this simple mechanism.,ali_abdaal,educational
+PROD_EDU_022,Spaced repetition systems exploit the forgetting curve to maximize retention with minimal reviews. I started applying this and saw results within weeks.,a16z,educational
+PROD_PRO_126,Batching similar tasks reduces context switching costs and improves overall throughput. I started applying this and saw results within weeks.,a16z,productivity
+PROD_SCI_154,The scientific method relies on falsifiability rather than proving hypotheses true. This principle shows up repeatedly across high performers.,ali_abdaal,science
+PROD_TEC_279,"Observability combines metrics, logs, and traces to understand system behavior in production. Most people overlook this simple mechanism.",james_clear,technology
+PROD_TEC_281,APIs allow different software systems to communicate without exposing their internal code. I started applying this and saw results within weeks.,a16z,technology
+PROD_PRO_093,Deep work requires protecting long uninterrupted blocks of focused time from distractions.,andrew_huberman,productivity
+PROD_BUS_062,Churn rate measures the percentage of customers who stop using a product each month. I started applying this and saw results within weeks.,tldv,business
+PROD_EDU_018,"Elaboration connects new information to existing knowledge, creating more retrieval cues. This principle shows up repeatedly across high performers.",huberman_lab,educational
+PROD_MAR_194,The mere exposure effect shows that repeated contact with a stimulus increases liking. I started applying this and saw results within weeks.,a16z,marketing
+PROD_TEC_314,Caching stores frequently accessed data in fast memory to reduce load on slower systems.,andrew_huberman,technology
+PROD_EDU_032,Spaced repetition systems exploit the forgetting curve to maximize retention with minimal reviews.,andrew_huberman,educational
+PROD_PRO_099,Weekly review helps you see what actually moved the needle versus what felt busy. Most people overlook this simple mechanism.,tldv,productivity
+PROD_EDU_039,The protégé effect demonstrates that teaching material improves the teacher's own mastery. This principle shows up repeatedly across high performers.,james_clear,educational
+PROD_EDU_043,Active recall is more effective than passive re-reading because it strengthens neural pathways.,alex_hormozi,educational
+PROD_PRO_121,Time blocking forces you to assign specific hours to tasks instead of working from a vague list.,a16z,productivity
+PROD_EDU_027,The generation effect means people remember self-generated answers better than provided ones. Most people overlook this simple mechanism.,a16z,educational
+PROD_MAR_203,Scarcity and urgency increase perceived value when they are genuine rather than manufactured.,peter_attia,marketing
+PROD_BUS_063,LTV to CAC ratio above 3:1 is generally considered healthy for most SaaS businesses. I started applying this and saw results within weeks.,peter_attia,business
+PROD_MAR_220,Pattern interrupts break automatic scrolling behavior and force attention back to the content.,andrew_huberman,marketing
+PROD_MAR_205,Storytelling activates more areas of the brain than factual information alone. The research behind this is surprisingly consistent.,alex_hormozi,marketing
+PROD_EDU_017,The generation effect means people remember self-generated answers better than provided ones. I started applying this and saw results within weeks.,james_clear,educational
+PROD_PRO_117,The 5-minute rule helps overcome procrastination by committing to just five minutes of work. Most people overlook this simple mechanism.,james_clear,productivity
+PROD_EDU_003,Active recall is more effective than passive re-reading because it strengthens neural pathways.,peter_attia,educational
+PROD_TEC_294,Caching stores frequently accessed data in fast memory to reduce load on slower systems. Most people overlook this simple mechanism.,huberman_lab,technology
+PROD_TEC_308,Encryption at rest protects data stored on disks even if physical media is stolen.,naval,technology
+PROD_FIN_254,High-interest debt should be paid off before investing because the interest rate exceeds expected returns. I started applying this and saw results within weeks.,huberman_lab,finance
+PROD_FIN_226,Compound interest is the process where investment returns generate additional returns over time. I started applying this and saw results within weeks.,ali_abdaal,finance
+PROD_MAR_221,"Hook, value, and call to action form the basic structure of high-converting short-form content. This principle shows up repeatedly across high performers.",a16z,marketing
+PROD_EDU_045,Interleaving different topics during practice improves discrimination and transfer of learning.,andrew_huberman,educational
+PROD_PRO_095,Eating the frog means completing your most difficult task first thing in the morning.,andrew_huberman,productivity
+PROD_FIN_232,Index funds have historically outperformed most actively managed funds over long periods. Most people overlook this simple mechanism.,alex_hormozi,finance
+PROD_FIN_229,The rule of 72 estimates how long it takes for money to double at a given interest rate. This principle shows up repeatedly across high performers.,tldv,finance
+PROD_EDU_013,Active recall is more effective than passive re-reading because it strengthens neural pathways.,alex_hormozi,educational
+PROD_EDU_036,Dual coding theory suggests combining verbal and visual information leads to better understanding. The research behind this is surprisingly consistent.,alex_hormozi,educational
+PROD_SCI_153,Correlation does not imply causation without ruling out confounding variables and reverse causality. I started applying this and saw results within weeks.,a16z,science
+PROD_EDU_044,The testing effect shows that retrieving information improves long-term memory more than restudying. The research behind this is surprisingly consistent.,peter_attia,educational
+PROD_BUS_051,Network effects occur when a product becomes more valuable as more people use it. The research behind this is surprisingly consistent.,youtube_short,business
+PROD_BUS_064,Product-market fit exists when a significant number of customers are actively using and recommending the product. This principle shows up repeatedly across high performers.,andrew_huberman,business
+PROD_MAR_187,Reciprocity is a powerful principle: giving first increases the likelihood of receiving later. The research behind this is surprisingly consistent.,peter_attia,marketing
+PROD_FIN_262,Index funds have historically outperformed most actively managed funds over long periods.,a16z,finance
+PROD_SCI_155,Meta-analyses combine results from multiple studies to increase statistical power and reliability. Most people overlook this simple mechanism.,peter_attia,science
+PROD_SCI_161,Publication bias means positive results are more likely to be published than null results. This principle shows up repeatedly across high performers.,naval,science
+PROD_EDU_023,Active recall is more effective than passive re-reading because it strengthens neural pathways. This principle shows up repeatedly across high performers.,youtube_short,educational
+PROD_FIN_251,Behavioral finance studies how psychological biases affect investor decision making. This principle shows up repeatedly across high performers.,ali_abdaal,finance
+PROD_TEC_272,Version control with Git enables multiple developers to collaborate without overwriting each other's work. Most people overlook this simple mechanism.,peter_attia,technology
+PROD_TEC_295,Rate limiting protects APIs from abuse and ensures fair usage among clients. The research behind this is surprisingly consistent.,james_clear,technology
+PROD_TEC_288,Encryption at rest protects data stored on disks even if physical media is stolen.,peter_attia,technology

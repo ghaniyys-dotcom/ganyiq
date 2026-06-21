@@ -148,14 +148,22 @@ export async function runAnalysisPipeline(
          prompt_version = $4,
          status = 'completed',
          progress_stage = 'completed',
-         raw_llm_response = $5::jsonb
-       WHERE id = $6`,
+         raw_llm_response = $5::jsonb,
+         transcript_provider = $6,
+         speaker_count = $7,
+         provider_latency_ms = $8,
+         provider_fallback_reason = $9
+       WHERE id = $10`,
       [
         totalMomentsFound,
         processingTimeMs,
         servingModel,
         PROMPT_VERSION,
         rawResponseJson,
+        (videoData as any).transcriptProvider || null,
+        (videoData as any).speakerCount ?? null,
+        (videoData as any).providerLatencyMs ?? null,
+        (videoData as any).providerFallbackReason || null,
         analysisId,
       ],
     );
@@ -167,8 +175,13 @@ export async function runAnalysisPipeline(
         `INSERT INTO moments
            (analysis_id, start_time, end_time, worth_clipping_score,
             confidence, dna_tags, reasoning, transcript_excerpt,
-            rank_position, tier)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
+            rank_position, tier,
+            information_gain, attention_capture, harm, final_score,
+            viral_score, hook_strength, surprise_level, novelty_score, emotional_intensity, audience_relevance,
+            visual_quality_score, sharpness, brightness, exposure, face_visibility, blur_score)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14,
+                 $15, $16, $17, $18, $19, $20,
+                 $21, $22, $23, $24, $25, $26)
          RETURNING id`,
         [
           analysisId,
@@ -181,9 +194,49 @@ export async function runAnalysisPipeline(
           m.transcriptExcerpt,
           m.rank,
           m.tier,
+          (m as any).information_gain ?? null,
+          (m as any).attention_capture ?? null,
+          (m as any).harm ?? null,
+          (m as any).final_score ?? null,
+          (m as any).viral_score ?? null,
+          (m as any).hook_strength ?? null,
+          (m as any).surprise_level ?? null,
+          (m as any).novelty_score ?? null,
+          (m as any).emotional_intensity ?? null,
+          (m as any).audience_relevance ?? null,
+          (m as any).visual_quality_score ?? null,
+          (m as any).sharpness ?? null,
+          (m as any).brightness ?? null,
+          (m as any).exposure ?? null,
+          (m as any).face_visibility ?? null,
+          (m as any).blur_score ?? null,
         ],
       );
       insertedMomentIds.push(result.rows[0].id);
+
+      // Log evaluator output
+      try {
+        if ((m as any).information_gain !== undefined) {
+          await query(
+            `INSERT INTO evaluator_logs 
+             (moment_id, analysis_id, clip_id, transcript, information_gain, attention_capture, harm, final_score, reasoning, timestamp)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+            [
+              result.rows[0].id,
+              analysisId,
+              (m as any).clipId || `m-${insertedMomentIds.length}`,
+              m.transcriptExcerpt,
+              (m as any).information_gain,
+              (m as any).attention_capture,
+              (m as any).harm,
+              (m as any).final_score,
+              (m as any).reasoning || null,
+            ]
+          );
+        }
+      } catch (logErr) {
+        console.error('[EVAL LOG] Failed to log evaluator output:', logErr);
+      }
     }
 
     console.log(`[ASYNC] Analysis ${analysisId} completed: ${totalMomentsFound} moments in ${processingTimeMs}ms`);
@@ -259,6 +312,54 @@ export async function runAnalysisPipeline(
         console.error(`[TITLES] Title generation failed for ${analysisId}: ${msg.slice(0, 200)}`);
       }
     })();
+
+    // ---- Stage 5: V2 Shadow Runner (feature-flagged, fire-and-forget) ----
+    // Runs V2 Fusion pipeline silently alongside V1.
+    // Feature flags:
+    //   V2_MULTI_GENERATOR_SHADOW=true → enables live shadow execution
+    //   V2_MULTI_GENERATOR_OUTPUT=false → V1 remains user-visible output
+    //
+    // Shadow is fire-and-forget — NEVER blocks V1 completion or propagates errors.
+    (async () => {
+      if (process.env.V2_MULTI_GENERATOR_SHADOW !== 'true') return;
+      try {
+        const { runShadowPipeline } = await import('@/lib/v2-shadow-runner');
+        const { rows: v1Moments } = await query<{
+          start_time: number; end_time: number;
+          worth_clipping_score: number; tier: string; transcript_excerpt: string;
+        }>(
+          `SELECT start_time, end_time, worth_clipping_score, tier, transcript_excerpt
+           FROM moments WHERE analysis_id = $1 ORDER BY worth_clipping_score DESC`,
+          [analysisId],
+        );
+        const result = await runShadowPipeline(
+          youtubeId,
+          videoData.transcript.map(s => ({
+            start: typeof s.start === 'number' ? s.start : 0,
+            duration: typeof s.duration === 'number' ? s.duration : 1,
+            text: s.text ?? '',
+          })),
+          analysisId,
+          v1Moments.map(m => ({
+            startTime: Number(m.start_time),
+            endTime: Number(m.end_time),
+            worthClippingScore: Number(m.worth_clipping_score),
+            tier: m.tier,
+            transcriptExcerpt: m.transcript_excerpt,
+          })),
+        );
+        if (result.success) {
+          console.log(`[SHADOW] ✅ ${youtubeId} — ${result.latencyMs}ms, ${result.fusionTop5.length} clips`);
+        } else {
+          console.warn(`[SHADOW] ⚠ ${youtubeId} — ${result.errorStage}: ${result.error}`);
+        }
+      } catch (err: any) {
+        // Shadow failure is NON-FATAL — V1 already completed successfully
+        console.error(`[SHADOW] ❌ ${youtubeId} — ${err.message?.slice(0, 200)}`);
+      }
+    })();
+
+    return; // Pipeline complete
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error(`[ASYNC] Analysis ${analysisId} failed:`, message);

@@ -1,0 +1,11 @@
+clipId,transcript,source,density_score,human_score
+P01_high_info_01,"The key technique is to use the 'pre-commit hook' pattern: before every commit, run eslint --fix and prettier. This catches 80% of style issues automatically.",manual,5,9
+P02_high_info_02,"Use the Eisenhower Matrix: urgent vs important. Put tasks into 4 quadrants and only work on quadrant 1 and 2. This single framework increased my output by 3x.",manual,5,9
+P03_high_info_03,"When debugging, always reproduce the bug with the smallest possible input. This is called 'minimal reproduction'. It reduces debugging time from hours to minutes.",manual,4,8
+P04_high_info_04,"The Pomodoro technique: 25 minutes focused work + 5 minutes break. After 4 cycles, take a 15-30 minute break. This is proven to maintain dopamine levels.",manual,4,8
+P05_high_info_05,"Use 'rubber duck debugging': explain your code line by line to a rubber duck (or any object). The act of verbalizing forces you to slow down and find the bug.",manual,4,7
+P06_high_info_06,"The '2-minute rule' from GTD: if a task takes less than 2 minutes, do it immediately. This prevents small tasks from piling up into overwhelming lists.",manual,4,8
+P07_high_info_07,"When learning a new framework, build the 'todo app' first. It forces you to implement CRUD, state management, and routing — the three core patterns.",manual,4,7
+P08_high_info_08,"Use 'inversion thinking': instead of asking 'how do I succeed?', ask 'what would cause me to fail?' Then systematically eliminate those causes.",manual,5,9
+P09_high_info_09,"The '80/20 rule' applied to learning: identify the 20% of concepts that explain 80% of usage. Master those first before going deeper.",manual,4,8
+P10_high_info_10,"Always write the test before the code (TDD). It forces you to define the interface and expected behavior first, resulting in cleaner, more testable code.",manual,5,9

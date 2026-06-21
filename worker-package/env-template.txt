@@ -10,6 +10,14 @@ WORKER_NAME=PC-GANY
 # Optional: HuggingFace token for PyAnnote speaker diarization
 # HF_TOKEN=hf_your_token_here
 
+# VibeVoice server address (for speaker diarization via vLLM on PC-GANY)
+# VIBEVOICE_API_URL=http://localhost:8000
+
+# FasterWhisper local CPU fallback
+# FASTER_WHISPER_MODEL=small
+# FASTER_WHISPER_DEVICE=cpu
+# FASTER_WHISPER_COMPUTE=int8
+
 # Optional: Feature flags (default = OFF in Phase A)
 # Set to 1 to enable:
 # GANYIQ_FEATURE_LAYOUT_TRANSITIONS=1

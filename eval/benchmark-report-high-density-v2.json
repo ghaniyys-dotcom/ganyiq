@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-06-20T00:00:00Z",
+  "totalClips": 100,
+  "evaluated": 100,
+  "runtimeSeconds": 420,
+  "distribution": {
+    "information_gain": {
+      "histogram": {
+        "0": 3,
+        "1": 16,
+        "2": 4,
+        "3": 12,
+        "4": 23,
+        "5": 22,
+        "6": 19,
+        "7": 1,
+        "8": 0,
+        "9": 0,
+        "10": 0
+      },
+      "mean": 3.83,
+      "median": 4.0,
+      "stddev": 1.8,
+      "pct_ge_6": 20.0,
+      "pct_ge_8": 0.0
+    },
+    "attention_capture": {
+      "mean": 3.22,
+      "median": 3.0
+    },
+    "harm": {
+      "mean": 0.37,
+      "median": 0.0
+    }
+  },
+  "model": "openrouter/owl-alpha (frozen)",
+  "dataset": "high-density-gold-dataset-v2.csv"
+}

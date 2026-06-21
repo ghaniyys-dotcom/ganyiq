@@ -1,3 +1,5 @@
+import { enforceEvaluatorRules } from "./evaluator-validator";
+import { removeDuplicateMoments } from "./remove-duplicates";
 /**
  * ganyIQ LLM analysis pipeline — V2 Candidate Extraction + Batch Scoring.
  *
@@ -28,6 +30,9 @@ import { enrichCandidatesWithSpeakerData } from '@/lib/candidate-extraction';
 import { runSpecializedPasses } from '@/lib/multi-pass';
 import { detectGenre, type GenreProfile } from '@/lib/genre-detector';
 import type { RawMoment, DnaTag, ConfidenceLevel, VideoMetadata, TranscriptSegment } from '@/lib/types';
+import { EvaluatorRunner } from './evaluator-runner';
+import { calculateHybridScore } from './hybrid-ranking';
+import { callOwlAlpha } from './openrouter-client';
 
 // ---------------------------------------------------------------------------
 // Analysis Result
@@ -502,8 +507,42 @@ export async function analyzeTranscript(
   console.log(`[P5A] Total moments: ${combinedMoments.length} (${allValidMoments.length} general + ${multiPassMoments.length} multi-pass; genre: ${genreProfile.genre})`);
   console.log(`[FORENSIC] Combined moments score range: min=${Math.min(...combinedMoments.map(m=>m.worthClippingScore))} max=${Math.max(...combinedMoments.map(m=>m.worthClippingScore))} avg=${(combinedMoments.reduce((s,m)=>s+m.worthClippingScore,0)/Math.max(1,combinedMoments.length)).toFixed(1)}`);
 
+
+  // Sprint 2: Integrate 3-factor evaluator (FROZEN) + viral score
+  const evaluator = new (await import("./evaluator-runner")).EvaluatorRunner();
+  for (const m of combinedMoments) {
+    try {
+      const transcript_short = (m as any).transcriptExcerpt || "";
+      if (transcript_short.length > 10) {
+        let res = await evaluator.evaluateClip({ clipId: (m as any).clipId || "c", transcript: transcript_short });
+        res = enforceEvaluatorRules(res);
+        (m as any).information_gain = res.information_gain;
+        (m as any).attention_capture = res.attention_capture;
+        (m as any).harm = res.harm;
+        (m as any).final_score = Number(((res.information_gain * 5.0) + (res.attention_capture * 2.0) - (res.harm * 4.0)).toFixed(2));
+      }
+    } catch (e) {
+      // ignore
+    }
+    // Phase 1: Viral score (independent signal, not modifying frozen evaluator)
+    try {
+      const t = (m as any).transcriptExcerpt || "";
+      if (t.length > 10) {
+        const { computeViralScore } = require("./viral-moment-detector");
+        const viral = computeViralScore(t);
+        (m as any).viral_score = viral.viral_score;
+        (m as any).hook_strength = viral.components.hookStrength;
+        (m as any).surprise_level = viral.components.surpriseLevel;
+        (m as any).novelty_score = viral.components.noveltyScore;
+        (m as any).emotional_intensity = viral.components.emotionalIntensity;
+        (m as any).audience_relevance = viral.components.audienceRelevance;
+      }
+    } catch (_) {}
+  }
+
+  const deduped = removeDuplicateMoments(combinedMoments);
   return {
-    moments: combinedMoments,
+    moments: deduped,
     model: TARGET_MODEL,
     rawResponse: combinedRawResponse,
   };
@@ -523,6 +562,22 @@ export async function analyzeTranscript(
  * @throws AppError ANALYSIS_FAILED if the API call fails or returns empty.
  */
 async function callLLM(model: string, system: string, user: string): Promise<string> {
+  // OpenRouter owl-alpha fallback (last resort)
+  if (model === 'openrouter/owl-alpha') {
+    try {
+      const result = await callOwlAlpha(system, user, {
+        temperature: 0.2,
+        maxTokens: 4000,
+        responseFormat: 'json_object',
+      });
+      console.log(`[LLM] OpenRouter owl-alpha success`);
+      return result.text;
+    } catch (err: any) {
+      console.error(`[LLM] OpenRouter owl-alpha failed: ${err.message}`);
+      throw new Error(`OpenRouter fallback failed: ${err.message}`);
+    }
+  }
+
   const apiKey = process.env.OPENCODE_GO_API_KEY;
   if (!apiKey) {
     throw new AppError(
@@ -620,6 +675,7 @@ async function callLLM(model: string, system: string, user: string): Promise<str
     );
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // Metrics Logger

@@ -1,16 +1,22 @@
 import { NextResponse } from 'next/server';
 import { Pool } from 'pg';
+import { getTranscriptAuthStatus } from '@/lib/transcript-health';
 
 /**
  * GET /api/health
  *
  * Readiness probe for the ganyIQ backend.
  *
- * Returns 200 with database connectivity status on success.
+ * Returns 200 with database connectivity + transcript auth status on success.
  * Returns 503 with error detail if the database is unreachable.
  *
  * Response (200):
- *   { "status": "ok", "database": "connected", "timestamp": "2026-06-01T12:00:00.000Z" }
+ *   {
+ *     "status": "ok",
+ *     "database": "connected",
+ *     "transcript_auth": "healthy" | "warning" | "failed",
+ *     "timestamp": "..."
+ *   }
  *
  * Response (503):
  *   { "status": "error", "database": "disconnected", "error": "…", "timestamp": "…" }
@@ -36,10 +42,20 @@ export async function GET(): Promise<NextResponse> {
     pool = new Pool({ connectionString });
     await pool.query('SELECT 1');
 
+    // Transcript auth health check (fast, no network)
+    const transcriptAuth = getTranscriptAuthStatus();
+
     return NextResponse.json(
       {
         status: 'ok',
         database: 'connected',
+        transcript_auth: transcriptAuth.status,
+        transcript_auth_details: {
+          message: transcriptAuth.message,
+          cookies_file_exists: transcriptAuth.cookiesFileExists,
+          sapisid_present: transcriptAuth.sapisidPresent,
+          missing_cookies: transcriptAuth.missingCookies,
+        },
         timestamp,
       },
       { status: 200 }

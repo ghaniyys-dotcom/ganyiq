@@ -401,8 +401,20 @@ export function rankMoments(
   const config = dedupConfig ?? getDedupConfig(30);
 
   // Step 1: Sort by score descending
-  // V2: Use curvedScore if JudgeResult is available, else worthClippingScore
+  // V3: Primary=final_score, Secondary=viral_score, Tertiary=worthClippingScore
   const sorted = [...moments].sort((a, b) => {
+    const fa = (a as any).final_score as number | undefined;
+    const fb = (b as any).final_score as number | undefined;
+    const va = (a as any).viral_score as number | undefined;
+    const vb = (b as any).viral_score as number | undefined;
+
+    // Primary: final_score (higher = better)
+    if (fa !== undefined && fb !== undefined && fa !== fb) return fb - fa;
+
+    // Secondary: viral_score (higher = better)
+    if (va !== undefined && vb !== undefined && va !== vb) return vb - va;
+
+    // Tertiary: curvedScore / worthClippingScore
     const scoreA = a.judgeResult?.curvedScore ?? a.worthClippingScore;
     const scoreB = b.judgeResult?.curvedScore ?? b.worthClippingScore;
     return scoreB - scoreA;

@@ -13,9 +13,10 @@
  */
 
 import { Innertube, UniversalCache } from 'youtubei.js';
+import { createHash } from 'node:crypto';
 import { AppError } from '@/lib/errors';
 import { query } from '@/db/client';
-import { loadYoutubeCookies } from '@/lib/cookies';
+import { loadYoutubeCookies, getSapisidValue } from '@/lib/cookies';
 import type {
   VideoData,
   VideoMetadata,
@@ -45,6 +46,33 @@ const MAX_WORD_GAP = 1.0;
 
 /** Target segment duration in seconds. */
 const SEGMENT_TARGET = 5.0;
+
+// ---------------------------------------------------------------------------
+// SAPISIDHASH Authentication
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute a SAPISIDHASH Authorization header value for YouTube InnerTube API.
+ *
+ * YouTube requires this header for authenticated requests using the WEB client.
+ * Without it, requests return LOGIN_REQUIRED even with valid cookies.
+ *
+ * Algorithm:
+ *   timestamp = Math.floor(Date.now() / 1000)
+ *   hash_input = `${timestamp} ${SAPISID_VALUE} https://www.youtube.com`
+ *   hash = SHA1(hash_input)
+ *   header = SAPISIDHASH ${timestamp}_${hash}
+ *
+ * @param sapisidValue - Raw SAPISID cookie value from cookies.txt
+ * @returns The full Authorization header value, e.g. "SAPISIDHASH 1234567890_abc123..."
+ */
+function computeSapisidAuth(sapisidValue: string): string {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const origin = 'https://www.youtube.com';
+  const hashInput = `${timestamp} ${sapisidValue} ${origin}`;
+  const hash = createHash('sha1').update(hashInput).digest('hex');
+  return `SAPISIDHASH ${timestamp}_${hash}`;
+}
 
 /** Preferred language for caption tracks. */
 const PREFERRED_LANG = 'id';
@@ -88,21 +116,61 @@ interface CaptionTrack {
 
 /**
  * Fetch caption tracks from a YouTube video via InnerTube API.
- * Uses Android client context (same approach as youtube-transcript library).
+ *
+ * When cookies + sapisidAuth are provided, uses the WEB client with
+ * SAPISIDHASH Authorization header (the only auth method that currently
+ * works — ANDROID client does not support SAPISIDHASH).
+ * When no auth is needed, uses the ANDROID client (anonymous).
  *
  * @param videoId - YouTube video ID
  * @param cookieHeader - Optional Cookie header for authenticated requests
+ * @param options - Optional { useSapisidAuth: boolean }
  * @throws AppError TRANSCRIPT_UNAVAILABLE if no tracks found.
  */
-async function fetchCaptionTracks(videoId: string, cookieHeader?: string): Promise<CaptionTrack[]> {
-  debugLog(`[${videoId}] Fetching caption tracks via InnerTube API${cookieHeader ? ' (with cookies)' : ' (anonymous)'}...`);
+async function fetchCaptionTracks(
+  videoId: string, 
+  cookieHeader?: string,
+  options?: { useSapisidAuth?: boolean },
+): Promise<CaptionTrack[]> {
+  const useSapisid = options?.useSapisidAuth === true && !!cookieHeader;
+  const clientName = useSapisid ? 'WEB' : 'ANDROID';
+  const clientVersion = useSapisid ? '2.20240314.00.00' : '20.10.38';
+  const userAgent = useSapisid
+    ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    : INNERTUBE_UA;
+
+  debugLog(`[${videoId}] Fetching caption tracks via InnerTube API | client=${clientName}${cookieHeader ? (useSapisid ? ' | auth=SAPISIDHASH' : ' | auth=cookies-only') : ' | anonymous'}`);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'User-Agent': INNERTUBE_UA,
+    'User-Agent': userAgent,
   };
   if (cookieHeader) {
     headers['Cookie'] = cookieHeader;
+  }
+
+  // SAPISIDHASH auth — required when using WEB client with cookies
+  if (useSapisid) {
+    let sapisidValue: string | null = null;
+    try {
+      // Try to get the raw SAPISID cookie value for hash computation
+      sapisidValue = getSapisidValue();
+    } catch {
+      debugLog(`[${videoId}] getSapisidValue() threw — assuming no SAPISID available`);
+    }
+
+    if (sapisidValue) {
+      const authHeader = computeSapisidAuth(sapisidValue);
+      const maskedAuth = authHeader.length > 50
+        ? authHeader.substring(0, 25) + '...' + authHeader.slice(-8)
+        : authHeader;
+      console.log(`[YT-AUTH] [${videoId}] SAPISIDHASH generated: ${maskedAuth}`);
+      headers['Authorization'] = authHeader;
+      headers['X-Origin'] = 'https://www.youtube.com';
+    } else {
+      console.warn(`[YT-AUTH] [${videoId}] No SAPISID cookie found — SAPISIDHASH auth unavailable, falling back to cookie-only`);
+      // Without SAPISIDHASH, WEB client may still fail, but we try anyway
+    }
   }
 
   let resp: Response;
@@ -112,7 +180,7 @@ async function fetchCaptionTracks(videoId: string, cookieHeader?: string): Promi
       headers,
       body: JSON.stringify({
         context: {
-          client: { clientName: 'ANDROID', clientVersion: '20.10.38' },
+          client: { clientName, clientVersion },
         },
         videoId,
       }),
@@ -163,6 +231,7 @@ async function fetchCaptionTracks(videoId: string, cookieHeader?: string): Promi
   if (tracks.length === 0) {
     const status = playability?.status ?? 'UNKNOWN';
     const reason = playability?.reason ?? 'No captions available';
+    console.log(`[YT-AUTH] [${videoId}] ❌ FAILED | client=${clientName} | HTTP ${resp.status} | playability=${status} | reason=${reason} | tracks=0`);
     throw new AppError(
       'TRANSCRIPT_UNAVAILABLE',
       `No caption tracks available for video ${videoId}. ` +
@@ -171,6 +240,7 @@ async function fetchCaptionTracks(videoId: string, cookieHeader?: string): Promi
     );
   }
 
+  console.log(`[YT-AUTH] [${videoId}] ✅ SUCCESS | client=${clientName} | HTTP ${resp.status} | tracks=${tracks.length} | langs=${tracks.map(t => t.languageCode).join(',')}`);
   return tracks;
 }
 
@@ -212,15 +282,15 @@ async function fetchCaptionTracksWithFallback(videoId: string): Promise<CaptionT
       throw err; // Re-throw original error
     }
 
-    debugLog(`[${videoId}] LOGIN_REQUIRED — retrying with ${cookies.count} cookies from ${cookies.sourcePath}`);
+    debugLog(`[${videoId}] LOGIN_REQUIRED — retrying with SAPISIDHASH auth (${cookies.count} cookies from ${cookies.sourcePath})`);
 
     try {
-      const tracks = await fetchCaptionTracks(videoId, cookies.header);
-      debugLog(`[${videoId}] Cookie-authenticated request succeeded — ${tracks.length} caption tracks found`);
+      const tracks = await fetchCaptionTracks(videoId, cookies.header, { useSapisidAuth: true });
+      debugLog(`[${videoId}] SAPISIDHASH-authenticated request succeeded — ${tracks.length} caption tracks found`);
       return tracks;
     } catch (cookieErr: unknown) {
       // Both attempts failed
-      debugLog(`[${videoId}] Cookie-authenticated request also failed`);
+      debugLog(`[${videoId}] SAPISIDHASH-authenticated request also failed`);
       if (cookieErr instanceof AppError) throw cookieErr;
       throw err; // Throw original error
     }
@@ -518,7 +588,7 @@ async function extractVideo(videoId: string): Promise<VideoData> {
   const metadata = await fetchMetadata(videoId);
   console.log(`[YT] metadata done`);
 
-  // Step 2: Get caption tracks via InnerTube API (with cookie fallback)
+  // Step 2: Get caption tracks via InnerTube API (with cookie + SAPISIDHASH fallback)
   console.log(`[YT] captions start`);
   const tracks = await fetchCaptionTracksWithFallback(videoId);
   const track = selectTrack(tracks);

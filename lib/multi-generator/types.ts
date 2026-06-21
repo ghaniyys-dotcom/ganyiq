@@ -178,6 +178,47 @@ export const DEFAULT_GENERATOR_CONFIGS: Record<GeneratorStrategy, GeneratorConfi
 // Aggregation
 // ---------------------------------------------------------------------------
 
+// ─── Diversity & Pool Constraints ─────────────────────────────────────────
+
+/** Three-layer overlap detection: time, transcript, semantic. */
+export interface PoolConstraints {
+  /**
+   * Max clips from the same moment cluster.
+   * Prevents generator duplication of the same video segment.
+   * Default: 2
+   */
+  maxPerCluster: number;
+  /**
+   * Hard ceiling on composite overlap between any two clips (0–1).
+   * Pairwise — if ANY pair exceeds this, one is dropped.
+   * Default: 0.65
+   */
+  maxPairOverlap: number;
+  /**
+   * Minimum composite diversity score to stay in pool (0–1).
+   * Default: 0.20
+   */
+  minDiversityScore: number;
+  /**
+   * Max raw candidates BEFORE dedup (all generators combined).
+   * Default: 40
+   */
+  maxRawCandidates: number;
+  /**
+   * Max candidates AFTER dedup (fed to Judge V2).
+   * Default: 25
+   */
+  maxDedupedCandidates: number;
+}
+
+export const DEFAULT_POOL_CONSTRAINTS: PoolConstraints = {
+  maxPerCluster: 2,
+  maxPairOverlap: 0.65,
+  minDiversityScore: 0.20,
+  maxRawCandidates: 40,
+  maxDedupedCandidates: 25,
+};
+
 /** Configuration for the aggregation stage. */
 export interface AggregationConfig {
   /**
@@ -202,6 +243,8 @@ export interface AggregationConfig {
    * Default: 15 (same as current pipeline top N).
    */
   finalTopN: number;
+  /** Diversity & dedup constraints. */
+  diversity: PoolConstraints;
 }
 
 export const DEFAULT_AGGREGATION_CONFIG: AggregationConfig = {
@@ -209,6 +252,7 @@ export const DEFAULT_AGGREGATION_CONFIG: AggregationConfig = {
   minStrategiesInOutput: 2,
   maxOverlapFraction: 0.7,
   finalTopN: 15,
+  diversity: { ...DEFAULT_POOL_CONSTRAINTS },
 };
 
 /** Output of the candidate aggregation stage. */

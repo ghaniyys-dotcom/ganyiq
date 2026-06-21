@@ -424,13 +424,14 @@ export const PROMPT_VERSION = 'v2-candidate-scoring';
 export const TARGET_MODEL = 'deepseek-v4-flash';
 
 /**
- * Fallback model priority order — only OpenCode Go models.
- * No new providers, API keys, or SDKs needed.
+ * Fallback model priority order.
+ * Last fallback is OpenRouter owl-alpha (free).
  */
 export const MODELS: readonly string[] = [
-  'deepseek-v4-flash',  // PRIMARY
-  'mimo-v2.5',          // FALLBACK #1
-  'qwen3.7-plus',       // FALLBACK #2
+  'deepseek-v4-flash',      // PRIMARY
+  'mimo-v2.5',              // FALLBACK #1
+  'qwen3.7-plus',           // FALLBACK #2
+  'openrouter/owl-alpha',   // FALLBACK #3 - OpenRouter (owl-alpha)
 ];
 
 // ---------------------------------------------------------------------------
