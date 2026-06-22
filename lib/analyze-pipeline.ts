@@ -18,6 +18,15 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { generateAllTitlesForAnalysis } from '@/lib/title-generator';
 import type { RankedMoment } from '@/lib/types';
 import { enrichWithJudgeV2, isJudgeV2Enabled, createJudgeLlm } from '@/lib/judge-integration';
+import { detectScenes, detectScenesAsync, persistScenes } from '@/lib/scene-detector';
+import { computeViralScore } from '@/lib/viral-moment-detector';
+import { scoreClipQuality } from '@/lib/visual-quality-scorer';
+import { generateBrollCandidates } from '@/lib/broll-engine';
+import { exec } from 'child_process';
+import { existsSync, mkdirSync, rmSync } from 'fs';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 // ---------------------------------------------------------------------------
 // Progress stages
@@ -30,7 +39,11 @@ type Stage =
   | 'multi_pass'
   | 'judging'
   | 'ranking'
-  | 'storing_results';
+  | 'storing_results'
+  | 'scene_detection'
+  | 'viral_scoring'
+  | 'visual_scoring'
+  | 'broll_generation';
 
 const STAGES: Stage[] = [
   'fetching_transcript',
@@ -40,6 +53,10 @@ const STAGES: Stage[] = [
   'judging',
   'ranking',
   'storing_results',
+  'scene_detection',
+  'viral_scoring',
+  'visual_scoring',
+  'broll_generation',
 ];
 
 function stageIndex(stage: Stage): number {
@@ -170,6 +187,7 @@ export async function runAnalysisPipeline(
 
     // Store moments
     const insertedMomentIds: string[] = [];
+    console.log(`[DB SAVE] Inserting ${rankedMoments.length} ranked moments from ranking`);
     for (const m of rankedMoments) {
       const result = await query<{ id: string }>(
         `INSERT INTO moments
@@ -239,8 +257,187 @@ export async function runAnalysisPipeline(
       }
     }
 
+    console.log(`[DB SAVE] Successfully inserted ${insertedMomentIds.length} moments for analysis ${analysisId}`);
     console.log(`[ASYNC] Analysis ${analysisId} completed: ${totalMomentsFound} moments in ${processingTimeMs}ms`);
     console.timeEnd(`[PROFILE] ${youtubeId} 4_db_save`);
+
+    // -----------------------------------------------------------------------
+    // NEW: Server-side Scene Detection (Stage 4a)
+    // Requires video download. Runs after moments are persisted.
+    // -----------------------------------------------------------------------
+    let videoPath = '';
+    try {
+      await setStage(analysisId, 'scene_detection');
+      console.time(`[PROFILE] ${youtubeId} 4a_download_video`);
+
+      // Download video for scene detection + visual quality analysis
+      const tmpDir = '/tmp/ganyiq-scene';
+      if (!existsSync(tmpDir)) {
+        try { mkdirSync(tmpDir, { recursive: true }); } catch {}
+      }
+      videoPath = `${tmpDir}/${youtubeId}.mp4`;
+
+      if (!existsSync(videoPath)) {
+        const cookieFile = '/root/GANYIQ/cookies.txt';
+        const cookieArg = existsSync(cookieFile) ? `--cookies "${cookieFile}"` : '';
+        // Download up to 720p for analysis (quality > 480p, file < 200MB)
+        const dlCmd = `yt-dlp ${cookieArg} -f "bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=720]" -o "${videoPath}" "${rawUrl}" --no-playlist --quiet`;
+        console.log(`[SCENE] Starting video download (async, 10min timeout)...`);
+        await execAsync(dlCmd, { timeout: 600000, maxBuffer: 50 * 1024 * 1024 });
+        console.log(`[SCENE] Downloaded video: ${videoPath} (${existsSync(videoPath) ? 'OK' : 'MISSING'})`);
+      } else {
+        console.log(`[SCENE] Using cached video: ${videoPath}`);
+      }
+      console.timeEnd(`[PROFILE] ${youtubeId} 4a_download_video`);
+
+      // Run scene detection
+      if (existsSync(videoPath)) {
+        console.time(`[PROFILE] ${youtubeId} 4b_detect_scenes`);
+        const sceneResult = await detectScenesAsync(videoPath);
+        console.log(`[SCENE] Detected ${sceneResult.totalScenes} scenes (avg ${sceneResult.avgSceneDuration.toFixed(1)}s)`);
+
+        // Persist scenes to DB
+        const videoId = (videoData as any).videoDbId || youtubeId;
+        await persistScenes(analysisId, videoId, sceneResult.scenes);
+        console.timeEnd(`[PROFILE] ${youtubeId} 4b_detect_scenes`);
+      }
+    } catch (sceneErr) {
+      // Scene detection failure is NON-FATAL — analysis already completed
+      console.warn(`[SCENE] Non-fatal error: ${sceneErr instanceof Error ? sceneErr.message.slice(0, 200) : 'Unknown'}`);
+    }
+
+    // -----------------------------------------------------------------------
+    // NEW: Server-side Viral Scoring (Stage 4c)
+    // Text-based analysis of each moment's transcript excerpt
+    // -----------------------------------------------------------------------
+    try {
+      await setStage(analysisId, 'viral_scoring');
+      console.time(`[PROFILE] ${youtubeId} 4c_viral_scoring`);
+
+      // DETECT dimension mismatch: rankedMoments vs insertedMomentIds
+      if (rankedMoments.length !== insertedMomentIds.length) {
+        console.warn(`[VIRAL] ⚠️ DIMENSION MISMATCH: rankedMoments=${rankedMoments.length}, insertedMomentIds=${insertedMomentIds.length}. Scoring limited to ${Math.min(rankedMoments.length, insertedMomentIds.length)} moments`);
+      }
+
+      for (let i = 0; i < rankedMoments.length && i < insertedMomentIds.length; i++) {
+        const m = rankedMoments[i];
+        const transcriptText = m.transcriptExcerpt || '';
+        const viral = computeViralScore(transcriptText);
+
+        await query(
+          `UPDATE moments SET
+             viral_score = $1, hook_strength = $2, surprise_level = $3,
+             novelty_score = $4, emotional_intensity = $5, audience_relevance = $6
+           WHERE id = $7`,
+          [
+            viral.viral_score,
+            viral.components.hookStrength,
+            viral.components.surpriseLevel,
+            viral.components.noveltyScore,
+            viral.components.emotionalIntensity,
+            viral.components.audienceRelevance,
+            insertedMomentIds[i],
+          ],
+        );
+      }
+      console.log(`[VIRAL] Scored ${Math.min(rankedMoments.length, insertedMomentIds.length)} moments`);
+      console.timeEnd(`[PROFILE] ${youtubeId} 4c_viral_scoring`);
+    } catch (viralErr) {
+      console.warn(`[VIRAL] Non-fatal error: ${viralErr instanceof Error ? viralErr.message.slice(0, 200) : 'Unknown'}`);
+    }
+
+    // -----------------------------------------------------------------------
+    // NEW: Server-side Visual Quality Scoring (Stage 4d)
+    // Frame analysis per clip time range from downloaded video
+    // -----------------------------------------------------------------------
+    try {
+      await setStage(analysisId, 'visual_scoring');
+      console.time(`[PROFILE] ${youtubeId} 4d_visual_scoring`);
+
+      if (existsSync(videoPath)) {
+        for (let i = 0; i < rankedMoments.length && i < insertedMomentIds.length; i++) {
+          const m = rankedMoments[i];
+          try {
+            const quality = await scoreClipQuality(videoPath, m.startTime, m.endTime);
+            // Clamp values to prevent numeric field overflow (DB columns are numeric(5,4) / numeric(4,1))
+            const clamp = (val: number | undefined | null, min: number, max: number): number | null => {
+              if (val === null || val === undefined || isNaN(val)) return null;
+              return Math.min(max, Math.max(min, val));
+            };
+            await query(
+              `UPDATE moments SET
+                 visual_quality_score = $1, sharpness = $2, brightness = $3,
+                 exposure = $4, face_visibility = $5, blur_score = $6
+               WHERE id = $7`,
+              [
+                clamp(quality.visual_quality_score, 0, 999.9),
+                clamp(quality.sharpness, 0, 99.9999),
+                clamp(quality.brightness, 0, 99.9999),
+                clamp(quality.exposure, 0, 99.9999),
+                clamp(quality.face_visibility, 0, 99.9999),
+                clamp(quality.blur_score, 0, 99.9999),
+                insertedMomentIds[i],
+              ],
+            );
+          } catch (clipErr) {
+            console.warn(`[VISUAL] Moment ${i} scoring failed: ${clipErr instanceof Error ? clipErr.message : 'Unknown'}`);
+          }
+        }
+        console.log(`[VISUAL] Scored visual quality for ${Math.min(rankedMoments.length, insertedMomentIds.length)} moments`);
+
+        // Cleanup downloaded video
+        try { rmSync(videoPath, { force: true }); } catch {}
+      }
+      console.timeEnd(`[PROFILE] ${youtubeId} 4d_visual_scoring`);
+    } catch (visualErr) {
+      console.warn(`[VISUAL] Non-fatal error: ${visualErr instanceof Error ? visualErr.message.slice(0, 200) : 'Unknown'}`);
+    }
+
+    // -----------------------------------------------------------------------
+    // NEW: Server-side B-roll Generation (Stage 4e)
+    // Generates b-roll candidates per moment from scenes + transcript keywords
+    // -----------------------------------------------------------------------
+    try {
+      await setStage(analysisId, 'broll_generation');
+      console.time(`[PROFILE] ${youtubeId} 4e_broll_generation`);
+
+      for (let i = 0; i < rankedMoments.length && i < insertedMomentIds.length; i++) {
+        const m = rankedMoments[i];
+        const mId = insertedMomentIds[i];
+        const videoId = (videoData as any).videoDbId || youtubeId;
+
+        try {
+          await generateBrollCandidates(
+            analysisId,
+            videoId,
+            [], // scenes array (empty — already stored in DB, broll engine works from transcript keywords)
+            videoData.transcript,
+            mId,
+            m.startTime,
+            m.endTime,
+          );
+        } catch (brollErr) {
+          console.warn(`[BROLL] Moment ${i} generation failed: ${brollErr instanceof Error ? brollErr.message : 'Unknown'}`);
+        }
+      }
+      console.log(`[BROLL] Generated candidates for ${Math.min(rankedMoments.length, insertedMomentIds.length)} moments`);
+      console.timeEnd(`[PROFILE] ${youtubeId} 4e_broll_generation`);
+    } catch (brollErr) {
+      console.warn(`[BROLL] Non-fatal error: ${brollErr instanceof Error ? brollErr.message.slice(0, 200) : 'Unknown'}`);
+    }
+
+    // -----------------------------------------------------------------------
+    // Mark analysis as fully completed (including all new stages)
+    // -----------------------------------------------------------------------
+    try {
+      await query(
+        'UPDATE analyses SET status = $1, progress_stage = $2 WHERE id = $3 AND status = $4',
+        ['completed', 'completed', analysisId, 'processing'],
+      );
+      console.log(`[PIPELINE] Analysis ${analysisId} fully completed with all stages`);
+    } catch (finalErr) {
+      console.warn(`[PIPELINE] Failed to mark analysis completed: ${finalErr instanceof Error ? finalErr.message : 'Unknown'}`);
+    }
 
     // ---- Phase 5D: Store metrics ----
     try {

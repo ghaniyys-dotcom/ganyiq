@@ -13,11 +13,14 @@
  *   - yt-dlp installed on the system
  */
 
-import { execSync } from 'node:child_process';
+import { exec } from 'node:child_process';
 import { readFileSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { AppError } from '@/lib/errors';
 import type { TranscriptSegment } from '@/lib/types';
+
+const execAsync = promisify(exec);
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -102,7 +105,7 @@ export async function fetchDeepgramTranscript(
 
   try {
     // Step 1: Download audio with yt-dlp
-    const audioBuf = downloadAudio(youtubeUrl, tmpFile);
+    const audioBuf = await downloadAudio(youtubeUrl, tmpFile);
 
     // Step 2: Send to Deepgram
     const dgResult = await transcribeAudio(audioBuf, apiKey);
@@ -151,10 +154,10 @@ function resolveApiKey(): string {
 // Internal: Audio Download with yt-dlp
 // ---------------------------------------------------------------------------
 
-function downloadAudio(youtubeUrl: string, outputPath: string): Buffer {
+async function downloadAudio(youtubeUrl: string, outputPath: string): Promise<Buffer> {
   // Check yt-dlp is available
   try {
-    execSync('which yt-dlp', { encoding: 'utf-8', timeout: 5_000 });
+    await execAsync('which yt-dlp', { timeout: 5_000 });
   } catch {
     throw new AppError(
       'TRANSCRIPT_UNAVAILABLE',
@@ -163,11 +166,21 @@ function downloadAudio(youtubeUrl: string, outputPath: string): Buffer {
     );
   }
 
+  // Determine cookie file for yt-dlp (VPS needs cookies for YouTube access)
+  const cookieFile = '/root/GANYIQ/cookies.txt';
+  const cookieExists = existsSync(cookieFile);
+  // NOTE: Do NOT use --extractor-args "youtube:player_client=android" when cookies are present.
+  // The ANDROID client does NOT support cookies and yt-dlp will skip it entirely,
+  // causing "No video formats found!". Let yt-dlp choose the best client automatically.
+  const cookieArg = cookieExists ? `--cookies "${cookieFile}"` : '';
+
   try {
-    execSync(
-      `yt-dlp --extractor-args "youtube:player_client=android" -f "bestaudio/best" -o "${outputPath}" "${youtubeUrl}" 2>&1`,
-      { timeout: DL_TIMEOUT, encoding: 'utf-8' },
+    console.log(`[DEEPDOWNLOAD] Starting audio download (async, ${Math.round(DL_TIMEOUT/1000)}s timeout)...`);
+    await execAsync(
+      `yt-dlp ${cookieArg} -f "bestaudio/best" -o "${outputPath}" "${youtubeUrl}" 2>&1`,
+      { timeout: DL_TIMEOUT, maxBuffer: 50 * 1024 * 1024 },
     );
+    console.log(`[DEEPDOWNLOAD] Audio download complete: ${outputPath}`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     throw new AppError(
