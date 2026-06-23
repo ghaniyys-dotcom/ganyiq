@@ -260,7 +260,7 @@ async function transcribe(youtubeUrl: string, deepgramKey: string, ffmpegLocatio
       ? `--ffmpeg-location "${ffmpegLocation}"`
       : '';
     execSync(
-      `yt-dlp --remote-components ejs:github --extractor-args "youtube:player_client=android" ${ffmpegFlag} -x --audio-format mp3 -o "${audioPath}" "${youtubeUrl}" --no-playlist --quiet`,
+      `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} -x --audio-format mp3 -o "${audioPath}" "${youtubeUrl}" --no-playlist --quiet`,
       EXEC_OPTS,
     );
   } catch (err) {
