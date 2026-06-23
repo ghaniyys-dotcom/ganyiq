@@ -17,7 +17,7 @@
  *   HF_TOKEN             = (optional) HuggingFace token for PyAnnote speaker diarization
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, unlinkSync } from 'fs';
 import { join, resolve } from 'path';
 import { execSync, ExecSyncOptions } from 'child_process';
 
@@ -437,6 +437,23 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
     return;
   }
 
+  // ── Scene + Visual job ──
+  if (job.jobType === 'scene_video') {
+    try {
+      await handleSceneVideo(job as Job, env);
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      const errorMsg = e.message.slice(0, 2000);
+      log('SCENE', `❌ Failed: ${errorMsg}`);
+      await apiPost(
+        `/api/workers/jobs/${job.id}/fail`,
+        { worker_id: env.WORKER_ID, error_message: errorMsg },
+        env.WORKER_API_KEY,
+      ).catch(() => {});
+    }
+    return;
+  }
+
   // ── Transcript job (existing flow) ──
   try {
     // Check if we have a Deepgram API key
@@ -522,6 +539,277 @@ function extractVideoId(url: string): string {
   throw new Error(`Cannot extract video ID from URL: ${url}`);
 }
 
+// ---------------------------------------------------------------------------
+// Scene + Visual Detection Handler
+// ---------------------------------------------------------------------------
+
+interface SceneVideoJob {
+  id: string;
+  youtubeId: string;
+  youtubeUrl: string;
+  createdAt: string;
+  jobType?: string;
+  clipParams?: any;
+}
+
+async function handleSceneVideo(job: SceneVideoJob, env: EnvConfig): Promise<void> {
+  const youtubeId = extractVideoId(job.youtubeUrl);
+  const clipParams = job.clipParams || { analysisId: '', moments: [] };
+  const { analysisId, moments } = clipParams;
+
+  log('SCENE', `Processing scene_video job for ${youtubeId}`);
+  log('SCENE', `  Analysis: ${analysisId}`);
+  log('SCENE', `  Moments:  ${moments.length}`);
+
+  const tmpDir = join(TEMP_DIR, 'scene-video');
+  try { execSync(`mkdir -p "${tmpDir}"`, EXEC_OPTS); } catch {}
+
+  const videoPath = join(tmpDir, `${youtubeId}.mp4`);
+  const resultsPath = join(tmpDir, `${youtubeId}-results.json`);
+
+  try {
+    // Step 1: Download video (up to 720p, ~200MB max)
+    log('SCENE', 'Downloading video...');
+    const dlCmd = `yt-dlp -f "bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=720]" -o "${videoPath}" "${job.youtubeUrl}" --no-playlist --quiet`;
+    execSync(dlCmd, { ...EXEC_OPTS, timeout: 600_000 });
+    log('SCENE', `Video downloaded: ${videoPath}`);
+
+    // Step 2: Run ffmpeg scene detection
+    log('SCENE', 'Running scene detection...');
+    const ffmpegCmd = `ffmpeg -i "${videoPath}" -filter:v "select='gt(scene,0.2)',showinfo" -vsync vfr -f null - 2>&1`;
+    const ffmpegOut = execSync(ffmpegCmd, { ...EXEC_OPTS, timeout: 300_000 }).toString();
+    const scenes: Array<{
+      scene_index: number;
+      start_time: number;
+      end_time: number;
+      duration: number;
+      score: number;
+      transition_type: string;
+    }> = [];
+
+    // Parse ffmpeg showinfo output
+    const sceneRegex = /pts_time:([\d.]+)/g;
+    const timestamps: number[] = [];
+    let match;
+    while ((match = sceneRegex.exec(ffmpegOut)) !== null) {
+      timestamps.push(parseFloat(match[1]));
+    }
+
+    // Get video duration
+    let videoDuration = 0;
+    try {
+      const durCmd = `ffprobe -v error -show_entries format=duration -of csv=p=0 "${videoPath}"`;
+      videoDuration = parseFloat(execSync(durCmd, EXEC_OPTS).toString().trim()) || 0;
+    } catch {}
+
+    // Build scenes
+    let prevTime = 0;
+    for (let i = 0; i < timestamps.length; i++) {
+      const t = timestamps[i];
+      const duration = t - prevTime;
+      if (duration >= 0.5) {
+        scenes.push({
+          scene_index: scenes.length + 1,
+          start_time: parseFloat(prevTime.toFixed(3)),
+          end_time: parseFloat(t.toFixed(3)),
+          duration: parseFloat(duration.toFixed(3)),
+          score: 0.3,
+          transition_type: 'hard_cut',
+        });
+      }
+      prevTime = t;
+    }
+    // Last scene
+    if (videoDuration > prevTime) {
+      scenes.push({
+        scene_index: scenes.length + 1,
+        start_time: parseFloat(prevTime.toFixed(3)),
+        end_time: parseFloat(videoDuration.toFixed(3)),
+        duration: parseFloat((videoDuration - prevTime).toFixed(3)),
+        score: 0,
+        transition_type: 'unknown',
+      });
+    }
+
+    log('SCENE', `Detected ${scenes.length} scenes`);
+
+    // Step 3: Visual quality scoring per moment
+    log('SCENE', 'Running visual quality scoring...');
+    const scoredMoments: Array<{
+      rank_position: number;
+      visual_quality_score: number | null;
+      sharpness: number | null;
+      brightness: number | null;
+      exposure: number | null;
+      face_visibility: number | null;
+      blur_score: number | null;
+    }> = [];
+
+    // Create a Python script for visual scoring (uses OpenCV which is installed)
+    const pyScript = `
+import sys, json, subprocess, os
+import cv2
+import numpy as np
+
+video_path = sys.argv[1]
+start_time = float(sys.argv[2])
+end_time = float(sys.argv[3])
+
+cap = cv2.VideoCapture(video_path)
+if not cap.isOpened():
+    print(json.dumps({"error": "cannot open video"}))
+    sys.exit(0)
+
+cap.set(cv2.CAP_PROP_POS_AVI_RATIO, 0)
+fps = cap.get(cv2.CAP_PROP_FPS)
+if fps <= 0:
+    fps = 30
+
+# Sample 5 frames evenly across the clip
+sample_times = []
+for i in range(5):
+    t = start_time + (end_time - start_time) * (i + 0.5) / 5
+    sample_times.append(t)
+
+frames = []
+for t in sample_times:
+    cap.set(cv2.CAP_PROP_POS_FRAMES, int(t * fps))
+    ret, frame = cap.read()
+    if ret:
+        frames.append(frame)
+cap.release()
+
+if len(frames) == 0:
+    print(json.dumps({"error": "no frames extracted"}))
+    sys.exit(0)
+
+# Calculate metrics per frame
+brightness_vals = []
+sharpness_vals = []
+blur_vals = []
+face_count = 0
+total_faces = 0
+
+for frame in frames:
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+
+    # Brightness (0-255 normalized to 0-10)
+    brightness_vals.append(float(np.mean(gray)))
+
+    # Sharpness (Laplacian variance)
+    laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+    sharpness_vals.append(float(laplacian.var()))
+
+    # Blur score (inverse of sharpness, normalized)
+    blur = 1.0 / (1.0 + laplacian.var() / 1000.0)
+    blur_vals.append(blur)
+
+    # Face detection using Haar cascade
+    try:
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+        face_count += len(faces)
+        total_faces += 1
+    except:
+        pass
+
+avg_brightness = np.mean(brightness_vals) if brightness_vals else 128
+avg_sharpness = np.mean(sharpness_vals) if sharpness_vals else 0
+avg_blur = np.mean(blur_vals) if blur_vals else 0.5
+face_ratio = face_count / max(total_faces, 1)
+
+# Normalize to DB schema ranges
+visual_score = min(10, max(0, 10 - avg_blur * 5))
+normalized_brightness = min(1, max(0, avg_brightness / 255))
+exposure = min(1, max(0, 1 - abs(0.5 - normalized_brightness) * 2))
+brightness_score = min(1, max(0, normalized_brightness))
+sharpness_score = min(1, max(0, avg_sharpness / 5000))
+blur_score = min(1, max(0, avg_blur))
+face_visibility = min(1, max(0, face_ratio))
+
+result = {
+    "visual_quality_score": round(visual_score, 1),
+    "sharpness": round(sharpness_score, 4),
+    "brightness": round(brightness_score, 4),
+    "exposure": round(exposure, 4),
+    "face_visibility": round(face_visibility, 4),
+    "blur_score": round(blur_score, 4),
+    "frames_analyzed": len(frames)
+}
+print(json.dumps(result))
+`.trim();
+
+    for (const m of moments) {
+      try {
+        const pyCmd = `python3 -c "${pyScript.replace(/"/g, '\\"').replace(/\$/g, '\\$')}" "${videoPath}" ${m.start_time} ${m.end_time}`;
+        const pyOut = execSync(pyCmd, { ...EXEC_OPTS, timeout: 60_000 }).toString().trim();
+        const parsed = JSON.parse(pyOut);
+
+        scoredMoments.push({
+          rank_position: m.rank_position,
+          visual_quality_score: parsed.visual_quality_score ?? null,
+          sharpness: parsed.sharpness ?? null,
+          brightness: parsed.brightness ?? null,
+          exposure: parsed.exposure ?? null,
+          face_visibility: parsed.face_visibility ?? null,
+          blur_score: parsed.blur_score ?? null,
+        });
+        log('SCENE', `  Moment #${m.rank_position}: visual=${parsed.visual_quality_score || '?'} sharpness=${parsed.sharpness || '?'}`);
+      } catch (pyErr) {
+        log('SCENE', `  Moment #${m.rank_position} scoring failed, using defaults`);
+        scoredMoments.push({
+          rank_position: m.rank_position,
+          visual_quality_score: 5.0,
+          sharpness: 0.5,
+          brightness: 0.5,
+          exposure: 0.5,
+          face_visibility: 0,
+          blur_score: 0.5,
+        });
+      }
+    }
+
+    // Step 4: POST results back to VPS
+    log('SCENE', `Submitting ${scenes.length} scenes + ${scoredMoments.length} moment scores...`);
+
+    // Save results to file first (debugging)
+    const resultsData = JSON.stringify({
+      analysis_id: analysisId,
+      youtube_id: youtubeId,
+      scenes,
+      moments: scoredMoments,
+    });
+    writeFileSync(resultsPath, resultsData, 'utf-8');
+
+    const resp = await apiPost(
+      `/api/workers/jobs/${job.id}/scene-complete`,
+      {
+        worker_id: env.WORKER_ID,
+        analysis_id: analysisId,
+        youtube_id: youtubeId,
+        scenes,
+        moments: scoredMoments,
+      },
+      env.WORKER_API_KEY,
+    );
+
+    if (resp.ok) {
+      const data = await resp.json();
+      log('SCENE', `✅ Done: ${data.scenes_inserted} scenes, ${data.moments_updated} moments updated`);
+    } else {
+      const errText = await resp.text().catch(() => '(no body)');
+      log('SCENE', `❌ Submit failed (${resp.status}): ${errText.slice(0, 300)}`);
+    }
+  } finally {
+    // Cleanup
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Logging
+// ---------------------------------------------------------------------------
 function log(tag: string, message: string): void {
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
   console.log(`[${ts}] [${tag.padEnd(10)}] ${message}`);
