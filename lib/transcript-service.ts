@@ -226,7 +226,7 @@ async function tryWorkerQueue(
     jobId = inserted.rows[0].id;
   }
 
-  const deadline = Date.now() + 120_000;
+  const deadline = Date.now() + 300_000;
   while (Date.now() < deadline) {
     await sleep(3000);
 
