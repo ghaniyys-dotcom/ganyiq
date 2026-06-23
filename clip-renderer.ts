@@ -240,8 +240,10 @@ export async function renderClip(
     if (heartbeatFn) await heartbeatFn();
     // P0.5: Download up to 1080p source for better quality
     const formatStr = 'bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=1080]';
+    const cookiesFlag = existsSync('cookies.txt') ? '--cookies "cookies.txt"' : '';
+    const extractorArgs = '--extractor-args "youtube:player_client=android"';
     execSync(
-      `yt-dlp ${ffmpegFlag} -f "${formatStr}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
+      `yt-dlp ${extractorArgs} ${ffmpegFlag} ${cookiesFlag} -f "${formatStr}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
       EXEC_OPTS,
     );
     addToCache(videoId, videoPath);
