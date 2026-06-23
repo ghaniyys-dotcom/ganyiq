@@ -405,7 +405,7 @@ export async function renderClip(
     } else {
       // Extreme fallback — should never happen
       log('SHORTS', 'No split segments — center crop fallback');
-      ffmpegCmd = `${ffmpegBin} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -vf "scale=-1:1920,crop=1080:1920${subtitleFilter}" -c:v libx264 -preset medium -crf 18 -c:a aac -b:a 128k -movflags +faststart "${outputPath}"`;
+      ffmpegCmd = `${ffmpegBin} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -vf "scale=-1:1920,crop=1080:1920${subtitleFilter}" -c:v libx264 -preset ultrafast -crf 28 -c:a aac -b:a 128k -movflags +faststart "${outputPath}"`;
     }
   } else {
     // ── Landscape mode (existing): stream copy ──
@@ -622,7 +622,7 @@ async function renderVerticalTracked(
 
       const cmd = `${ffmpegBin} -y -ss ${segStart} -to ${segEnd} -i "${sourceVideo}" ` +
         `-vf "crop=${Math.round(cropW)}:${cropH}:${Math.round(cx)}:${Math.round(cy)},scale=1080:1920" ` +
-        `-c:v libx264 -preset medium -crf 18 ` +
+        `-c:v libx264 -preset ultrafast -crf 28 ` +
         `-c:a aac -b:a 128k ` +
         `-movflags +faststart ` +
         `"${segFile}"`;
@@ -883,13 +883,23 @@ async function renderVerticalSplit(
   const segDurations: number[] = [];
   const segTransitions: Array<{ type: 'crossfade' | 'none'; duration: number } | undefined> = [];
 
-  // V2: Use NVENC GPU encoding when available, fall back to libx264
+  // V2: Use NVENC GPU encoding when available, then AMF (AMD), fall back to ultrafast CPU
   const hasNvenc = hasNvidiaEncoder();
-  const ENC = hasNvenc
-    ? '-c:v h264_nvenc -preset p7 -cq 22 -b:v 0 -c:a aac -b:a 128k -movflags +faststart'
-    : '-c:v libx264 -preset fast -crf 20 -c:a aac -b:a 128k -movflags +faststart';
+  const hasAmdEnc = !hasNvenc && hasAmdEncoder();
+  let encoderLabel: string;
+  let ENC: string;
+  if (hasNvenc) {
+    encoderLabel = 'NVENC GPU';
+    ENC = '-c:v h264_nvenc -preset p7 -cq 22 -b:v 0 -c:a aac -b:a 128k -movflags +faststart';
+  } else if (hasAmdEnc) {
+    encoderLabel = 'AMF (AMD GPU)';
+    ENC = '-c:v h264_amf -quality speed -rc cbr -b:v 8M -c:a aac -b:a 128k -movflags +faststart';
+  } else {
+    encoderLabel = 'libx264 ultrafast CPU';
+    ENC = '-c:v libx264 -preset ultrafast -crf 28 -c:a aac -b:a 128k -movflags +faststart';
+  }
 
-  log('SPLIT', `Using ${hasNvenc ? 'NVENC GPU' : 'libx264 CPU'} encoder`);
+  log('SPLIT', `Using ${encoderLabel} encoder`);
 
   // P0-7: Simplified render mode — strip all transitions, zoompan, overlays if flag is disabled
   const simplified = !isEnabled('LAYOUT_TRANSITIONS');
@@ -943,14 +953,14 @@ async function renderVerticalSplit(
         filterParts.push(
           `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
           + `crop=${mainCw}:${FULL_H}:${mainCropX}:0,`
-          + `scale=1080:1920:flags=lanczos,`
+          + `scale=1080:1920:flags=bilinear,`
           + `unsharp=5:5:0.8:3:3:0.4,`
           + `setsar=1[main${segIdx}]`
         );
         filterParts.push(
           `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
           + `crop=${pipCropW}:${pipCropH}:${pipCropX}:0,`
-          + `scale=${PIP_OUT_W - 4}:${PIP_OUT_H - 4}:flags=lanczos,`
+          + `scale=${PIP_OUT_W - 4}:${PIP_OUT_H - 4}:flags=bilinear,`
           + `setsar=1,`
           + `pad=${PIP_OUT_W}:${PIP_OUT_H}:2:2:color=0xE2C266,`
           + `split[pip_img${segIdx}][pip_shadow${segIdx}]`
@@ -988,7 +998,7 @@ async function renderVerticalSplit(
         filterParts.push(
           `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
           + `crop=${heroCw}:${FULL_H}:${heroCropX}:0,`
-          + `scale=1080:${HERO_H}:flags=lanczos,`
+          + `scale=1080:${HERO_H}:flags=bilinear,`
           + `unsharp=5:5:0.8:3:3:0.4,`
           + `setsar=1[hero${segIdx}]`
         );
@@ -1002,7 +1012,7 @@ async function renderVerticalSplit(
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
             + `crop=${rCropW}:${FULL_H}:${rCropX}:0,`
-            + `scale=1080:${REACT_H}:flags=lanczos,`
+            + `scale=1080:${REACT_H}:flags=bilinear,`
             + `setsar=1[react${segIdx}]`
           );
           filterParts.push(
@@ -1021,13 +1031,13 @@ async function renderVerticalSplit(
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
             + `crop=${rCropW}:${FULL_H}:${r1CropX}:0,`
-            + `scale=540:${REACT_H}:flags=lanczos,`
+            + `scale=540:${REACT_H}:flags=bilinear,`
             + `setsar=1[r1${segIdx}]`
           );
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
             + `crop=${rCropW}:${FULL_H}:${r2CropX}:0,`
-            + `scale=540:${REACT_H}:flags=lanczos,`
+            + `scale=540:${REACT_H}:flags=bilinear,`
             + `setsar=1[r2${segIdx}]`
           );
           filterParts.push(
@@ -1068,7 +1078,7 @@ async function renderVerticalSplit(
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
             + `crop=${Math.round(effectiveCw / reactionZoom)}:${FULL_H}:${Math.round(cx + effectiveCw * (1 - 1/reactionZoom) / 2)}:${cy},`
-            + `scale=1080:1920:flags=lanczos,`
+            + `scale=1080:1920:flags=bilinear,`
             + `unsharp=5:5:0.8:3:3:0.4,`
             + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`
           );
@@ -1077,7 +1087,7 @@ async function renderVerticalSplit(
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
             + `crop=${effectiveCw}:${FULL_H}:${cx}:${cy},`
-            + `scale=1080:1920:flags=lanczos,`
+            + `scale=1080:1920:flags=bilinear,`
             + `zoompan=z='1.0+0.04*time/${durationStr}':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=1080x1920:fps=30000/1001,`
             + `unsharp=5:5:0.8:3:3:0.4,`
             + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`
@@ -1087,7 +1097,7 @@ async function renderVerticalSplit(
           filterParts.push(
             `[0:v]trim=start=${segStart}:end=${segEnd},setpts=PTS-STARTPTS,`
             + `crop=${effectiveCw}:${FULL_H}:${cx}:${cy},`
-            + `scale=1080:1920:flags=lanczos,`
+            + `scale=1080:1920:flags=bilinear,`
             + `setsar=1,fps=30000/1001,settb=AVTB,setpts=PTS-STARTPTS[${vLabel}]`
           );
         }
@@ -1120,7 +1130,7 @@ async function renderVerticalSplit(
           const cx = clamp(Math.round(faceCx - panelCropW / 2), 0, sourceWidth - panelCropW);
           filterParts.push(
             `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,`
-            + `scale=${cellW}:${cellH}:flags=lanczos,setsar=1,setpts=PTS-STARTPTS[row0c${fi}${segIdx}]`
+            + `scale=${cellW}:${cellH}:flags=bilinear,setsar=1,setpts=PTS-STARTPTS[row0c${fi}${segIdx}]`
           );
         }
         filterParts.push(
@@ -1134,7 +1144,7 @@ async function renderVerticalSplit(
           const cx = clamp(Math.round(faceCx - panelCropW / 2), 0, sourceWidth - panelCropW);
           filterParts.push(
             `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,`
-            + `scale=${cellW}:${cellH}:flags=lanczos,setsar=1,setpts=PTS-STARTPTS[row1c${fi - 2}${segIdx}]`
+            + `scale=${cellW}:${cellH}:flags=bilinear,setsar=1,setpts=PTS-STARTPTS[row1c${fi - 2}${segIdx}]`
           );
         }
         filterParts.push(
@@ -1214,7 +1224,7 @@ async function renderVerticalSplit(
 
           filterParts.push(
             `[${splitLabel}_${fi}]crop=${panelCropW}:${FULL_H}:${cx}:0,`
-            + `scale=1080:${thisFaceH}:flags=lanczos,`
+            + `scale=1080:${thisFaceH}:flags=bilinear,`
             + `unsharp=5:5:0.8:3:3:0.4,`
             + `setsar=1,setpts=PTS-STARTPTS${dividerFilter}${padFilter}[${subLabel}]`
           );
@@ -1343,7 +1353,7 @@ async function renderVerticalSplit(
         + ` -map "[${finalVideoLabel}]" -map "[outa]" ${ENC} "${outputPath}"`;
     }
 
-    log('SPLIT', `Single-pass render: ${segIdx} segments${anyXFade ? ' (xfade)' : ''} (${segments.filter(s => s.crops.some(c => c.isReaction)).length} reaction cuts), ${hasNvenc ? 'NVENC' : 'libx264'}, filter=${filterComplex.length} chars`);
+    log('SPLIT', `Single-pass render: ${segIdx} segments${anyXFade ? ' (xfade)' : ''} (${segments.filter(s => s.crops.some(c => c.isReaction)).length} reaction cuts), ${encoderLabel}, filter=${filterComplex.length} chars`);
     try {
       execSync(cmd, { ...EXEC_OPTS, timeout: 300_000 });
     } catch (renderErr: any) {
@@ -1398,6 +1408,36 @@ function hasNvidiaEncoder(): boolean {
   } catch {
     _hasNvenc = false;
     log('ENCODER', 'NVENC not available (test encode failed) — using libx264 CPU encoding');
+    return false;
+  }
+}
+
+// =============================================================================
+// AMD AMF Encoder Detection
+// =============================================================================
+
+let _hasAmd: boolean | null = null;
+
+/**
+ * Test AMD AMF (h264_amf) hardware encoder availability.
+ * On Windows with AMD GPUs and ffmpeg compiled with --enable-amf,
+ * this provides GPU-accelerated H.264 encoding.
+ * Falls back silently if unavailable.
+ */
+function hasAmdEncoder(): boolean {
+  if (_hasAmd !== null) return _hasAmd;
+
+  try {
+    const testCmd = platform() === 'win32'
+      ? 'ffmpeg -f lavfi -i color=c=black:s=1280x720:d=0.04 -c:v h264_amf -frames:v 1 -f null - 2>&1'
+      : 'ffmpeg -f lavfi -i color=c=black:s=1280x720:d=0.04 -c:v h264_amf -frames:v 1 -f null - 2>/dev/null';
+    execSync(testCmd, { ...EXEC_OPTS, timeout: 10000 });
+    _hasAmd = true;
+    log('ENCODER', 'AMD AMF detected (test encode OK) — using HW encoding');
+    return true;
+  } catch {
+    _hasAmd = false;
+    log('ENCODER', 'AMD AMF not available (test encode failed) — using ultrafast CPU encoding');
     return false;
   }
 }

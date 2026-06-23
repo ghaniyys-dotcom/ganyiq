@@ -601,7 +601,7 @@ async function callLLM(model: string, system: string, user: string): Promise<str
           { role: 'user', content: user },
         ],
         temperature: 0.3,
-        max_tokens: 16384,
+        max_tokens: 32768,
       }),
       signal: AbortSignal.timeout(500_000),
     });
@@ -636,7 +636,7 @@ async function callLLM(model: string, system: string, user: string): Promise<str
       );
     }
     if (finishReason === 'length') {
-      console.log(`[LLM] WARNING: finish_reason='length' — response truncated. model=${model} max_tokens=16384`);
+      console.log(`[LLM] WARNING: finish_reason='length' — response truncated. model=${model} max_tokens=32768`);
     }
 
     const text: string | undefined =
