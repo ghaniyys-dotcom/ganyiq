@@ -740,9 +740,13 @@ result = {
 print(json.dumps(result))
 `.trim();
 
+    // Write Python script to a temp file (more reliable cross-platform)
+    const pyScriptPath = join(tmpDir, 'visual_scorer.py');
+    writeFileSync(pyScriptPath, pyScript, 'utf-8');
+
     for (const m of moments) {
       try {
-        const pyCmd = `python3 -c "${pyScript.replace(/"/g, '\\"').replace(/\$/g, '\\$')}" "${videoPath}" ${m.start_time} ${m.end_time}`;
+        const pyCmd = `python3 "${pyScriptPath}" "${videoPath}" ${m.start_time} ${m.end_time}`;
         const pyOut = execSync(pyCmd, { ...EXEC_OPTS, timeout: 60_000 }).toString().trim();
         const parsed = JSON.parse(pyOut);
 
