@@ -40,10 +40,9 @@ type Stage =
   | 'judging'
   | 'ranking'
   | 'storing_results'
-  | 'scene_detection'
   | 'viral_scoring'
-  | 'visual_scoring'
-  | 'broll_generation';
+  | 'broll_generation'
+  | 'scene_video';
 
 const STAGES: Stage[] = [
   'fetching_transcript',
@@ -53,10 +52,9 @@ const STAGES: Stage[] = [
   'judging',
   'ranking',
   'storing_results',
-  'scene_detection',
   'viral_scoring',
-  'visual_scoring',
   'broll_generation',
+  'scene_video',
 ];
 
 function stageIndex(stage: Stage): number {
@@ -262,48 +260,40 @@ export async function runAnalysisPipeline(
     console.timeEnd(`[PROFILE] ${youtubeId} 4_db_save`);
 
     // -----------------------------------------------------------------------
-    // NEW: Server-side Scene Detection (Stage 4a)
-    // Requires video download. Runs after moments are persisted.
+    // Worker-based Scene Detection + Visual Scoring (Stage 4a)
+    // Creates a scene_video job for LAPTOP-GANY/PC-GANY to pick up.
     // -----------------------------------------------------------------------
-    let videoPath = '';
     try {
-      await setStage(analysisId, 'scene_detection');
-      console.time(`[PROFILE] ${youtubeId} 4a_download_video`);
+      await setStage(analysisId, 'scene_video');
+      console.time(`[PROFILE] ${youtubeId} 4a_scene_video_job`);
 
-      // Download video for scene detection + visual quality analysis
-      const tmpDir = '/tmp/ganyiq-scene';
-      if (!existsSync(tmpDir)) {
-        try { mkdirSync(tmpDir, { recursive: true }); } catch {}
-      }
-      videoPath = `${tmpDir}/${youtubeId}.mp4`;
+      // Create scene_video job in queue for the worker to handle
+      const momentsForJob = rankedMoments.map((m, i) => ({
+        rank_position: i + 1,
+        start_time: m.startTime,
+        end_time: m.endTime,
+        transcript_excerpt: (m.transcriptExcerpt || '').slice(0, 200),
+        worth_clipping_score: m.worthClippingScore,
+      }));
 
-      if (!existsSync(videoPath)) {
-        const cookieFile = '/root/GANYIQ/cookies.txt';
-        const cookieArg = existsSync(cookieFile) ? `--cookies "${cookieFile}"` : '';
-        // Download up to 720p for analysis (quality > 480p, file < 200MB)
-        const dlCmd = `yt-dlp ${cookieArg} -f "bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=720]" -o "${videoPath}" "${rawUrl}" --no-playlist --quiet`;
-        console.log(`[SCENE] Starting video download (async, 10min timeout)...`);
-        await execAsync(dlCmd, { timeout: 600000, maxBuffer: 50 * 1024 * 1024 });
-        console.log(`[SCENE] Downloaded video: ${videoPath} (${existsSync(videoPath) ? 'OK' : 'MISSING'})`);
-      } else {
-        console.log(`[SCENE] Using cached video: ${videoPath}`);
-      }
-      console.timeEnd(`[PROFILE] ${youtubeId} 4a_download_video`);
+      await query(
+        `INSERT INTO jobs_queue (youtube_id, youtube_url, status, job_type, clip_params)
+         VALUES ($1, $2, 'pending', 'scene_video', $3::jsonb)`,
+        [
+          youtubeId,
+          rawUrl,
+          JSON.stringify({
+            analysisId,
+            moments: momentsForJob,
+          }),
+        ],
+      );
 
-      // Run scene detection
-      if (existsSync(videoPath)) {
-        console.time(`[PROFILE] ${youtubeId} 4b_detect_scenes`);
-        const sceneResult = await detectScenesAsync(videoPath);
-        console.log(`[SCENE] Detected ${sceneResult.totalScenes} scenes (avg ${sceneResult.avgSceneDuration.toFixed(1)}s)`);
-
-        // Persist scenes to DB
-        const videoId = (videoData as any).videoDbId || youtubeId;
-        await persistScenes(analysisId, videoId, sceneResult.scenes);
-        console.timeEnd(`[PROFILE] ${youtubeId} 4b_detect_scenes`);
-      }
-    } catch (sceneErr) {
-      // Scene detection failure is NON-FATAL — analysis already completed
-      console.warn(`[SCENE] Non-fatal error: ${sceneErr instanceof Error ? sceneErr.message.slice(0, 200) : 'Unknown'}`);
+      console.log(`[SCENE-VIDEO] Created job for ${youtubeId} (${momentsForJob.length} moments)`);
+      console.timeEnd(`[PROFILE] ${youtubeId} 4a_scene_video_job`);
+    } catch (svErr) {
+      // Non-fatal — analysis results already saved
+      console.error(`[SCENE-VIDEO] Failed to create job: ${svErr instanceof Error ? svErr.message : 'Unknown'}`);
     }
 
     // -----------------------------------------------------------------------
@@ -347,51 +337,10 @@ export async function runAnalysisPipeline(
     }
 
     // -----------------------------------------------------------------------
-    // NEW: Server-side Visual Quality Scoring (Stage 4d)
-    // Frame analysis per clip time range from downloaded video
+    // Note: Visual Quality Scoring (Stage 4d) was moved to worker
+    // scene_video job handles both scene detection + visual scoring.
     // -----------------------------------------------------------------------
-    try {
-      await setStage(analysisId, 'visual_scoring');
-      console.time(`[PROFILE] ${youtubeId} 4d_visual_scoring`);
-
-      if (existsSync(videoPath)) {
-        for (let i = 0; i < rankedMoments.length && i < insertedMomentIds.length; i++) {
-          const m = rankedMoments[i];
-          try {
-            const quality = await scoreClipQuality(videoPath, m.startTime, m.endTime);
-            // Clamp values to prevent numeric field overflow (DB columns are numeric(5,4) / numeric(4,1))
-            const clamp = (val: number | undefined | null, min: number, max: number): number | null => {
-              if (val === null || val === undefined || isNaN(val)) return null;
-              return Math.min(max, Math.max(min, val));
-            };
-            await query(
-              `UPDATE moments SET
-                 visual_quality_score = $1, sharpness = $2, brightness = $3,
-                 exposure = $4, face_visibility = $5, blur_score = $6
-               WHERE id = $7`,
-              [
-                clamp(quality.visual_quality_score, 0, 999.9),
-                clamp(quality.sharpness, 0, 99.9999),
-                clamp(quality.brightness, 0, 99.9999),
-                clamp(quality.exposure, 0, 99.9999),
-                clamp(quality.face_visibility, 0, 99.9999),
-                clamp(quality.blur_score, 0, 99.9999),
-                insertedMomentIds[i],
-              ],
-            );
-          } catch (clipErr) {
-            console.warn(`[VISUAL] Moment ${i} scoring failed: ${clipErr instanceof Error ? clipErr.message : 'Unknown'}`);
-          }
-        }
-        console.log(`[VISUAL] Scored visual quality for ${Math.min(rankedMoments.length, insertedMomentIds.length)} moments`);
-
-        // Cleanup downloaded video
-        try { rmSync(videoPath, { force: true }); } catch {}
-      }
-      console.timeEnd(`[PROFILE] ${youtubeId} 4d_visual_scoring`);
-    } catch (visualErr) {
-      console.warn(`[VISUAL] Non-fatal error: ${visualErr instanceof Error ? visualErr.message.slice(0, 200) : 'Unknown'}`);
-    }
+    console.log(`[VISUAL] Delegated to scene_video job for ${youtubeId}`);
 
     // -----------------------------------------------------------------------
     // NEW: Server-side B-roll Generation (Stage 4e)
