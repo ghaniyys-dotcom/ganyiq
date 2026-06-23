@@ -141,7 +141,7 @@ export interface TrackResult {
 // Constants
 // ---------------------------------------------------------------------------
 
-const SAMPLE_RATE = 1.0;
+const SAMPLE_RATE = 3.0;
 const SMOOTHING_WINDOW = 3;
 const SEGMENT_THRESHOLD_PX = 40;
 const DEAD_ZONE_PX = 30;          // ignore crop changes < 30px
