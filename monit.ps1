@@ -13,15 +13,15 @@ Write-Host "[MONITOR] GANYIQ Worker Log Monitor" -ForegroundColor Cyan
 Write-Host "[MONITOR] Sending to: $ApiUrl" -ForegroundColor Cyan
 Write-Host "[MONITOR] Starting worker as child process..." -ForegroundColor Cyan
 
-# Use cmd.exe so npx.cmd resolves correctly from PATH
+# Use ComSpec (cmd.exe) so npx.cmd resolves correctly from PATH
 $psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = "cmd.exe"
+$psi.FileName = $env:ComSpec
 $psi.Arguments = "/c npx tsx index.ts"
 $psi.UseShellExecute = $false
 $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError = $true
 $psi.CreateNoWindow = $true
-$psi.WorkingDirectory = "C:\ganiyq-worker"
+# No WorkingDirectory — inherit from current shell (C:\ganiyq-worker)
 $psi.EnvironmentVariables["FORCE_COLOR"] = "0"
 
 $proc = New-Object System.Diagnostics.Process
