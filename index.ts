@@ -147,7 +147,7 @@ async function apiPost(path: string, body: unknown, token?: string): Promise<Res
 
   const url = `${loadEnv().GANYIQ_API_URL}${path}`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
+  const timeoutId = setTimeout(() => controller.abort(), 300_000); // 5 min timeout
 
   try {
     const response = await fetch(url, {
@@ -774,7 +774,7 @@ print(json.dumps(result))
       }
     }
 
-    // Step 4: POST results back to VPS
+    // Step 4: POST results back to VPS (with retry)
     log('SCENE', `Submitting ${scenes.length} scenes + ${scoredMoments.length} moment scores...`);
 
     // Save results to file first (debugging)
@@ -786,24 +786,45 @@ print(json.dumps(result))
     });
     writeFileSync(resultsPath, resultsData, 'utf-8');
 
-    const resp = await apiPost(
-      `/api/workers/jobs/${job.id}/scene-complete`,
-      {
-        worker_id: env.WORKER_ID,
-        analysis_id: analysisId,
-        youtube_id: youtubeId,
-        scenes,
-        moments: scoredMoments,
-      },
-      env.WORKER_API_KEY,
-    );
+    // Retry up to 3 times with backoff
+    let lastError = '';
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (attempt > 1) {
+        const backoff = 5000 * Math.pow(2, attempt - 2);
+        log('SCENE', `  Retry attempt ${attempt}/3 (waiting ${backoff}ms)...`);
+        await new Promise(r => setTimeout(r, backoff));
+      }
+      try {
+        const resp = await apiPost(
+          `/api/workers/jobs/${job.id}/scene-complete`,
+          {
+            worker_id: env.WORKER_ID,
+            analysis_id: analysisId,
+            youtube_id: youtubeId,
+            scenes,
+            moments: scoredMoments,
+          },
+          env.WORKER_API_KEY,
+        );
 
-    if (resp.ok) {
-      const data = await resp.json();
-      log('SCENE', `✅ Done: ${data.scenes_inserted} scenes, ${data.moments_updated} moments updated`);
-    } else {
-      const errText = await resp.text().catch(() => '(no body)');
-      log('SCENE', `❌ Submit failed (${resp.status}): ${errText.slice(0, 300)}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          log('SCENE', `✅ Done: ${data.scenes_inserted} scenes, ${data.moments_updated} moments updated`);
+          lastError = '';
+          break;
+        } else {
+          const errText = await resp.text().catch(() => '(no body)');
+          lastError = `HTTP ${resp.status}: ${errText.slice(0, 300)}`;
+          log('SCENE', `❌ Attempt ${attempt} failed: ${lastError}`);
+        }
+      } catch (netErr) {
+        lastError = netErr instanceof Error ? netErr.message : String(netErr);
+        log('SCENE', `❌ Attempt ${attempt} network error: ${lastError}`);
+      }
+    }
+
+    if (lastError) {
+      throw new Error(`scene-complete failed after 3 retries: ${lastError}`);
     }
   } finally {
     // Cleanup
