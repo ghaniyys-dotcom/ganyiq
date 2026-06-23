@@ -124,12 +124,10 @@ def transcribe_whisper(audio_path: str) -> dict:
         }
 
     except ImportError:
-        print("[INFO] whisper not installed, skipping", file=sys.stderr)
+        print("[INFO] whisper not installed, skipping — try 'pip install openai-whisper'", file=sys.stderr)
         return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
     except Exception as e:
-        import traceback
-        print(f"[WARN] Whisper transcription failed: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        print(f"[INFO] Whisper transcription failed — skipping: {e}", file=sys.stderr)
         return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
 
 
@@ -261,9 +259,8 @@ def transcribe_deepgram(audio_path: str, api_key: str) -> dict:
         }
 
     except Exception as e:
-        import traceback
-        print(f"[WARN] Deepgram transcription failed: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        # Non-fatal — return empty result, caller handles gracefully
+        print(f"[INFO] Deepgram transcription unavailable: {e}", file=sys.stderr)
         return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
 
 
@@ -317,9 +314,9 @@ def main():
         if result['source'] != 'none':
             print(f"[TRANSCRIBE] strategy=deepgram words={len(result['words'])} segments={len(result['segments'])} confidence={result.get('confidence', 'N/A')}", file=sys.stderr, flush=True)
 
-    # Strategy 3: Both failed
+    # Strategy 3: Both failed — write empty result, don't fail
     if result['source'] == 'none':
-        print("[TRANSCRIBE] strategy=FAILED — no transcription available", file=sys.stderr, flush=True)
+        print("[TRANSCRIBE] strategy=FAILED — no transcription available, writing empty result", file=sys.stderr, flush=True)
         with open(args.output_json, 'w') as f:
             json.dump(result, f)
         if cleanup_audio and os.path.exists(audio_path):
@@ -327,7 +324,8 @@ def main():
                 os.remove(audio_path)
             except:
                 pass
-        sys.exit(1)
+        # Exit 0 so caller doesn't log ugly errors — TS side handles [] gracefully
+        sys.exit(0)
 
     with open(args.output_json, 'w') as f:
         json.dump(result, f)
