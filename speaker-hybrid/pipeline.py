@@ -212,18 +212,23 @@ class Pipeline:
             return None
         best = max(candidates, key=lambda x: x[0])
         return {"cx": best[1], "cy": best[2], "w": best[3], "h": best[4]}
-
     @staticmethod
     def _build_crop_filter(bbox: dict | None, frame_w: int, frame_h: int,
                            out_w: int, out_h: int,
-                           vertical: bool = False) -> str:
-        """Build ffmpeg filter string.
+                           vertical: bool = False, layout: str = "fullscreen") -> str:
+        """
+        Build ffmpeg filter string.
 
         vertical: 9:16 strip centered on speaker's face, scale to out.
-        landscape: head-and-shoulders crop (5x/4x expansion), scale to out.
+          fullscreen → tight crop (31% frame width)
+          split_screen / side_by_side → wider crop (50% frame width)
+        landscape: head-and-shoulders crop, scale to out.
         """
         if vertical:
-            vw = frame_h * 9 / 16   # 405px for 720p input
+            # Vary zoom per layout for visual variety
+            zoom_factor = {"fullscreen": 0.31, "side_by_side": 0.50,
+                           "split_screen": 0.42, "pip": 0.50}.get(layout, 0.38)
+            vw = frame_w * zoom_factor
             vh = float(frame_h)
             if bbox:
                 vx = bbox["cx"] - vw / 2
@@ -327,11 +332,13 @@ class Pipeline:
 
             if bbox:
                 vf = self._build_crop_filter(
-                    bbox, frame_w, frame_h, out_w, out_h, vertical=self.vertical)
+                    bbox, frame_w, frame_h, out_w, out_h,
+                    vertical=self.vertical, layout=layout)
                 desc = f"crop to cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}"
             else:
                 vf = self._build_crop_filter(
-                    None, frame_w, frame_h, out_w, out_h, vertical=self.vertical)
+                    None, frame_w, frame_h, out_w, out_h,
+                    vertical=self.vertical, layout=layout)
                 desc = "center crop"
 
             log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
