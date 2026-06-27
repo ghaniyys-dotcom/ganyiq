@@ -350,8 +350,8 @@ class SpeakerClusterer:
 def process_video(
     video_path: str,
     output_path: str,
-    sample_rate: float = 1.0,
-    conf_threshold: float = 0.25,
+    sample_rate: float = 3.0,
+    conf_threshold: float = 0.4,
     start_time: float | None = None,
     end_time: float | None = None,
     enable_mediapipe: bool = True,
