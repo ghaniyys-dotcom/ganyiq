@@ -226,26 +226,38 @@ class Pipeline:
         landscape: head-and-shoulders crop, scale to out.
         """
         if vertical:
+            vh = float(frame_h)  # 720
+            vw_fs = frame_h * 9 / 16  # 405px for 720p — tight zoom width
+
             if layout == "fullscreen":
-                # Tight zoom: crop 9:16 strip around face
-                vw = frame_h * 9 / 16   # 405px for 720p
-                vh = float(frame_h)      # 720
+                # Tight zoom: crop 405px centered on face → face fills screen
                 if bbox:
-                    vx = bbox["cx"] - vw / 2
+                    vx = bbox["cx"] - vw_fs / 2
                 else:
-                    vx = (frame_w - vw) / 2
-                vx = max(0.0, min(vx, frame_w - vw))
-                if vw >= frame_w * 0.98:
+                    vx = (frame_w - vw_fs) / 2
+                vx = max(0.0, min(vx, frame_w - vw_fs))
+                if vw_fs >= frame_w * 0.98:
                     return f"scale={out_w}:{out_h}"
-                return f"crop={vw:.1f}:{vh:.1f}:{vx:.1f}:0,scale={out_w}:{out_h}"
+                return f"crop={vw_fs:.1f}:{vh:.1f}:{vx:.1f}:0,scale={out_w}:{out_h}"
+
+            elif layout == "side_by_side":
+                # Split interview look: face on left 30%, context on right
+                # Wider crop simulates "two people in frame"
+                vw_sbs = min(frame_w * 0.55, vw_fs * 1.35)  # ~547px for 720p
+                if bbox:
+                    # Position face at ~30% from left edge (not centered)
+                    vx = bbox["cx"] - vw_sbs * 0.30
+                else:
+                    vx = (frame_w - vw_sbs) / 2
+                vx = max(0.0, min(vx, frame_w - vw_sbs))
+                return f"crop={vw_sbs:.1f}:{vh:.1f}:{vx:.1f}:0,scale={out_w}:{out_h}"
+
             else:
-                # Wide view: fit full 16:9 frame into 9:15 output with letterbox
-                # Scale so width fills 720, height = 720*9/16 = 405, pad to 1280
-                pad_h = out_h - int(out_w * 9 / 16)  # 1280 - 720*9/16 = 1280-405 = 875
+                # split_screen / pip: full frame letterboxed → wide shot feel
+                pad_h = out_h - int(out_w * 9 / 16)
                 if pad_h > 0:
                     top_pad = pad_h // 2
-                    lh = int(out_w * frame_h / frame_w)  # target height
-                    return (f"scale={out_w}:-1," +  # scale to fit width
+                    return (f"scale={out_w}:-1," +
                            f"pad={out_w}:{out_h}:(ow-iw)/2:{top_pad}:black")
                 return f"scale={out_w}:{out_h}"
 
