@@ -28,8 +28,8 @@ from pathlib import Path
 # =============================================================================
 
 YOLOV8_FACE_URL = (
-    "https://github.com/derronqi/yolov8-face/releases/download/v1.0/"
-    "yolov8n-face.onnx"
+    "https://github.com/akanametov/yolo-face/releases/download/1.0.0/"
+    "yolov10n-face.onnx"
 )
 MODEL_FILENAME = "yolov8n-face.onnx"
 
@@ -53,11 +53,20 @@ def download_model(model_dir: str, url: str, filename: str, min_size=1_000_000) 
 
 
 def load_yolo_session(model_path: str):
-    """Load YOLOv8-face ONNX model."""
+    """Load YOLOv8-face ONNX model. Prefers CUDA if available."""
     try:
         import onnxruntime
+        providers = []
+        # Try CUDA first
+        try:
+            if "CUDAExecutionProvider" in onnxruntime.get_available_providers():
+                providers.append("CUDAExecutionProvider")
+                print("[INFO] Using CUDA for ONNX inference", file=sys.stderr)
+        except Exception:
+            pass
+        providers.append("CPUExecutionProvider")  # fallback
         session = onnxruntime.InferenceSession(
-            model_path, providers=["CPUExecutionProvider"]
+            model_path, providers=providers
         )
         input_name = session.get_inputs()[0].name
         print(
@@ -160,9 +169,24 @@ def load_mediapipe():
         from mediapipe.tasks import python
         from mediapipe.tasks.python import vision
 
-        model_path = os.path.join(
-            os.path.dirname(__file__), "models", MP_FACE_MODEL
-        )
+        model_dir = os.path.join(os.path.dirname(__file__), "models")
+        os.makedirs(model_dir, exist_ok=True)
+        model_path = os.path.join(model_dir, MP_FACE_MODEL)
+
+        # Auto-download if missing
+        if not os.path.exists(model_path) or os.path.getsize(model_path) < 100_000:
+            mp_url = (
+                "https://storage.googleapis.com/mediapipe-models/"
+                "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+            )
+            print(f"[INFO] Downloading MediaPipe model ({MP_FACE_MODEL})...", file=sys.stderr)
+            try:
+                urllib.request.urlretrieve(mp_url, model_path)
+                print(f"[INFO] MediaPipe model saved to {model_path}", file=sys.stderr)
+            except Exception as e:
+                print(f"[WARN] MediaPipe model download failed: {e}", file=sys.stderr)
+                return None
+
         if not os.path.exists(model_path):
             print("[WARN] MediaPipe model not found, skipping landmarks", file=sys.stderr)
             return None
