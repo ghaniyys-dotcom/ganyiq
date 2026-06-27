@@ -231,11 +231,16 @@ class SplitDecisionEngine:
         for entry in self._avm_timeline:
             e_start = entry.get("start", 0)
             e_end = entry.get("end", 0)
-            # Check overlap
             if t_start < e_end and t_end > e_start:
-                matched = entry.get("matched_speakers", [])
-                if matched:
-                    return matched[0]
+                audio = entry.get("audio_speakers", [])
+                if audio:
+                    matched = entry.get("matched_speakers", [])
+                    if len(matched) == 1:
+                        return matched[0]
+                    visual = entry.get("visual_speakers", [])
+                    if matched and len(matched) < len(visual):
+                        return matched[0]
+                    return f"audio_{audio[0]}"
         return None
 
     def _build_segments(
