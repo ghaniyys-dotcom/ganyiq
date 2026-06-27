@@ -9,27 +9,49 @@ $lastSend = (Get-Date).AddSeconds(-60)
 $sendInterval = 15
 $batchSize = 100
 
-Write-Host "[MONITOR] Worker: $WorkerName -> $ApiUrl" -ForegroundColor Cyan
-Write-Host "[MONITOR] Ready" -ForegroundColor Cyan
+Write-Host "[MONITOR] GANYIQ Worker Log Monitor" -ForegroundColor Cyan
+Write-Host "[MONITOR] Sending to: $ApiUrl" -ForegroundColor Cyan
+Write-Host "[MONITOR] Starting worker as child process..." -ForegroundColor Cyan
 
-# Process each line from stdin
-$input | ForEach-Object {
-    $line = $_.Trim()
-    if (-not $line) { return }
+# Use ComSpec (cmd.exe) so npx.cmd resolves correctly from PATH
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = $env:ComSpec
+$psi.Arguments = "/c npx tsx index.ts"
+$psi.UseShellExecute = $false
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
+$psi.CreateNoWindow = $true
+# No WorkingDirectory — inherit from current shell (C:\ganiyq-worker)
+$psi.EnvironmentVariables["FORCE_COLOR"] = "0"
 
-    $isImportant = $false
-    foreach ($p in $importantPatterns) {
-        if ($line -match $p) { $isImportant = $true; break }
+$proc = New-Object System.Diagnostics.Process
+$proc.StartInfo = $psi
+$proc.Start() | Out-Null
+
+Write-Host "[MONITOR] Worker started, PID: $($proc.Id)" -ForegroundColor Cyan
+
+# Read stdout line by line — ReadLine() blocks until data arrives, works in real-time
+while ((-not $proc.HasExited) -or (-not $proc.StandardOutput.EndOfStream)) {
+    $line = $proc.StandardOutput.ReadLine()
+    if (-not $line) {
+        if ($proc.HasExited) { break }
+        Start-Sleep -Milliseconds 50
+        continue
     }
 
-    if ($isImportant) {
-        if ($line -match "ERROR|FAILED|FATAL") { Write-Host $line -ForegroundColor Red }
-        elseif ($line -match "ENCODER|CACHE") { Write-Host $line -ForegroundColor Green }
-        elseif ($line -match "SUBTITLE|TRANSCRIBE|WHISPER") { Write-Host $line -ForegroundColor Yellow }
-        else { Write-Host $line -ForegroundColor Cyan }
-        [void]$sendQueue.Add($line)
-    }
+    $line = $line.Trim()
+    if (-not $line) { continue }
 
+    # Color by pattern
+    if ($line -match "ERROR|FAILED|FATAL") { Write-Host $line -ForegroundColor Red }
+    elseif ($line -match "ENCODER|CACHE") { Write-Host $line -ForegroundColor Green }
+    elseif ($line -match "SUBTITLE|TRANSCRIBE|WHISPER") { Write-Host $line -ForegroundColor Yellow }
+    elseif ($line -match $importantPatterns -join "|") { Write-Host $line -ForegroundColor Cyan }
+
+    # Queue for VPS
+    [void]$sendQueue.Add($line)
+
+    # Flush queue every 15s
     $elapsed = (Get-Date) - $lastSend
     if ($elapsed.TotalSeconds -ge $sendInterval -and $sendQueue.Count -gt 0) {
         $endIdx = [Math]::Min($sendQueue.Count, $batchSize) - 1
@@ -48,4 +70,23 @@ $input | ForEach-Object {
         $sendQueue.Clear()
         $lastSend = Get-Date
     }
+}
+
+# Send remaining logs
+if ($sendQueue.Count -gt 0) {
+    $body = @{
+        worker_name = $WorkerName
+        lines = $sendQueue
+        timestamp = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+    } | ConvertTo-Json
+    try { $null = Invoke-RestMethod -Uri "$ApiUrl/api/workers/logs" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 10 } catch {}
+}
+
+Write-Host "[MONITOR] Worker exited (code: $($proc.ExitCode))" -ForegroundColor Cyan
+
+# Dump stderr (if any — usually Node warnings/errors)
+$stderr = $proc.StandardError.ReadToEnd()
+if ($stderr) {
+    Write-Host "[MONITOR] STDERR:" -ForegroundColor Red
+    Write-Host $stderr -ForegroundColor Red
 }
