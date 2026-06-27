@@ -4,6 +4,7 @@ pipeline.py — GANYIQ Speaker Hybrid Full Pipeline
 
 One-command solution:
   python pipeline.py --video input.mp4 --output final.mp4
+  python pipeline.py --video input.mp4 --output final.mp4 --vertical  # 9:16 shorts
 
 Does:
   1. Extract audio from video
@@ -48,11 +49,13 @@ def run_cmd(cmd: list[str], desc: str = "", timeout: int = 600) -> str:
 class Pipeline:
     """End-to-end GANYIQ Speaker Hybrid Pipeline."""
 
-    def __init__(self, video_path: str, output_path: str, work_dir: str | None = None):
+    def __init__(self, video_path: str, output_path: str,
+                 work_dir: str | None = None, vertical: bool = False):
         self.video_path = Path(video_path).resolve()
         self.output_path = Path(output_path).resolve()
         self.work_dir = Path(work_dir or tempfile.mkdtemp(prefix="ganyiq_")).resolve()
         self.work_dir.mkdir(parents=True, exist_ok=True)
+        self.vertical = vertical
 
         # Temp files
         self.audio_path = self.work_dir / "audio.wav"
@@ -80,40 +83,19 @@ class Pipeline:
         # ─────────────────────────────────────
         log("Running diarization...")
         try:
-            # Try importing diarize module directly for speed
             sys.path.insert(0, str(Path.cwd()))
             from diarize import main as run_diarization
         except ImportError:
-            # Fall back to subprocess
             run_cmd([
                 sys.executable, "diarize.py",
                 str(self.audio_path), str(self.diarization_path)
             ], "Running diarization (subprocess)...")
         else:
-            # Run diarization as a script call
-            import argparse as ap
-            diarize_args = ap.Namespace(
-                audio=str(self.audio_path),
-                output_json=str(self.diarization_path),
-                hf_token=None,
-                num_speakers=None,
-                min_speakers=None,
-                max_speakers=None,
-            )
-            try:
-                from diarize import main as diarize_main
-                # Can't easily call it since it uses argparse, so fallback to subprocess
-                run_cmd([
-                    sys.executable, "diarize.py",
-                    str(self.audio_path), str(self.diarization_path)
-                ], "Running diarization...")
-            except:
-                run_cmd([
-                    sys.executable, "diarize.py",
-                    str(self.audio_path), str(self.diarization_path)
-                ], "Running diarization...")
+            run_cmd([
+                sys.executable, "diarize.py",
+                str(self.audio_path), str(self.diarization_path)
+            ], "Running diarization...")
 
-        # Check if diarization produced useful segments
         with open(self.diarization_path) as f:
             diar_data = json.load(f)
         n_speakers = diar_data.get("metadata", {}).get("num_speakers", 0)
@@ -121,7 +103,7 @@ class Pipeline:
         log(f"Diarization: {n_speakers} speakers, {n_segments} segments")
 
         # ─────────────────────────────────────
-        # Step 3: Speaker Identifier (face + AVM + reaction + split)
+        # Step 3: Speaker Identifier
         # ─────────────────────────────────────
         log("Running speaker identification...")
         speaker_id_script = Path(__file__).parent / "identification" / "speaker_identifier.py"
@@ -149,7 +131,7 @@ class Pipeline:
         log("Rendering output video...")
         self._render(result)
 
-        # Cleanup temp files
+        # Cleanup
         face_data_path = result.get("face_data_path")
         if face_data_path and os.path.exists(face_data_path):
             os.remove(face_data_path)
@@ -160,22 +142,22 @@ class Pipeline:
         t_elapsed = time.time() - t_start
         log(f"Pipeline complete in {t_elapsed:.1f}s → {self.output_path}")
 
-        # Print scene summary to stderr
         scenes = result.get("split_plan", {}).get("scenes", [])
+        layout_icons = {"fullscreen": "⬜", "split_screen": "⬛",
+                        "pip": "🔄", "side_by_side": "⬜⬜"}
         print(f"\n{'='*50}", file=sys.stderr)
         print(f"SPLIT PLAN — {len(scenes)} scenes", file=sys.stderr)
         print(f"{'='*50}", file=sys.stderr)
         for s in scenes:
-            layout_icon = {"fullscreen": "⬜", "split_screen": "⬛", "pip": "🔄", "side_by_side": "⬜⬜"}.get(s["layout"], "❓")
-            print(f"  {layout_icon} {s['start_sec']:6.1f}s-{s['end_sec']:6.1f}s  {s['layout']:15s} [{s['confidence']:.2f}]", file=sys.stderr)
+            icon = layout_icons.get(s["layout"], "❓")
+            print(f"  {icon} {s['start_sec']:6.1f}s-{s['end_sec']:6.1f}s  "
+                  f"{s['layout']:15s} [{s['confidence']:.2f}]", file=sys.stderr)
         print(f"{'='*50}\n", file=sys.stderr)
-
         return result
 
-    # ── Face data helpers for layout rendering ──────────────────────
+    # ── Face data helpers ───────────────────────────────────────────
 
     def _load_face_data(self, result: dict) -> dict | None:
-        """Load face detection data for crop coordinates."""
         face_path = result.get("face_data_path")
         if face_path and os.path.exists(face_path):
             with open(face_path) as f:
@@ -184,8 +166,6 @@ class Pipeline:
 
     def _get_speaker_bbox(self, face_data: dict, speaker_id: str,
                           start: float, end: float) -> dict | None:
-        """Average face bounding box for a speaker in [start, end] range.
-        Returns {cx, cy, w, h} or None if speaker not found."""
         boxes = []
         for entry in face_data.get("timeline", []):
             t = entry.get("time", 0)
@@ -194,7 +174,6 @@ class Pipeline:
             for face in entry.get("faces", []):
                 if face.get("speaker_id") == speaker_id:
                     boxes.append(face)
-
         if not boxes:
             return None
         return {
@@ -205,40 +184,51 @@ class Pipeline:
         }
 
     @staticmethod
-    def _build_crop_filter(bbox: dict, frame_w: int, frame_h: int,
-                           out_w: int, out_h: int) -> str:
-        """Build ffmpeg crop+scale filter string for a face bounding box.
-        Expands 5x/4x for natural head-and-shoulders framing."""
+    def _build_crop_filter(bbox: dict | None, frame_w: int, frame_h: int,
+                           out_w: int, out_h: int,
+                           vertical: bool = False) -> str:
+        """
+        Build ffmpeg filter string.
+
+        landscape: head-and-shoulders crop (5x/4x expansion), scale to out.
+        vertical:  9:16 strip centered on speaker's face, scale to out.
+        """
+        if vertical:
+            vw = frame_h * 9 / 16  # 405px for 720p input
+            vh = float(frame_h)
+            if bbox:
+                vx = bbox["cx"] - vw / 2
+                # Keep face ~35% from left in the 9:16 frame
+            else:
+                vx = (frame_w - vw) / 2  # center crop
+            vx = max(0.0, min(vx, frame_w - vw))
+            if vw >= frame_w * 0.98:
+                return f"scale={out_w}:{out_h}"
+            return f"crop={vw:.1f}:{vh:.1f}:{vx:.1f}:0,scale={out_w}:{out_h}"
+
+        # ── Landscape: head-and-shoulders ──
         if not bbox:
             return f"scale={out_w}:{out_h}"
-
-        # Expand for head-and-shoulders framing (5x width, 4x height)
         cw = bbox["w"] * 5.0
         ch = bbox["h"] * 4.0
-
-        # If the expanded region already covers most of the frame,
-        # the face is large enough — just scale instead of crop
         if cw >= frame_w * 0.85 and ch >= frame_h * 0.85:
             return f"scale={out_w}:{out_h}"
-
-        # Clamp to frame dimensions
         cw = min(cw, frame_w)
         ch = min(ch, frame_h)
         cx = bbox["cx"] - cw / 2
-        cy = bbox["cy"] - ch * 0.275  # shift up for headroom
-
-        # Clamp position to stay within frame
+        cy = bbox["cy"] - ch * 0.275
         cx = max(0.0, cx)
         cy = max(0.0, cy)
         if cw < frame_w:
             cx = min(cx, frame_w - cw)
         if ch < frame_h:
             cy = min(cy, frame_h - ch)
-
         return f"crop={cw:.0f}:{ch:.0f}:{cx:.0f}:{cy:.0f},scale={out_w}:{out_h}"
 
+    # ── Render ──────────────────────────────────────────────────────
+
     def _render(self, result: dict):
-        """Render output video with per-layout ffmpeg filter complex."""
+        """Render output video. In vertical mode produces 9:16 shorts."""
         scenes = result.get("split_plan", {}).get("scenes", [])
         if not scenes:
             log("No scenes to render — copying input")
@@ -259,6 +249,10 @@ class Pipeline:
         dims = probe.stdout.strip().split(",")
         frame_w, frame_h = (int(dims[0]), int(dims[1])) if len(dims) == 2 else (1280, 720)
 
+        out_w, out_h = (720, 1280) if self.vertical else (frame_w, frame_h)
+        aspect = "9:16" if self.vertical else "16:9"
+        log(f"Output: {out_w}x{out_h} ({aspect})")
+
         face_data = self._load_face_data(result)
         if face_data:
             n_frames = len(face_data.get("timeline", []))
@@ -268,7 +262,7 @@ class Pipeline:
             ))
             log(f"Face data loaded: {n_frames} frames, {n_speakers_face} speaker IDs")
         else:
-            log("Face data NOT available — all scenes will be full frame")
+            log("Face data NOT available — all scenes will be center crop")
 
         concat_lines = []
         segment_files = []
@@ -283,122 +277,42 @@ class Pipeline:
             speakers = scene.get("speakers_visible", [])
             primary = scene.get("primary_speaker")
 
-            # ─── Build filter complex ────────────────────────────────────────
+            # Pick which speaker ID to frame (primary for fullscreen,
+            # first visible for split/multi)
+            target_sid = primary or (speakers[0] if speakers else None)
 
-            if layout == "fullscreen":
-                bbox = None
-                if face_data and primary:
-                    bbox = self._get_speaker_bbox(face_data, primary, start, start + dur)
-                if bbox:
-                    log(f"    Scene {i+1}: fullscreen crop to {primary} "
-                        f"(bbox: cx={bbox['cx']:.0f} cy={bbox['cy']:.0f} "
-                        f"w={bbox['w']:.0f} h={bbox['h']:.0f})")
-                    vf = self._build_crop_filter(bbox, frame_w, frame_h, frame_w, frame_h)
-                    run_cmd([
-                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
-                        "-i", str(self.video_path),
-                        "-t", f"{dur:.2f}",
-                        "-vf", vf,
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-                        "-c:a", "aac",
-                        str(seg_out)
-                    ], f"  Scene {i+1}/{len(scenes)}: fullscreen (crop→{primary}) {start:.1f}s-{start+dur:.1f}s")
-                else:
-                    run_cmd([
-                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
-                        "-i", str(self.video_path),
-                        "-t", f"{dur:.2f}",
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-                        "-c:a", "aac",
-                        str(seg_out)
-                    ], f"  Scene {i+1}/{len(scenes)}: fullscreen (no face) {start:.1f}s-{start+dur:.1f}s")
+            bbox = None
+            if face_data and target_sid:
+                bbox = self._get_speaker_bbox(face_data, target_sid,
+                                              start, start + dur)
 
-            elif layout == "split_screen":
-                if face_data and speakers:
-                    # Build hstack from cropped per-speaker columns
-                    filters = []
-                    input_ref = "0:v"
-                    n = min(len(speakers), 3)
-                    col_w = frame_w // n
-                    col_h = frame_h
+            if bbox:
+                vf = self._build_crop_filter(
+                    bbox, frame_w, frame_h, out_w, out_h, vertical=self.vertical)
+                desc = f"crop→{target_sid}"
+            else:
+                vf = self._build_crop_filter(
+                    None, frame_w, frame_h, out_w, out_h, vertical=self.vertical)
+                desc = "center crop" if self.vertical else "full frame"
 
-                    for j, sid in enumerate(speakers[:n]):
-                        bbox = self._get_speaker_bbox(face_data, sid, start, start + dur)
-                        if bbox:
-                            log(f"    Scene {i+1}: col{j} → {sid} "
-                                f"(cx={bbox['cx']:.0f} cy={bbox['cy']:.0f} "
-                                f"w={bbox['w']:.0f} h={bbox['h']:.0f})")
-                            crop_filter = self._build_crop_filter(bbox, frame_w, frame_h, col_w, col_h)
-                            filters.append(f"[{input_ref}]{crop_filter}[col{j}];")
+            log(f"    Scene {i+1}: {layout} ({desc}) "
+                f"{start:.1f}s-{start+dur:.1f}s"
+                + (f" [bbox cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}]"
+                   if bbox else ""))
 
-                    if len(filters) >= 2:
-                        # Use hstack to combine columns
-                        cols_str = "".join(f"[col{j}]" for j in range(len(filters)))
-                        vf = "".join(filters) + f"{cols_str}hstack=inputs={len(filters)},format=yuv420p"
-                    elif len(filters) == 1:
-                        # Single valid face — just crop to that speaker
-                        vf = filters[0].replace(f"[{input_ref}]", "").replace(f";[col0]", "")
-                        vf = vf.replace(";", "").replace(",format=yuv420p", "")
-                    else:
-                        vf = f"scale={frame_w}:{frame_h}"
-
-                    run_cmd([
-                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
-                        "-i", str(self.video_path),
-                        "-t", f"{dur:.2f}",
-                        "-filter_complex", vf,
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-                        "-c:a", "aac",
-                        str(seg_out)
-                    ], f"  Scene {i+1}/{len(scenes)}: split_screen ({n} cols) {start:.1f}s-{start+dur:.1f}s")
-                else:
-                    run_cmd([
-                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
-                        "-i", str(self.video_path),
-                        "-t", f"{dur:.2f}",
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-                        "-c:a", "aac",
-                        str(seg_out)
-                    ], f"  Scene {i+1}/{len(scenes)}: split_screen (no face) {start:.1f}s-{start+dur:.1f}s")
-
-            elif layout in ("pip", "side_by_side"):
-                if face_data and len(speakers) >= 2:
-                    # side_by_side = 2 columns
-                    bbox0 = self._get_speaker_bbox(face_data, speakers[0], start, start + dur)
-                    bbox1 = self._get_speaker_bbox(face_data, speakers[1], start, start + dur)
-                    col_w, col_h = frame_w // 2, frame_h
-                    f0 = self._build_crop_filter(bbox0 or {}, frame_w, frame_h, col_w, col_h)
-                    f1 = self._build_crop_filter(bbox1 or {}, frame_w, frame_h, col_w, col_h)
-
-                    # If both are no-face fallbacks (scale only), skip filter_complex
-                    if "scale" in f0 and "scale" in f1 and "crop" not in f0 and "crop" not in f1:
-                        vf = f"scale={frame_w}:{frame_h}"
-                    else:
-                        vf = f"[0:v]{f0}[l];[0:v]{f1}[r];[l][r]hstack=inputs=2,format=yuv420p"
-
-                    run_cmd([
-                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
-                        "-i", str(self.video_path),
-                        "-t", f"{dur:.2f}",
-                        "-filter_complex", vf,
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-                        "-c:a", "aac",
-                        str(seg_out)
-                    ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
-                else:
-                    # Fallback to fullframe
-                    run_cmd([
-                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
-                        "-i", str(self.video_path),
-                        "-t", f"{dur:.2f}",
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-                        "-c:a", "aac",
-                        str(seg_out)
-                    ], f"  Scene {i+1}/{len(scenes)}: {layout} (fallback) {start:.1f}s-{start+dur:.1f}s")
+            run_cmd([
+                "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                "-i", str(self.video_path),
+                "-t", f"{dur:.2f}",
+                "-vf", vf,
+                "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                "-c:a", "aac",
+                str(seg_out)
+            ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
 
             concat_lines.append(f"file '{seg_out.as_posix()}'")
 
-        # ─── Concat all segments ────────────────────────────────────────────────
+        # ─── Concat ─────────────────────────────────────────────────
         if len(segment_files) == 1:
             seg = segment_files[0]
             seg.rename(self.output_path)
@@ -418,15 +332,19 @@ class Pipeline:
 def main():
     parser = argparse.ArgumentParser(description="GANYIQ Speaker Hybrid Pipeline")
     parser.add_argument("--video", required=True, help="Input video path")
-    parser.add_argument("--output", "-o", default="output.mp4", help="Output video path")
-    parser.add_argument("--work-dir", help="Working directory (auto temp if not set)")
+    parser.add_argument("--output", "-o", default="output.mp4",
+                        help="Output video path")
+    parser.add_argument("--work-dir", help="Working directory (auto temp)")
+    parser.add_argument("--vertical", "-v", action="store_true",
+                        help="Output 9:16 vertical (shorts format)")
     args = parser.parse_args()
 
     if not os.path.exists(args.video):
         print(f"Error: video not found: {args.video}")
         sys.exit(1)
 
-    pipeline = Pipeline(args.video, args.output, args.work_dir)
+    pipeline = Pipeline(args.video, args.output, args.work_dir,
+                        vertical=args.vertical)
     try:
         result = pipeline.run()
         print(json.dumps({
@@ -434,6 +352,7 @@ def main():
             "output": str(pipeline.output_path),
             "speakers": len(result.get("speakers", [])),
             "scenes": len(result.get("split_plan", {}).get("scenes", [])),
+            "vertical": args.vertical,
         }, indent=2))
     except Exception as e:
         print(json.dumps({"status": "error", "message": str(e)}))
