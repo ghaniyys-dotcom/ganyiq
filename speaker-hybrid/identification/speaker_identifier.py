@@ -127,6 +127,7 @@ class SpeakerIdentifier:
                     video_path=video_path,
                     output_path=temp_face_path,
                     sample_rate=self.face_sample_rate,
+                    conf_threshold=0.2,
                 )
             except SystemExit as e:
                 return self._error(f"Face detection failed (exit {e.code})", "detection_failure")
