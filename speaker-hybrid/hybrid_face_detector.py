@@ -121,7 +121,7 @@ def yolo_detect_faces(session, input_name, frame, conf_threshold=0.25):
         if confidence < conf_threshold:
             continue
 
-        cx, cy, w, h = pred[0], pred[1], pred[2], pred[3]
+        cx, cy, w, h = float(pred[0]), float(pred[1]), float(pred[2]), float(pred[3])
         cx *= img_w
         cy *= img_h
         w *= img_w
@@ -489,7 +489,7 @@ def process_video(
     }
 
     with open(output_path, "w") as f:
-        json.dump(output, f, indent=2)
+        json.dump(output, f, indent=2, default=str)
 
     print(
         f"[DONE] {len(results)} frames, {len(speakers)} speakers logged",
