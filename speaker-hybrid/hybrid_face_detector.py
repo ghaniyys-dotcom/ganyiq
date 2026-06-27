@@ -82,7 +82,8 @@ def load_yolo_session(model_path: str):
 
 def yolo_detect_faces(session, input_name, frame, conf_threshold=0.25):
     """
-    Run YOLOv8-face inference on a frame.
+    Run YOLO face ONNX inference on a frame.
+    Auto-detects output format: YOLOv8 [84, N] or YOLOv10 [N, 6].
     Returns list of {cx, cy, w, h, confidence, landmarks}.
     """
     import cv2
@@ -110,50 +111,95 @@ def yolo_detect_faces(session, input_name, frame, conf_threshold=0.25):
 
     # Inference
     outputs = session.run(None, {input_name: blob})
-    predictions = outputs[0][0]  # [84, 8400]
+    raw = outputs[0][0]  # shape varies by model version
+
+    # Detect format based on shape
+    # YOLOv8: [84, 8400]  - 4bbox+1conf+10landmarks+69classes
+    # YOLOv10: [300, 6]   - x1,y1,x2,y2,conf,class
+    is_v10 = raw.shape[-1] == 6
 
     faces = []
     img_h, img_w = padded.shape[:2]
 
-    for pred_idx in range(predictions.shape[1]):
-        pred = predictions[:, pred_idx]
-        confidence = float(pred[4])
-        if confidence < conf_threshold:
-            continue
+    if is_v10:
+        # ── YOLOv10 format: [300, 6] ──
+        # raw shape = (6, 300) if WxH or (300, 6) if HxW
+        if raw.shape[0] == 6 and raw.shape[1] > 6:
+            raw = raw.T  # ensure (N, 6)
+        for pred in raw:
+            x1, y1, x2, y2, confidence, cls_id = pred
+            confidence = float(confidence)
+            if confidence < conf_threshold:
+                continue
+            # Convert xyxy → cxcywh
+            cx = (float(x1) + float(x2)) / 2
+            cy = (float(y1) + float(y2)) / 2
+            w = float(x2) - float(x1)
+            h = float(y2) - float(y1)
+            # Coordinates are relative to 640x640 input
+            cx *= img_w
+            cy *= img_h
+            w *= img_w
+            h *= img_h
+            # Undo padding + scale
+            cx = (cx - dw / 2) / scale
+            cy = (cy - dh / 2) / scale
+            w = w / scale
+            h = h / scale
+            # Clamp
+            cx = max(0, min(orig_w, cx))
+            cy = max(0, min(orig_h, cy))
+            w = max(10, min(orig_w, w))
+            h = max(10, min(orig_h, h))
+            faces.append({
+                "cx": round(cx, 1),
+                "cy": round(cy, 1),
+                "w": int(round(w)),
+                "h": int(round(h)),
+                "confidence": round(confidence, 4),
+                "landmarks": {},  # YOLOv10 model has no face landmarks
+            })
+    else:
+        # ── YOLOv8-face format: [84, 8400] ──
+        for pred_idx in range(raw.shape[1]):
+            pred = raw[:, pred_idx]
+            confidence = float(pred[4])
+            if confidence < conf_threshold:
+                continue
 
-        cx, cy, w, h = float(pred[0]), float(pred[1]), float(pred[2]), float(pred[3])
-        cx *= img_w
-        cy *= img_h
-        w *= img_w
-        h *= img_h
+            cx, cy, w, h = float(pred[0]), float(pred[1]), float(pred[2]), float(pred[3])
+            cx *= img_w
+            cy *= img_h
+            w *= img_w
+            h *= img_h
 
-        # Undo padding
-        cx = (cx - dw / 2) / scale
-        cy = (cy - dh / 2) / scale
-        w = w / scale
-        h = h / scale
+            # Undo padding
+            cx = (cx - dw / 2) / scale
+            cy = (cy - dh / 2) / scale
+            w = w / scale
+            h = h / scale
 
-        cx = max(0, min(orig_w, cx))
-        cy = max(0, min(orig_h, cy))
-        w = max(10, min(orig_w, w))
-        h = max(10, min(orig_h, h))
+            cx = max(0, min(orig_w, cx))
+            cy = max(0, min(orig_h, cy))
+            w = max(10, min(orig_w, w))
+            h = max(10, min(orig_h, h))
 
-        # Landmarks: left_eye, right_eye, nose, left_mouth, right_mouth
-        landmark_names = ["le", "re", "n", "lm", "rm"]
-        landmarks = {}
-        for i, name in enumerate(landmark_names):
-            lx = (float(pred[5 + i * 2]) * img_w - dw / 2) / scale
-            ly = (float(pred[5 + i * 2 + 1]) * img_h - dh / 2) / scale
-            landmarks[name] = [round(lx, 1), round(ly, 1)]
+            # Landmarks: left_eye, right_eye, nose, left_mouth, right_mouth
+            landmark_names = ["le", "re", "n", "lm", "rm"]
+            landmarks = {}
+            for i, name in enumerate(landmark_names):
+                lx = (float(pred[5 + i * 2]) * img_w - dw / 2) / scale
+                ly = (float(pred[5 + i * 2 + 1]) * img_h - dh / 2) / scale
+                landmarks[name] = [round(lx, 1), round(ly, 1)]
 
-        faces.append({
-            "cx": round(cx, 1),
-            "cy": round(cy, 1),
-            "w": int(round(w)),
-            "h": int(round(h)),
-            "confidence": round(confidence, 4),
-            "landmarks": landmarks,
-        })
+            faces.append({
+                "cx": round(cx, 1),
+                "cy": round(cy, 1),
+                "w": int(round(w)),
+                "h": int(round(h)),
+                "confidence": round(confidence, 4),
+                "landmarks": landmarks,
+            })
 
     return faces
 
