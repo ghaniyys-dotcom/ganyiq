@@ -266,6 +266,36 @@ class Pipeline:
             cy = min(cy, frame_h - ch)
         return f"crop={cw:.0f}:{ch:.0f}:{cx:.0f}:{cy:.0f},scale={out_w}:{out_h}"
 
+    @staticmethod
+    def _build_split_filter(bbox: dict | None, frame_w: int, frame_h: int,
+                            out_w: int, out_h: int) -> str:
+        """Build filter_complex for split-screen vertical (9:16).
+
+        Top half (720x640): tight crop to speaker's face
+        Bottom half (720x640): full 16:9 frame letterboxed (context wide shot)
+        vstack → 720x1280
+        """
+        vw = frame_h * 9 / 16          # 405px for 720p
+        half_h = out_h // 2            # 640
+
+        # Top: crop 405px strip around primary face → scale to 720x640
+        if bbox:
+            vx = max(0.0, min(bbox["cx"] - vw / 2, frame_w - vw))
+        else:
+            vx = (frame_w - vw) / 2
+        top = f"[0:v]crop={vw:.1f}:{frame_h:.1f}:{vx:.1f}:0,scale={out_w}:{half_h}[top]"
+
+        # Bottom: full frame letterboxed into 720x640
+        pad_h = half_h - int(out_w * 9 / 16)  # 640 - 405 = 235
+        if pad_h > 0:
+            top_pad = pad_h // 2
+            bottom = (f"[0:v]scale={out_w}:-1,"
+                      f"pad={out_w}:{half_h}:(ow-iw)/2:{top_pad}:black[bottom]")
+        else:
+            bottom = f"[0:v]scale={out_w}:{half_h}[bottom]"
+
+        return f"{top}{bottom}[top][bottom]vstack=inputs=2[v]"
+
     # ── Render ──────────────────────────────────────────────────────
 
     def _render(self, result: dict):
@@ -338,28 +368,47 @@ class Pipeline:
                     start, start + dur,
                     frame_w=frame_w, frame_h=frame_h)
 
-            if bbox:
-                vf = self._build_crop_filter(
-                    bbox, frame_w, frame_h, out_w, out_h,
-                    vertical=self.vertical, layout=layout)
-                desc = f"crop to cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}"
+            is_split = self.vertical and layout != "fullscreen"
+
+            if is_split:
+                # ── Split screen: speaker closeup top + context wide bottom ──
+                vf = self._build_split_filter(
+                    bbox, frame_w, frame_h, out_w, out_h)
+                desc = f"split: face cx={bbox['cx']:.0f}" if bbox else "split: center"
+                log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
+                run_cmd([
+                    "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                    "-i", str(self.video_path),
+                    "-t", f"{dur:.2f}",
+                    "-filter_complex", vf,
+                    "-map", "[v]",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                    "-c:a", "aac",
+                    str(seg_out)
+                ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
             else:
-                vf = self._build_crop_filter(
-                    None, frame_w, frame_h, out_w, out_h,
-                    vertical=self.vertical, layout=layout)
-                desc = "center crop"
+                # ── Fullscreen: single tight crop to face ──
+                if bbox:
+                    vf = self._build_crop_filter(
+                        bbox, frame_w, frame_h, out_w, out_h,
+                        vertical=self.vertical, layout=layout)
+                    desc = f"crop to cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}"
+                else:
+                    vf = self._build_crop_filter(
+                        None, frame_w, frame_h, out_w, out_h,
+                        vertical=self.vertical, layout=layout)
+                    desc = "center crop"
 
-            log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
-
-            run_cmd([
-                "ffmpeg", "-y", "-ss", f"{start:.2f}",
-                "-i", str(self.video_path),
-                "-t", f"{dur:.2f}",
-                "-vf", vf,
-                "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-                "-c:a", "aac",
-                str(seg_out)
-            ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
+                log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
+                run_cmd([
+                    "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                    "-i", str(self.video_path),
+                    "-t", f"{dur:.2f}",
+                    "-vf", vf,
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                    "-c:a", "aac",
+                    str(seg_out)
+                ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
 
             concat_lines.append(f"file '{seg_out.as_posix()}'")
 
