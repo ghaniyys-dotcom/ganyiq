@@ -253,10 +253,6 @@ class SpeakerIdentifier:
         }
 
         if output_path:
-            with open(output_path, "w") as f:
-                json.dump(final_result, f, indent=2, default=str)
-            self.log(f"Result written to {output_path}")
-
             # Keep face data path for downstream rendering
             face_data_path = output_path + ".faces.tmp.json"
             if os.path.exists(face_data_path):
@@ -264,6 +260,10 @@ class SpeakerIdentifier:
                 self.log(f"Face data preserved for rendering: {face_data_path}")
             else:
                 final_result["face_data_path"] = None
+
+            with open(output_path, "w") as f:
+                json.dump(final_result, f, indent=2, default=str)
+            self.log(f"Result written to {output_path}")
 
         return final_result
 
