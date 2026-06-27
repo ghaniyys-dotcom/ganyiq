@@ -219,25 +219,35 @@ class Pipeline:
         """
         Build ffmpeg filter string.
 
-        vertical: 9:16 strip centered on speaker's face, scale to out.
-          fullscreen → tight crop (31% frame width)
-          split_screen / side_by_side → wider crop (50% frame width)
+        vertical mode (9:16 output 720x1280):
+          fullscreen → crop 9:16 strip around speaker's face (tight zoom)
+          others     → scale full frame to fit 720x1280 with letterbox (wide view)
+
         landscape: head-and-shoulders crop, scale to out.
         """
         if vertical:
-            # Vary zoom per layout for visual variety
-            zoom_factor = {"fullscreen": 0.31, "side_by_side": 0.50,
-                           "split_screen": 0.42, "pip": 0.50}.get(layout, 0.38)
-            vw = frame_w * zoom_factor
-            vh = float(frame_h)
-            if bbox:
-                vx = bbox["cx"] - vw / 2
+            if layout == "fullscreen":
+                # Tight zoom: crop 9:16 strip around face
+                vw = frame_h * 9 / 16   # 405px for 720p
+                vh = float(frame_h)      # 720
+                if bbox:
+                    vx = bbox["cx"] - vw / 2
+                else:
+                    vx = (frame_w - vw) / 2
+                vx = max(0.0, min(vx, frame_w - vw))
+                if vw >= frame_w * 0.98:
+                    return f"scale={out_w}:{out_h}"
+                return f"crop={vw:.1f}:{vh:.1f}:{vx:.1f}:0,scale={out_w}:{out_h}"
             else:
-                vx = (frame_w - vw) / 2  # center crop
-            vx = max(0.0, min(vx, frame_w - vw))
-            if vw >= frame_w * 0.98:
+                # Wide view: fit full 16:9 frame into 9:15 output with letterbox
+                # Scale so width fills 720, height = 720*9/16 = 405, pad to 1280
+                pad_h = out_h - int(out_w * 9 / 16)  # 1280 - 720*9/16 = 1280-405 = 875
+                if pad_h > 0:
+                    top_pad = pad_h // 2
+                    lh = int(out_w * frame_h / frame_w)  # target height
+                    return (f"scale={out_w}:-1," +  # scale to fit width
+                           f"pad={out_w}:{out_h}:(ow-iw)/2:{top_pad}:black")
                 return f"scale={out_w}:{out_h}"
-            return f"crop={vw:.1f}:{vh:.1f}:{vx:.1f}:0,scale={out_w}:{out_h}"
 
         # ── Landscape: head-and-shoulders ──
         if not bbox:
