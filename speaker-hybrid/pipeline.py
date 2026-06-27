@@ -165,7 +165,12 @@ class Pipeline:
         return None
 
     def _get_speaker_bbox(self, face_data: dict, speaker_id: str,
-                          start: float, end: float) -> dict | None:
+                          start: float, end: float,
+                          frame_w: int = 1280, frame_h: int = 720) -> dict | None:
+        """Average face bounding box for a speaker in [start, end] range.
+        Returns {cx, cy, w, h} or None if no valid face found.
+        Filters false-positive detections at frame edges.
+        Falls back to best face in range if speaker_id not found."""
         boxes = []
         for entry in face_data.get("timeline", []):
             t = entry.get("time", 0)
@@ -173,32 +178,55 @@ class Pipeline:
                 continue
             for face in entry.get("faces", []):
                 if face.get("speaker_id") == speaker_id:
+                    cx, cy = face.get("cx", 0), face.get("cy", 0)
+                    if cx <= 10 or cy <= 10 or cx >= frame_w - 10 or cy >= frame_h - 10:
+                        continue  # false positive at edge
                     boxes.append(face)
-        if not boxes:
+
+        if boxes:
+            return {
+                "cx": sum(b["cx"] for b in boxes) / len(boxes),
+                "cy": sum(b["cy"] for b in boxes) / len(boxes),
+                "w":  sum(b["w"] for b in boxes) / len(boxes),
+                "h":  sum(b["h"] for b in boxes) / len(boxes),
+            }
+
+        # Fallback: best face in range (largest × most central)
+        candidates = []
+        for entry in face_data.get("timeline", []):
+            t = entry.get("time", 0)
+            if t < start - 0.2 or t > end + 0.2:
+                continue
+            for face in entry.get("faces", []):
+                cx, cy = face.get("cx", 0), face.get("cy", 0)
+                w, h = face.get("w", 0), face.get("h", 0)
+                if cx <= 10 or cy <= 10 or cx >= frame_w - 10 or cy >= frame_h - 10:
+                    continue
+                if w < 30 or h < 30:
+                    continue  # too small = noise
+                dist = abs(cx - frame_w/2) + abs(cy - frame_h/2)
+                score = (w * h) / max(dist, 1)
+                candidates.append((score, cx, cy, w, h))
+
+        if not candidates:
             return None
-        return {
-            "cx": sum(b["cx"] for b in boxes) / len(boxes),
-            "cy": sum(b["cy"] for b in boxes) / len(boxes),
-            "w":  sum(b["w"] for b in boxes) / len(boxes),
-            "h":  sum(b["h"] for b in boxes) / len(boxes),
-        }
+        best = max(candidates, key=lambda x: x[0])
+        return {"cx": best[1], "cy": best[2], "w": best[3], "h": best[4]}
 
     @staticmethod
     def _build_crop_filter(bbox: dict | None, frame_w: int, frame_h: int,
                            out_w: int, out_h: int,
                            vertical: bool = False) -> str:
-        """
-        Build ffmpeg filter string.
+        """Build ffmpeg filter string.
 
+        vertical: 9:16 strip centered on speaker's face, scale to out.
         landscape: head-and-shoulders crop (5x/4x expansion), scale to out.
-        vertical:  9:16 strip centered on speaker's face, scale to out.
         """
         if vertical:
-            vw = frame_h * 9 / 16  # 405px for 720p input
+            vw = frame_h * 9 / 16   # 405px for 720p input
             vh = float(frame_h)
             if bbox:
                 vx = bbox["cx"] - vw / 2
-                # Keep face ~35% from left in the 9:16 frame
             else:
                 vx = (frame_w - vw) / 2  # center crop
             vx = max(0.0, min(vx, frame_w - vw))
@@ -277,28 +305,26 @@ class Pipeline:
             speakers = scene.get("speakers_visible", [])
             primary = scene.get("primary_speaker")
 
-            # Pick which speaker ID to frame (primary for fullscreen,
-            # first visible for split/multi)
+            # Target speaker: primary (if set) or first visible
             target_sid = primary or (speakers[0] if speakers else None)
 
             bbox = None
-            if face_data and target_sid:
-                bbox = self._get_speaker_bbox(face_data, target_sid,
-                                              start, start + dur)
+            if face_data:
+                bbox = self._get_speaker_bbox(
+                    face_data, target_sid or "",
+                    start, start + dur,
+                    frame_w=frame_w, frame_h=frame_h)
 
             if bbox:
                 vf = self._build_crop_filter(
                     bbox, frame_w, frame_h, out_w, out_h, vertical=self.vertical)
-                desc = f"crop→{target_sid}"
+                desc = f"crop to cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}"
             else:
                 vf = self._build_crop_filter(
                     None, frame_w, frame_h, out_w, out_h, vertical=self.vertical)
-                desc = "center crop" if self.vertical else "full frame"
+                desc = "center crop"
 
-            log(f"    Scene {i+1}: {layout} ({desc}) "
-                f"{start:.1f}s-{start+dur:.1f}s"
-                + (f" [bbox cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}]"
-                   if bbox else ""))
+            log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
 
             run_cmd([
                 "ffmpeg", "-y", "-ss", f"{start:.2f}",
