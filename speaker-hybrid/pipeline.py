@@ -294,7 +294,7 @@ class Pipeline:
         else:
             bottom = f"[0:v]scale={out_w}:{half_h}[bottom]"
 
-        return f"{top}{bottom}[top][bottom]vstack=inputs=2[v]"
+        return f"{top};{bottom};[top][bottom]vstack=inputs=2[v]"
 
     # ── Render ──────────────────────────────────────────────────────
 
@@ -382,6 +382,7 @@ class Pipeline:
                     "-t", f"{dur:.2f}",
                     "-filter_complex", vf,
                     "-map", "[v]",
+                    "-map", "0:a?",
                     "-c:v", "libx264", "-preset", "fast", "-crf", "22",
                     "-c:a", "aac",
                     str(seg_out)
