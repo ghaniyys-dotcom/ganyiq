@@ -212,6 +212,71 @@ class Pipeline:
             return None
         best = max(candidates, key=lambda x: x[0])
         return {"cx": best[1], "cy": best[2], "w": best[3], "h": best[4]}
+
+    def _get_secondary_bbox(self, face_data: dict,
+                            start: float, end: float,
+                            primary_bbox: dict | None,
+                            frame_w: int = 1280) -> dict | None:
+        """Find the SECOND most prominent face position in [start, end] range.
+
+        Groups ALL face detections by horizontal position (rounded to nearest 50px),
+        picks the two most frequent clusters, returns the cluster that's NOT the
+        primary speaker's position. This avoids tracker/speaker_id fragmentation.
+        """
+        from collections import defaultdict
+
+        clusters: dict[int, list[dict]] = defaultdict(list)
+
+        for entry in face_data.get("timeline", []):
+            t = entry.get("time", 0)
+            if t < start - 0.2 or t > end + 0.2:
+                continue
+            for face in entry.get("faces", []):
+                cx = face.get("cx", 0)
+                cy = face.get("cy", 0)
+                w = face.get("w", 0)
+                h = face.get("h", 0)
+                if cx <= 10 or cy <= 10 or cx >= frame_w - 10:
+                    continue
+                if w < 30 or h < 30:
+                    continue
+                # Cluster by horizontal position
+                cluster_key = round(cx / 50) * 50
+                clusters[cluster_key].append(face)
+
+        if not clusters:
+            return None
+
+        # Sort by detection count (most common first)
+        sorted_clusters = sorted(
+            clusters.values(), key=lambda c: len(c), reverse=True
+        )
+
+        # If primary known, pick the cluster that's clearly different (≥150px away)
+        if primary_bbox:
+            primary_cx = primary_bbox["cx"]
+            for cluster in sorted_clusters:
+                avg_cx = sum(f["cx"] for f in cluster) / len(cluster)
+                if abs(avg_cx - primary_cx) >= 150:
+                    return {
+                        "cx": sum(f["cx"] for f in cluster) / len(cluster),
+                        "cy": sum(f["cy"] for f in cluster) / len(cluster),
+                        "w":  sum(f["w"] for f in cluster) / len(cluster),
+                        "h":  sum(f["h"] for f in cluster) / len(cluster),
+                    }
+
+        # Fallback: second cluster (may be same person, but offset)
+        if len(sorted_clusters) >= 2:
+            cluster = sorted_clusters[1]
+            return {
+                "cx": sum(f["cx"] for f in cluster) / len(cluster),
+                "cy": sum(f["cy"] for f in cluster) / len(cluster),
+                "w":  sum(f["w"] for f in cluster) / len(cluster),
+                "h":  sum(f["h"] for f in cluster) / len(cluster),
+            }
+
+        return None
+
     @staticmethod
     def _build_crop_filter(bbox: dict | None, frame_w: int, frame_h: int,
                            out_w: int, out_h: int,
@@ -388,15 +453,10 @@ class Pipeline:
                         face_data, target_sid or "",
                         start, start + dur,
                         frame_w=frame_w, frame_h=frame_h)
-                    # Secondary speaker: second visible speaker, or fallback
-                    secondary_sid = None
-                    if len(speakers) >= 2:
-                        secondary_sid = speakers[1] if speakers[0] == target_sid else speakers[0]
-                    if secondary_sid:
-                        bbox_secondary = self._get_speaker_bbox(
-                            face_data, secondary_sid,
-                            start, start + dur,
-                            frame_w=frame_w, frame_h=frame_h)
+                    # Find second face by POSITION (robust to speaker_id fragmentation)
+                    bbox_secondary = self._get_secondary_bbox(
+                        face_data, start, start + dur,
+                        bbox_primary, frame_w=frame_w)
 
                 vf = self._build_split_filter(
                     bbox_primary, bbox_secondary,
