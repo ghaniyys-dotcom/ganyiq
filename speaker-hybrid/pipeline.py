@@ -230,7 +230,7 @@ class Pipeline:
                 ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{end:.1f}s")
 
             # Write to concat file
-            concat_lines.append(f"file '{seg_out.name}'")
+            concat_lines.append(f"file '{seg_out.as_posix()}'")
 
         # Concat all segments
         concat_file = self.work_dir / "concat.txt"
