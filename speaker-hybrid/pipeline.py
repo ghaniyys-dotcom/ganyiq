@@ -150,6 +150,9 @@ class Pipeline:
         self._render(result)
 
         # Cleanup temp files
+        face_data_path = result.get("face_data_path")
+        if face_data_path and os.path.exists(face_data_path):
+            os.remove(face_data_path)
         for f in [self.audio_path, self.diarization_path, self.face_data_path]:
             if f.exists():
                 f.unlink()
@@ -169,8 +172,65 @@ class Pipeline:
 
         return result
 
+    # ── Face data helpers for layout rendering ──────────────────────
+
+    def _load_face_data(self, result: dict) -> dict | None:
+        """Load face detection data for crop coordinates."""
+        face_path = result.get("face_data_path")
+        if face_path and os.path.exists(face_path):
+            with open(face_path) as f:
+                return json.load(f)
+        return None
+
+    def _get_speaker_bbox(self, face_data: dict, speaker_id: str,
+                          start: float, end: float) -> dict | None:
+        """Average face bounding box for a speaker in [start, end] range.
+        Returns {cx, cy, w, h} or None if speaker not found."""
+        boxes = []
+        for entry in face_data.get("timeline", []):
+            t = entry.get("time", 0)
+            if t < start - 0.2 or t > end + 0.2:
+                continue
+            for face in entry.get("faces", []):
+                if face.get("speaker_id") == speaker_id:
+                    boxes.append(face)
+
+        if not boxes:
+            return None
+        return {
+            "cx": sum(b["cx"] for b in boxes) / len(boxes),
+            "cy": sum(b["cy"] for b in boxes) / len(boxes),
+            "w":  sum(b["w"] for b in boxes) / len(boxes),
+            "h":  sum(b["h"] for b in boxes) / len(boxes),
+        }
+
+    @staticmethod
+    def _build_crop_filter(bbox: dict, frame_w: int, frame_h: int,
+                           out_w: int, out_h: int) -> str:
+        """Build ffmpeg crop+scale filter string for a face bounding box.
+        Expands to head-and-shoulders framing, clamped to frame."""
+        if not bbox:
+            return f"scale={out_w}:{out_h}"
+
+        cw = bbox["w"] * 2.2
+        ch = bbox["h"] * 3.2
+        cx = bbox["cx"] - cw / 2
+        cy = bbox["cy"] - ch * 0.3  # shift up for headroom
+
+        # Clamp
+        cx = max(0.0, min(cx, frame_w - cw))
+        cy = max(0.0, min(cy, frame_h - ch))
+        cw = min(cw, frame_w)
+        ch = min(ch, frame_h)
+
+        # If crop is close to full frame, just scale down
+        if cw / frame_w > 0.75 or ch / frame_h > 0.75:
+            return f"scale={out_w}:{out_h}"
+
+        return f"crop={cw:.0f}:{ch:.0f}:{cx:.0f}:{cy:.0f},scale={out_w}:{out_h}"
+
     def _render(self, result: dict):
-        """Render the output video with dynamic layouts using ffmpeg."""
+        """Render output video with per-layout ffmpeg filter complex."""
         scenes = result.get("split_plan", {}).get("scenes", [])
         if not scenes:
             log("No scenes to render — copying input")
@@ -180,7 +240,19 @@ class Pipeline:
             ], "Copying input video...")
             return
 
-        # Build concat file and segment clips
+        # Detect frame size
+        probe = subprocess.run([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=p=0",
+            str(self.video_path)
+        ], capture_output=True, text=True, timeout=30)
+        dims = probe.stdout.strip().split(",")
+        frame_w, frame_h = (int(dims[0]), int(dims[1])) if len(dims) == 2 else (1280, 720)
+
+        face_data = self._load_face_data(result)
+
         concat_lines = []
         segment_files = []
 
@@ -188,60 +260,129 @@ class Pipeline:
             seg_out = self.work_dir / f"seg_{i:04d}.mp4"
             segment_files.append(seg_out)
 
-            start = max(0, scene["start_sec"])
-            end = min(scene["end_sec"], start + 60)  # cap at 60s segments
+            start = max(0.0, scene["start_sec"])
+            dur = min(scene["end_sec"] - start, 60.0)
             layout = scene["layout"]
+            speakers = scene.get("speakers_visible", [])
+            primary = scene.get("primary_speaker")
+
+            # ─── Build filter complex ────────────────────────────────────────
 
             if layout == "fullscreen":
-                # When no speaker is specified, show full frame
-                # When primary speaker exists, attempt to crop around them
-                run_cmd([
-                    "ffmpeg", "-y", "-ss", str(start),
-                    "-i", str(self.video_path),
-                    "-t", str(end - start),
-                    "-c:v", "libx264", "-preset", "fast",
-                    "-crf", "22",
-                    "-c:a", "aac",
-                    str(seg_out)
-                ], f"  Scene {i+1}/{len(scenes)}: fullscreen {start:.1f}s-{end:.1f}s")
+                bbox = None
+                if face_data and primary:
+                    bbox = self._get_speaker_bbox(face_data, primary, start, start + dur)
+                if bbox:
+                    vf = self._build_crop_filter(bbox, frame_w, frame_h, frame_w, frame_h)
+                    run_cmd([
+                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                        "-i", str(self.video_path),
+                        "-t", f"{dur:.2f}",
+                        "-vf", vf,
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-c:a", "aac",
+                        str(seg_out)
+                    ], f"  Scene {i+1}/{len(scenes)}: fullscreen (crop→{primary}) {start:.1f}s-{start+dur:.1f}s")
+                else:
+                    run_cmd([
+                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                        "-i", str(self.video_path),
+                        "-t", f"{dur:.2f}",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-c:a", "aac",
+                        str(seg_out)
+                    ], f"  Scene {i+1}/{len(scenes)}: fullscreen (no face) {start:.1f}s-{start+dur:.1f}s")
 
             elif layout == "split_screen":
-                # Show full frame (already has all speakers)
-                run_cmd([
-                    "ffmpeg", "-y", "-ss", str(start),
-                    "-i", str(self.video_path),
-                    "-t", str(end - start),
-                    "-c:v", "libx264", "-preset", "fast",
-                    "-crf", "22",
-                    "-c:a", "aac",
-                    str(seg_out)
-                ], f"  Scene {i+1}/{len(scenes)}: split_screen {start:.1f}s-{end:.1f}s")
+                if face_data and speakers:
+                    # Build hstack from cropped per-speaker columns
+                    filters = []
+                    input_ref = "0:v"
+                    n = min(len(speakers), 3)
+                    col_w = frame_w // n
+                    col_h = frame_h
+
+                    for j, sid in enumerate(speakers[:n]):
+                        bbox = self._get_speaker_bbox(face_data, sid, start, start + dur)
+                        if bbox:
+                            crop_filter = self._build_crop_filter(bbox, frame_w, frame_h, col_w, col_h)
+                            filters.append(f"[{input_ref}]{crop_filter}[col{j}];")
+
+                    if len(filters) >= 2:
+                        # Use hstack to combine columns
+                        cols_str = "".join(f"[col{j}]" for j in range(len(filters)))
+                        vf = "".join(filters) + f"{cols_str}hstack=inputs={len(filters)},format=yuv420p"
+                    elif len(filters) == 1:
+                        # Single valid face — just crop to that speaker
+                        vf = filters[0].replace(f"[{input_ref}]", "").replace(f";[col0]", "")
+                        vf = vf.replace(";", "").replace(",format=yuv420p", "")
+                    else:
+                        vf = f"scale={frame_w}:{frame_h}"
+
+                    run_cmd([
+                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                        "-i", str(self.video_path),
+                        "-t", f"{dur:.2f}",
+                        "-filter_complex", vf,
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-c:a", "aac",
+                        str(seg_out)
+                    ], f"  Scene {i+1}/{len(scenes)}: split_screen ({n} cols) {start:.1f}s-{start+dur:.1f}s")
+                else:
+                    run_cmd([
+                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                        "-i", str(self.video_path),
+                        "-t", f"{dur:.2f}",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-c:a", "aac",
+                        str(seg_out)
+                    ], f"  Scene {i+1}/{len(scenes)}: split_screen (no face) {start:.1f}s-{start+dur:.1f}s")
 
             elif layout in ("pip", "side_by_side"):
-                # Same as split_screen for now (layout refinement later)
-                run_cmd([
-                    "ffmpeg", "-y", "-ss", str(start),
-                    "-i", str(self.video_path),
-                    "-t", str(end - start),
-                    "-c:v", "libx264", "-preset", "fast",
-                    "-crf", "22",
-                    "-c:a", "aac",
-                    str(seg_out)
-                ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{end:.1f}s")
+                if face_data and len(speakers) >= 2:
+                    # side_by_side = 2 columns
+                    bbox0 = self._get_speaker_bbox(face_data, speakers[0], start, start + dur)
+                    bbox1 = self._get_speaker_bbox(face_data, speakers[1], start, start + dur)
+                    col_w, col_h = frame_w // 2, frame_h
+                    f0 = self._build_crop_filter(bbox0 or {}, frame_w, frame_h, col_w, col_h)
+                    f1 = self._build_crop_filter(bbox1 or {}, frame_w, frame_h, col_w, col_h)
 
-            # Write to concat file
+                    # If both are no-face fallbacks (scale only), skip filter_complex
+                    if "scale" in f0 and "scale" in f1 and "crop" not in f0 and "crop" not in f1:
+                        vf = f"scale={frame_w}:{frame_h}"
+                    else:
+                        vf = f"[0:v]{f0}[l];[0:v]{f1}[r];[l][r]hstack=inputs=2,format=yuv420p"
+
+                    run_cmd([
+                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                        "-i", str(self.video_path),
+                        "-t", f"{dur:.2f}",
+                        "-filter_complex", vf,
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-c:a", "aac",
+                        str(seg_out)
+                    ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
+                else:
+                    # Fallback to fullframe
+                    run_cmd([
+                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                        "-i", str(self.video_path),
+                        "-t", f"{dur:.2f}",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-c:a", "aac",
+                        str(seg_out)
+                    ], f"  Scene {i+1}/{len(scenes)}: {layout} (fallback) {start:.1f}s-{start+dur:.1f}s")
+
             concat_lines.append(f"file '{seg_out.as_posix()}'")
 
-        # Concat all segments
+        # ─── Concat all segments ────────────────────────────────────────────────
         if len(segment_files) == 1:
-            # Single segment — copy directly
             seg = segment_files[0]
             seg.rename(self.output_path)
             log(f"1 scene — copied directly to output")
         else:
             concat_file = self.work_dir / "concat.txt"
             concat_file.write_text("\n".join(concat_lines))
-
             log(f"Concatenating {len(segment_files)} segments...")
             run_cmd([
                 "ffmpeg", "-y", "-f", "concat", "-safe", "0",
