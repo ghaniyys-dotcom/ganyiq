@@ -320,6 +320,7 @@ class SpeakerIdentifier:
         return [VisualFrame(float(e["time"]), e.get("faces", [])) for e in timeline if e]
 
     def _extract_speakers(self, timeline: list[dict] | None) -> list[dict]:
+        """Extract speaker identities, filtering false positives (< 3s)."""
         if not timeline:
             return []
 
@@ -341,7 +342,12 @@ class SpeakerIdentifier:
             sp["segments"] = merged
             sp["total_speaking"] = round(sum(s["end"] - s["start"] for s in merged), 2)
 
-        return list(seen.values())
+        # Filter: remove speakers visible < 3 seconds (false positives)
+        filtered = [s for s in seen.values() if s["total_speaking"] >= 3.0]
+        removed = len(seen) - len(filtered)
+        if removed > 0:
+            self.log(f"Filtered {removed} false positive speakers (< 3s)")
+        return filtered
 
 
 # =============================================================================
