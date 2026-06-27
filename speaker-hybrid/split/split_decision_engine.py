@@ -88,6 +88,7 @@ class SplitDecisionEngine:
     """
 
     MIN_SEGMENT = 0.8          # seconds — anything shorter is noise
+    MIN_STABLE = 2.0           # minimum desired scene duration
     MIN_SPEAKING_OVERLAP = 0.4 # min fraction of a segment a speaker must be active
     REACTION_LOOKAHEAD = 0.5   # seconds before a reaction to trigger PIP
 
@@ -349,25 +350,23 @@ class SplitDecisionEngine:
         return segments
 
     def _merge_segments(self, segments: list[dict]) -> list[dict]:
-        """Merge adjacent segments with the same layout and speaker config."""
+        """Merge adjacent segments with the same layout and speaker config.
+           Also absorbs very short scenes (< MIN_STABLE) into neighbors."""
         if not segments:
             return []
 
+        # Pass 1: merge same-layout segments
         merged = [dict(segments[0])]
         for cur in segments[1:]:
             prev = merged[-1]
-            # Check if mergeable
             same_layout = cur['layout'] == prev['layout']
             same_primary = cur.get('primary_speaker') == prev.get('primary_speaker')
-            same_secondary = cur.get('secondary_speaker') == prev.get('secondary_speaker')
             short_next = cur['duration'] < self.MIN_SEGMENT
             short_prev = prev['duration'] < self.MIN_SEGMENT
 
             if same_layout and (same_primary or short_next or short_prev):
-                # Merge: extend end time
                 prev['end'] = cur['end']
                 prev['duration'] = prev['end'] - prev['start']
-                # Average confidence (weighted by duration before merge)
                 total = prev['duration'] + cur['duration']
                 prev['confidence'] = (
                     prev['confidence'] * prev['duration'] + cur['confidence'] * cur['duration']
@@ -375,6 +374,44 @@ class SplitDecisionEngine:
                 prev['reactions'] = (prev.get('reactions') or []) + (cur.get('reactions') or [])
             else:
                 merged.append(dict(cur))
+
+        # Pass 2: absorb very short scenes into longer neighbors
+        if len(merged) > 1:
+            i = 1
+            while i < len(merged):
+                cur = merged[i]
+                prev = merged[i - 1]
+
+                # If current scene is very short, merge into neighbor
+                if cur['duration'] < self.MIN_STABLE:
+                    # Merge into whichever neighbor is longer (or previous if same)
+                    if i < len(merged) - 1:
+                        nxt = merged[i + 1]
+                        if nxt['duration'] >= prev['duration']:
+                            # Merge into next
+                            nxt['start'] = cur['start']
+                            nxt['duration'] = nxt['end'] - nxt['start']
+                            nxt['confidence'] = (nxt['confidence'] * nxt['duration'] + cur['confidence'] * cur['duration']) / (nxt['duration'] + cur['duration'] + 0.001)
+                            nxt['reactions'] = (nxt.get('reactions') or []) + (cur.get('reactions') or [])
+                            merged.pop(i)
+                            continue
+                    # Merge into previous
+                    prev['end'] = cur['end']
+                    prev['duration'] = prev['end'] - prev['start']
+                    prev['confidence'] = (prev['confidence'] * prev['duration'] + cur['confidence'] * cur['duration']) / (prev['duration'] + cur['duration'] + 0.001)
+                    prev['reactions'] = (prev.get('reactions') or []) + (cur.get('reactions') or [])
+                    merged.pop(i)
+                    continue
+
+                # Also check if next scene is very short (pre-emptive merge backward)
+                if i < len(merged) - 1:
+                    nxt = merged[i + 1]
+                    if nxt['duration'] < self.MIN_STABLE:
+                        # Just let the next iteration handle it by skipping i increment
+                        i += 1
+                        continue
+
+                i += 1
 
         return merged
 
