@@ -289,6 +289,16 @@ class Pipeline:
                 for f in e.get("faces", []) if f.get("speaker_id")
             ))
             log(f"Face data loaded: {n_frames} frames, {n_speakers_face} speaker IDs")
+
+            # Debug: sample first 3 frames to see face structure
+            sample = face_data.get("timeline", [])[:3]
+            for ei, entry in enumerate(sample):
+                faces = entry.get("faces", [])
+                for fi, face in enumerate(faces[:2]):
+                    log(f"  face[{ei}][{fi}]: cx={face.get('cx')} cy={face.get('cy')} "
+                        f"w={face.get('w')} h={face.get('h')} "
+                        f"sid={face.get('speaker_id')} "
+                        f"tid={face.get('track_id')}")
         else:
             log("Face data NOT available — all scenes will be center crop")
 
