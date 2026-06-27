@@ -123,7 +123,7 @@ def yolo_detect_faces(session, input_name, frame, conf_threshold=0.25):
 
     if is_v10:
         # ── YOLOv10 format: [300, 6] ──
-        # raw shape = (6, 300) if WxH or (300, 6) if HxW
+        # Coordinates are absolute pixel values (0-640) on 640x640 input
         if raw.shape[0] == 6 and raw.shape[1] > 6:
             raw = raw.T  # ensure (N, 6)
         for pred in raw:
@@ -131,17 +131,13 @@ def yolo_detect_faces(session, input_name, frame, conf_threshold=0.25):
             confidence = float(confidence)
             if confidence < conf_threshold:
                 continue
-            # Convert xyxy → cxcywh
+            # Convert xyxy → cxcywh in padded 640x640 space
             cx = (float(x1) + float(x2)) / 2
             cy = (float(y1) + float(y2)) / 2
             w = float(x2) - float(x1)
             h = float(y2) - float(y1)
-            # Coordinates are relative to 640x640 input
-            cx *= img_w
-            cy *= img_h
-            w *= img_w
-            h *= img_h
-            # Undo padding + scale
+            # Map from padded 640x640 → original frame coordinates
+            # (NO multiply by img_w — values are already pixel-space)
             cx = (cx - dw / 2) / scale
             cy = (cy - dh / 2) / scale
             w = w / scale
