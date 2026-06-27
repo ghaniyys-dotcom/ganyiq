@@ -267,32 +267,41 @@ class Pipeline:
         return f"crop={cw:.0f}:{ch:.0f}:{cx:.0f}:{cy:.0f},scale={out_w}:{out_h}"
 
     @staticmethod
-    def _build_split_filter(bbox: dict | None, frame_w: int, frame_h: int,
+    def _build_split_filter(bbox_top: dict | None, bbox_bottom: dict | None,
+                            frame_w: int, frame_h: int,
                             out_w: int, out_h: int) -> str:
         """Build filter_complex for split-screen vertical (9:16).
 
-        Top half (720x640): tight crop to speaker's face
-        Bottom half (720x640): full 16:9 frame letterboxed (context wide shot)
+        Top half (720x640): tight crop to primary speaker's face
+        Bottom half (720x640): tight crop to SECONDARY speaker / reactor
         vstack → 720x1280
+
+        If bbox_bottom is None, fall back to full frame letterboxed.
         """
         vw = frame_h * 9 / 16          # 405px for 720p
         half_h = out_h // 2            # 640
 
         # Top: crop 405px strip around primary face → scale to 720x640
-        if bbox:
-            vx = max(0.0, min(bbox["cx"] - vw / 2, frame_w - vw))
+        if bbox_top:
+            vx = max(0.0, min(bbox_top["cx"] - vw / 2, frame_w - vw))
         else:
             vx = (frame_w - vw) / 2
         top = f"[0:v]crop={vw:.1f}:{frame_h:.1f}:{vx:.1f}:0,scale={out_w}:{half_h}[top]"
 
-        # Bottom: full frame letterboxed into 720x640
-        pad_h = half_h - int(out_w * 9 / 16)  # 640 - 405 = 235
-        if pad_h > 0:
-            top_pad = pad_h // 2
-            bottom = (f"[0:v]scale={out_w}:-1,"
-                      f"pad={out_w}:{half_h}:(ow-iw)/2:{top_pad}:black[bottom]")
+        if bbox_bottom:
+            # Bottom: crop to reactor's face (different cx from primary)
+            vx_bot = max(0.0, min(bbox_bottom["cx"] - vw / 2, frame_w - vw))
+            bottom = (f"[0:v]crop={vw:.1f}:{frame_h:.1f}:{vx_bot:.1f}:0,"
+                      f"scale={out_w}:{half_h}[bottom]")
         else:
-            bottom = f"[0:v]scale={out_w}:{half_h}[bottom]"
+            # Fallback: full frame letterboxed
+            pad_h = half_h - int(out_w * 9 / 16)
+            if pad_h > 0:
+                top_pad = pad_h // 2
+                bottom = (f"[0:v]scale={out_w}:-1,"
+                          f"pad={out_w}:{half_h}:(ow-iw)/2:{top_pad}:black[bottom]")
+            else:
+                bottom = f"[0:v]scale={out_w}:{half_h}[bottom]"
 
         return f"{top};{bottom};[top][bottom]vstack=inputs=2[v]"
 
@@ -371,10 +380,32 @@ class Pipeline:
             is_split = self.vertical and layout != "fullscreen"
 
             if is_split:
-                # ── Split screen: speaker closeup top + context wide bottom ──
+                # ── Split screen: primary face top + secondary face bottom ──
+                bbox_primary = None
+                bbox_secondary = None
+                if face_data:
+                    bbox_primary = self._get_speaker_bbox(
+                        face_data, target_sid or "",
+                        start, start + dur,
+                        frame_w=frame_w, frame_h=frame_h)
+                    # Secondary speaker: second visible speaker, or fallback
+                    secondary_sid = None
+                    if len(speakers) >= 2:
+                        secondary_sid = speakers[1] if speakers[0] == target_sid else speakers[0]
+                    if secondary_sid:
+                        bbox_secondary = self._get_speaker_bbox(
+                            face_data, secondary_sid,
+                            start, start + dur,
+                            frame_w=frame_w, frame_h=frame_h)
+
                 vf = self._build_split_filter(
-                    bbox, frame_w, frame_h, out_w, out_h)
-                desc = f"split: face cx={bbox['cx']:.0f}" if bbox else "split: center"
+                    bbox_primary, bbox_secondary,
+                    frame_w, frame_h, out_w, out_h)
+                desc = "split"
+                if bbox_primary:
+                    desc += f" primary=cx{bbox_primary['cx']:.0f}"
+                if bbox_secondary:
+                    desc += f" secondary=cx{bbox_secondary['cx']:.0f}"
                 log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
                 run_cmd([
                     "ffmpeg", "-y", "-ss", f"{start:.2f}",

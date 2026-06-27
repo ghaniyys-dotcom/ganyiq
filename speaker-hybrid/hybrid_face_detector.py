@@ -252,10 +252,15 @@ def load_mediapipe():
         return None
 
 
-def extract_mp_landmarks(landmarker, frame, timestamp_ms):
-    """Extract MediaPipe face mesh from a frame."""
+def extract_mp_faces(landmarker, frame, timestamp_ms):
+    """Extract MediaPipe face detections + landmarks from a frame.
+
+    Returns (face_list, landmarks_list):
+      - face_list: [{cx, cy, w, h, confidence}] for each detected face
+      - landmarks_list: [468-point mesh] for each detected face
+    """
     if landmarker is None:
-        return []
+        return [], []
 
     import mediapipe as mp
     from mediapipe.tasks.python import vision
@@ -263,14 +268,59 @@ def extract_mp_landmarks(landmarker, frame, timestamp_ms):
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
     detection_result = landmarker.detect_for_video(mp_image, timestamp_ms)
 
+    faces = []
     landmarks_list = []
+    frame_w = float(frame.shape[1])
+    frame_h = float(frame.shape[0])
+
     for face_landmarks in detection_result.face_landmarks:
-        points = []
-        for lm in face_landmarks:
-            points.append([lm.x, lm.y, lm.z])
+        # Compute bounding box from landmark extremas
+        xs = [lm.x * frame_w for lm in face_landmarks]
+        ys = [lm.y * frame_h for lm in face_landmarks]
+        x_min, x_max = min(xs), max(xs)
+        y_min, y_max = min(ys), max(ys)
+        cx = round((x_min + x_max) / 2, 1)
+        cy = round((y_min + y_max) / 2, 1)
+        w = int(round(x_max - x_min))
+        h = int(round(y_max - y_min))
+
+        # Skip very small detections (noise)
+        if w < 20 or h < 20:
+            continue
+
+        faces.append({
+            "cx": cx,
+            "cy": cy,
+            "w": w,
+            "h": h,
+            "confidence": 0.5,  # MediaPipe doesn't expose score via Landmarker
+        })
+
+        # Store landmarks
+        points = [[lm.x, lm.y, lm.z] for lm in face_landmarks]
         landmarks_list.append(points)
 
-    return landmarks_list
+    return faces, landmarks_list
+
+
+def face_iou(a: dict, b: dict) -> float:
+    """IoU between two face dicts with cx, cy, w, h."""
+    ax1 = a["cx"] - a["w"] / 2
+    ay1 = a["cy"] - a["h"] / 2
+    ax2 = a["cx"] + a["w"] / 2
+    ay2 = a["cy"] + a["h"] / 2
+    bx1 = b["cx"] - b["w"] / 2
+    by1 = b["cy"] - b["h"] / 2
+    bx2 = b["cx"] + b["w"] / 2
+    by2 = b["cy"] + b["h"] / 2
+
+    ix1 = max(ax1, bx1)
+    iy1 = max(ay1, by1)
+    ix2 = min(ax2, bx2)
+    iy2 = min(ay2, by2)
+    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+    union = (ax2 - ax1) * (ay2 - ay1) + (bx2 - bx1) * (by2 - by1) - inter
+    return inter / union if union > 0 else 0.0
 
 
 # =============================================================================
@@ -475,20 +525,36 @@ def process_video(
                     session, input_name, frame, conf_threshold
                 )
 
-            # Step 2: MediaPipe face landmarks
-            mp_landmarks = []
+            # Step 2: MediaPipe face detection + merge with YOLO
+            all_faces = list(yolo_faces)
+            mp_landmarks_dict = {}  # _mp_key → landmarks list
             if mp_landmarker:
-                mp_landmarks = extract_mp_landmarks(
+                mp_faces, mp_landmarks_list = extract_mp_faces(
                     mp_landmarker, frame, int(time_sec * 1000)
                 )
+                # Deduplicate: skip MediaPipe faces that overlap YOLO faces
+                for idx, (mf, ml) in enumerate(zip(mp_faces, mp_landmarks_list)):
+                    overlap = False
+                    for yf in all_faces:
+                        if face_iou(mf, yf) > 0.5:
+                            overlap = True
+                            break
+                    if not overlap:
+                        mf_key = f"mp_{idx}"
+                        mp_landmarks_dict[mf_key] = ml
+                        mf["_mp_key"] = mf_key
+                        all_faces.append(mf)
 
             # Step 3: Tracking
-            tracked_faces = tracker.update(yolo_faces)
+            tracked_faces = tracker.update(all_faces)
 
-            # Step 4: Speaker assignment
+            # Step 4: Speaker assignment + landmark attachment
             speaker_assignments = []
             for face in tracked_faces:
                 speaker_id = clusterer.assign(face)
+                # Attach MediaPipe landmarks if available
+                mp_key = face.get("_mp_key", "")
+                landmarks = mp_landmarks_dict.get(mp_key, face.get("landmarks", {}))
                 speaker_assignments.append({
                     "cx": face["cx"],
                     "cy": face["cy"],
@@ -497,7 +563,7 @@ def process_video(
                     "confidence": face["confidence"],
                     "track_id": face.get("track_id", -1),
                     "speaker_id": speaker_id,
-                    "landmarks": face.get("landmarks", {}),
+                    "landmarks": landmarks,
                 })
 
             results.append({
