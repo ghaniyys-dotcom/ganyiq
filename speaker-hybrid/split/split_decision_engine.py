@@ -181,43 +181,15 @@ class SplitDecisionEngine:
 
     def _parse_reactions(self, raw: list[dict]) -> dict[str, list[dict]]:
         """Index reactions by speaker_id → list of reaction events.
-           Supports both grouped format (with 'reactions' sub-key) and
-           flat per-frame format (from reaction-detector.py)."""
+           Expects grouped format (with 'reactions' or 'timeline' sub-key per speaker).
+           Silent skip on flat per-frame format (reaction boundaries add noise)."""
         indexed: dict[str, list[dict]] = {}
-
-        # Detect format: check if entries have 'reactions' sub-key
-        has_subkey = any(r.get('reactions') or r.get('timeline') for r in raw[:5])
-
-        if has_subkey:
-            # Grouped by speaker format: each entry has speaker_id + reactions[]
-            for r in raw:
-                sid = r.get('speaker_id', r.get('id', 'unknown'))
-                events = r.get('reactions') or r.get('timeline') or []
-                for ev in events:
-                    indexed.setdefault(sid, []).append({
-                        'speaker_id': sid,
-                        'reaction_type': ev.get('type', ev.get('reaction', ev.get('reaction_type', 'unknown'))),
-                        'intensity': ev.get('intensity', ev.get('confidence', ev.get('scores', {}).get('lip_movement', 0.5))),
-                        'time': ev.get('time', 0),
-                    })
-        else:
-            # Flat per-frame format: each entry is one reaction at one time
-            for r in raw:
-                sid = r.get('speaker', r.get('speaker_id', r.get('track_id', 'unknown')))
-                t = r.get('time', 0)
-                scores = r.get('scores', {})
-                lip = scores.get('lip_movement', 0)
-                indexed.setdefault(str(sid), []).append({
-                    'speaker_id': str(sid),
-                    'reaction_type': r.get('reaction', 'unknown'),
-                    'intensity': lip,
-                    'time': t,
-                    'lip_movement': lip,
-                    'smile': scores.get('smile', 0),
-                    'surprise': scores.get('surprise', 0),
-                    'head_movement': scores.get('head_movement', 0),
-                })
-
+        for r in raw:
+            sid = r.get('speaker_id', r.get('id', 'unknown'))
+            events = r.get('reactions') or r.get('timeline') or []
+            if not events:
+                continue
+            indexed.setdefault(sid, []).extend(events)
         return indexed
 
     def _build_segments(
@@ -376,28 +348,6 @@ class SplitDecisionEngine:
                 continue
 
             if n >= 3:
-                # Check if one speaker is lip-dominant (actually talking)
-                speaker_lip_scores: dict[str, float] = {}
-                for r in reactions:
-                    sid = r.get('speaker_id', r.get('speaker'))
-                    lip = r.get('lip_movement', r.get('intensity', 0))
-                    if sid:
-                        speaker_lip_scores[sid] = max(speaker_lip_scores.get(sid, 0), lip)
-
-                if speaker_lip_scores:
-                    best_lip_speaker = max(speaker_lip_scores, key=speaker_lip_scores.get)
-                    best_lip_score = speaker_lip_scores[best_lip_speaker]
-                    sorted_lip = sorted(speaker_lip_scores.values(), reverse=True)
-                    lip_dominance = (sorted_lip[0] - (sorted_lip[1] if len(sorted_lip) > 1 else 0)) if sorted_lip else 0
-
-                    if best_lip_score >= 0.2 and lip_dominance >= 0.1:
-                        seg['layout'] = 'fullscreen'
-                        seg['layout_score'] = _layout_to_score('fullscreen')
-                        seg['primary_speaker'] = best_lip_speaker
-                        seg['confidence'] = 0.5 + min(best_lip_score, 0.4)
-                        seg['reason'] = f"Lip-dominant {best_lip_speaker} (lip={best_lip_score:.2f})"
-                        continue
-
                 seg['layout'] = 'split_screen'
                 seg['layout_score'] = _layout_to_score('split_screen')
                 seg['confidence'] = 0.5

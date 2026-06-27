@@ -233,17 +233,22 @@ class Pipeline:
             concat_lines.append(f"file '{seg_out.as_posix()}'")
 
         # Concat all segments
-        concat_file = self.work_dir / "concat.txt"
-        concat_file.write_text("\n".join(concat_lines))
+        if len(segment_files) == 1:
+            # Single segment — copy directly
+            seg = segment_files[0]
+            seg.rename(self.output_path)
+            log(f"1 scene — copied directly to output")
+        else:
+            concat_file = self.work_dir / "concat.txt"
+            concat_file.write_text("\n".join(concat_lines))
 
-        log(f"Concatenating {len(segment_files)} segments...")
-        run_cmd([
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", str(concat_file),
-            "-c:v", "libx264", "-preset", "fast",
-            "-c:a", "aac",
-            str(self.output_path)
-        ], "Rendering final output...")
+            log(f"Concatenating {len(segment_files)} segments...")
+            run_cmd([
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(concat_file),
+                "-c", "copy",
+                str(self.output_path)
+            ], "Rendering final output...")
 
 
 def main():
