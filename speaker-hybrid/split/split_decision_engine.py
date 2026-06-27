@@ -180,14 +180,44 @@ class SplitDecisionEngine:
         return out
 
     def _parse_reactions(self, raw: list[dict]) -> dict[str, list[dict]]:
-        """Index reactions by speaker_id → list of reaction events."""
+        """Index reactions by speaker_id → list of reaction events.
+           Supports both grouped format (with 'reactions' sub-key) and
+           flat per-frame format (from reaction-detector.py)."""
         indexed: dict[str, list[dict]] = {}
-        for r in raw:
-            sid = r.get('speaker_id', r.get('id', 'unknown'))
-            reactions = r.get('reactions') or r.get('timeline') or []
-            if not reactions:
-                continue
-            indexed.setdefault(sid, []).extend(reactions)
+
+        # Detect format: check if entries have 'reactions' sub-key
+        has_subkey = any(r.get('reactions') or r.get('timeline') for r in raw[:5])
+
+        if has_subkey:
+            # Grouped by speaker format: each entry has speaker_id + reactions[]
+            for r in raw:
+                sid = r.get('speaker_id', r.get('id', 'unknown'))
+                events = r.get('reactions') or r.get('timeline') or []
+                for ev in events:
+                    indexed.setdefault(sid, []).append({
+                        'speaker_id': sid,
+                        'reaction_type': ev.get('type', ev.get('reaction', ev.get('reaction_type', 'unknown'))),
+                        'intensity': ev.get('intensity', ev.get('confidence', ev.get('scores', {}).get('lip_movement', 0.5))),
+                        'time': ev.get('time', 0),
+                    })
+        else:
+            # Flat per-frame format: each entry is one reaction at one time
+            for r in raw:
+                sid = r.get('speaker', r.get('speaker_id', r.get('track_id', 'unknown')))
+                t = r.get('time', 0)
+                scores = r.get('scores', {})
+                lip = scores.get('lip_movement', 0)
+                indexed.setdefault(str(sid), []).append({
+                    'speaker_id': str(sid),
+                    'reaction_type': r.get('reaction', 'unknown'),
+                    'intensity': lip,
+                    'time': t,
+                    'lip_movement': lip,
+                    'smile': scores.get('smile', 0),
+                    'surprise': scores.get('surprise', 0),
+                    'head_movement': scores.get('head_movement', 0),
+                })
+
         return indexed
 
     def _build_segments(
@@ -344,7 +374,7 @@ class SplitDecisionEngine:
                 speaker_lip_scores: dict[str, float] = {}
                 for r in reactions:
                     sid = r.get('speaker_id', r.get('speaker'))
-                    lip = r.get('scores', {}).get('lip_movement', 0)
+                    lip = r.get('lip_movement', r.get('intensity', 0))
                     if sid:
                         speaker_lip_scores[sid] = max(speaker_lip_scores.get(sid, 0), lip)
 
@@ -354,7 +384,7 @@ class SplitDecisionEngine:
                     sorted_lip = sorted(speaker_lip_scores.values(), reverse=True)
                     lip_dominance = (sorted_lip[0] - (sorted_lip[1] if len(sorted_lip) > 1 else 0)) if sorted_lip else 0
 
-                    if best_lip_score >= 0.3 and lip_dominance >= 0.15:
+                    if best_lip_score >= 0.2 and lip_dominance >= 0.1:
                         seg['layout'] = 'fullscreen'
                         seg['layout_score'] = _layout_to_score('fullscreen')
                         seg['primary_speaker'] = best_lip_speaker
