@@ -212,6 +212,7 @@ class SpeakerIdentifier:
             speakers=speaker_list or [],
             reactions=reaction_result.get("reactions", []),
             video_duration=float(video_dur) if video_dur else None,
+            timeline=matched_timeline or [],
         )
 
         split_plan = {
