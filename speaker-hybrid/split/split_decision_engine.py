@@ -340,6 +340,28 @@ class SplitDecisionEngine:
                 continue
 
             if n >= 3:
+                # Check if one speaker is lip-dominant (actually talking)
+                speaker_lip_scores: dict[str, float] = {}
+                for r in reactions:
+                    sid = r.get('speaker_id', r.get('speaker'))
+                    lip = r.get('scores', {}).get('lip_movement', 0)
+                    if sid:
+                        speaker_lip_scores[sid] = max(speaker_lip_scores.get(sid, 0), lip)
+
+                if speaker_lip_scores:
+                    best_lip_speaker = max(speaker_lip_scores, key=speaker_lip_scores.get)
+                    best_lip_score = speaker_lip_scores[best_lip_speaker]
+                    sorted_lip = sorted(speaker_lip_scores.values(), reverse=True)
+                    lip_dominance = (sorted_lip[0] - (sorted_lip[1] if len(sorted_lip) > 1 else 0)) if sorted_lip else 0
+
+                    if best_lip_score >= 0.3 and lip_dominance >= 0.15:
+                        seg['layout'] = 'fullscreen'
+                        seg['layout_score'] = _layout_to_score('fullscreen')
+                        seg['primary_speaker'] = best_lip_speaker
+                        seg['confidence'] = 0.5 + min(best_lip_score, 0.4)
+                        seg['reason'] = f"Lip-dominant {best_lip_speaker} (lip={best_lip_score:.2f})"
+                        continue
+
                 seg['layout'] = 'split_screen'
                 seg['layout_score'] = _layout_to_score('split_screen')
                 seg['confidence'] = 0.5
