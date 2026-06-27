@@ -236,9 +236,15 @@ class SplitDecisionEngine:
                 boundaries.add(seg.get('end', 0))
 
         for sid, events in reactions.items():
+            # Aggregate reaction boundaries: only add a boundary every 1s
+            # to avoid creating microscopic segments
+            seen_times: set[float] = set()
             for ev in events:
-                boundaries.add(ev.get('time', 0) - self.REACTION_LOOKAHEAD)
-                boundaries.add(ev.get('time', 0) + 0.3)
+                t = round(ev.get('time', 0) * 2) / 2  # round to 0.5s
+                if t not in seen_times:
+                    boundaries.add(t - self.REACTION_LOOKAHEAD)
+                    boundaries.add(t + 0.3)
+                    seen_times.add(t)
 
         boundaries = sorted(b for b in boundaries if b >= 0)
 
