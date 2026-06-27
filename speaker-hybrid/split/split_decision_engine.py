@@ -111,7 +111,6 @@ class SplitDecisionEngine:
         speakers: list[dict],
         reactions: list[dict],
         video_duration: Optional[float] = None,
-        timeline: Optional[list[dict]] = None,
     ) -> SplitResult:
         """
         Main entry point.
@@ -124,8 +123,6 @@ class SplitDecisionEngine:
             ReactionTimeline list from reaction-detector.py
         video_duration : float, optional
             Total video duration in seconds (used for edge segments).
-        timeline : list[dict], optional
-            AVM matched timeline with audio_speakers/visual_speakers info.
 
         Returns
         -------
@@ -133,7 +130,6 @@ class SplitDecisionEngine:
         """
         parsed_speakers = self._parse_speakers(speakers)
         parsed_reactions = self._parse_reactions(reactions)
-        self._avm_timeline = timeline or []  # store for use in scoring
 
         if not parsed_speakers:
             return SplitResult(warnings=["No speakers provided — fullscreen only"])
@@ -224,25 +220,6 @@ class SplitDecisionEngine:
 
         return indexed
 
-    def _find_audio_primary(self, t_start: float, t_end: float) -> str | None:
-        """Find the audio-matched visual speaker for a time range from AVM timeline."""
-        if not self._avm_timeline:
-            return None
-        for entry in self._avm_timeline:
-            e_start = entry.get("start", 0)
-            e_end = entry.get("end", 0)
-            if t_start < e_end and t_end > e_start:
-                audio = entry.get("audio_speakers", [])
-                if audio:
-                    matched = entry.get("matched_speakers", [])
-                    if len(matched) == 1:
-                        return matched[0]
-                    visual = entry.get("visual_speakers", [])
-                    if matched and len(matched) < len(visual):
-                        return matched[0]
-                    return f"audio_{audio[0]}"
-        return None
-
     def _build_segments(
         self, speakers: list[dict], reactions: dict[str, list[dict]]
     ) -> list[dict]:
@@ -326,9 +303,6 @@ class SplitDecisionEngine:
             n = seg['n_speakers']
             reactions = seg['reactions']
 
-            # -- Check if AVM timeline has an audio-matched speaker for this segment --
-            audio_primary = self._find_audio_primary(seg['start'], seg['end'])
-
             # -- find best layout --
 
             if n == 0:
@@ -347,15 +321,6 @@ class SplitDecisionEngine:
                 seg['layout_score'] = _layout_to_score('fullscreen')
                 seg['confidence'] = 0.3
                 seg['reason'] = 'Silence — default fullscreen'
-                continue
-
-            if n >= 1 and audio_primary:
-                # Audio-confirmed speaker → fullscreen
-                seg['layout'] = 'fullscreen'
-                seg['layout_score'] = _layout_to_score('fullscreen')
-                seg['primary_speaker'] = audio_primary
-                seg['confidence'] = 0.7
-                seg['reason'] = f"Audio-matched: {audio_primary}"
                 continue
 
             if n == 1:

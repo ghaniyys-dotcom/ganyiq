@@ -151,59 +151,7 @@ class AudioVisualMatcher:
                 "confidence": round(confidence, 3),
             })
 
-        # ── Fill gaps between audio segments with visual-only data ──
-        timeline.sort(key=lambda x: x["start"])
-        filled = []
-        video_start = visual_frames[0].time if visual_frames else 0.0
-        video_end = visual_frames[-1].time if visual_frames else (timeline[-1]["end"] if timeline else 0.0)
-
-        # Gap before first audio segment
-        if timeline and timeline[0]["start"] > video_start:
-            gap_visuals = self._get_visual_speakers_in_range(visual_frames, video_start, timeline[0]["start"])
-            if gap_visuals:
-                filled.append({
-                    "start": round(video_start, 2),
-                    "end": round(timeline[0]["start"], 2),
-                    "visual_speakers": sorted(gap_visuals),
-                    "audio_speakers": [],
-                    "matched_speakers": [],
-                    "confidence": 0.3,
-                    "gap_fill": True,
-                })
-
-        # Fill between audio segments and after last
-        prev_end = video_start
-        for entry in timeline:
-            if entry["start"] > prev_end + 0.3:  # gap > 0.3s
-                gap_visuals = self._get_visual_speakers_in_range(visual_frames, prev_end, entry["start"])
-                if gap_visuals:
-                    filled.append({
-                        "start": round(prev_end, 2),
-                        "end": round(entry["start"], 2),
-                        "visual_speakers": sorted(gap_visuals),
-                        "audio_speakers": [],
-                        "matched_speakers": [],
-                        "confidence": 0.3,
-                        "gap_fill": True,
-                    })
-            filled.append(entry)
-            prev_end = entry["end"]
-
-        # Gap after last audio segment
-        if filled and filled[-1]["end"] < video_end:
-            gap_visuals = self._get_visual_speakers_in_range(visual_frames, filled[-1]["end"], video_end)
-            if gap_visuals:
-                filled.append({
-                    "start": round(filled[-1]["end"], 2),
-                    "end": round(video_end, 2),
-                    "visual_speakers": sorted(gap_visuals),
-                    "audio_speakers": [],
-                    "matched_speakers": [],
-                    "confidence": 0.3,
-                    "gap_fill": True,
-                })
-
-        return filled if filled else timeline
+        return timeline
 
     def _find_overlapping_frames(
         self, segment: AudioSegment, frames: list[VisualFrame]
