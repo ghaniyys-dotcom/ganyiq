@@ -212,20 +212,28 @@ class Pipeline:
         if not bbox:
             return f"scale={out_w}:{out_h}"
 
+        # Raw expansion (before clamping)
         cw = bbox["w"] * 2.2
         ch = bbox["h"] * 3.2
-        cx = bbox["cx"] - cw / 2
-        cy = bbox["cy"] - ch * 0.3  # shift up for headroom
 
-        # Clamp
-        cx = max(0.0, min(cx, frame_w - cw))
-        cy = max(0.0, min(cy, frame_h - ch))
+        # If the raw expanded region already covers most of the frame,
+        # the face is large enough — just scale instead of crop
+        if cw >= frame_w * 0.85 and ch >= frame_h * 0.85:
+            return f"scale={out_w}:{out_h}"
+
+        # Clamp to frame dimensions
         cw = min(cw, frame_w)
         ch = min(ch, frame_h)
+        cx = bbox["cx"] - cw / 2
+        cy = bbox["cy"] - ch * 0.35  # shift up for headroom
 
-        # If crop is close to full frame, just scale down
-        if cw / frame_w > 0.75 or ch / frame_h > 0.75:
-            return f"scale={out_w}:{out_h}"
+        # Clamp position to stay within frame
+        cx = max(0.0, cx)
+        cy = max(0.0, cy)
+        if cw < frame_w:
+            cx = min(cx, frame_w - cw)
+        if ch < frame_h:
+            cy = min(cy, frame_h - ch)
 
         return f"crop={cw:.0f}:{ch:.0f}:{cx:.0f}:{cy:.0f},scale={out_w}:{out_h}"
 
@@ -252,6 +260,15 @@ class Pipeline:
         frame_w, frame_h = (int(dims[0]), int(dims[1])) if len(dims) == 2 else (1280, 720)
 
         face_data = self._load_face_data(result)
+        if face_data:
+            n_frames = len(face_data.get("timeline", []))
+            n_speakers_face = len(set(
+                f.get("speaker_id") for e in face_data.get("timeline", [])
+                for f in e.get("faces", []) if f.get("speaker_id")
+            ))
+            log(f"Face data loaded: {n_frames} frames, {n_speakers_face} speaker IDs")
+        else:
+            log("Face data NOT available — all scenes will be full frame")
 
         concat_lines = []
         segment_files = []
@@ -273,6 +290,9 @@ class Pipeline:
                 if face_data and primary:
                     bbox = self._get_speaker_bbox(face_data, primary, start, start + dur)
                 if bbox:
+                    log(f"    Scene {i+1}: fullscreen crop to {primary} "
+                        f"(bbox: cx={bbox['cx']:.0f} cy={bbox['cy']:.0f} "
+                        f"w={bbox['w']:.0f} h={bbox['h']:.0f})")
                     vf = self._build_crop_filter(bbox, frame_w, frame_h, frame_w, frame_h)
                     run_cmd([
                         "ffmpeg", "-y", "-ss", f"{start:.2f}",
@@ -305,6 +325,9 @@ class Pipeline:
                     for j, sid in enumerate(speakers[:n]):
                         bbox = self._get_speaker_bbox(face_data, sid, start, start + dur)
                         if bbox:
+                            log(f"    Scene {i+1}: col{j} → {sid} "
+                                f"(cx={bbox['cx']:.0f} cy={bbox['cy']:.0f} "
+                                f"w={bbox['w']:.0f} h={bbox['h']:.0f})")
                             crop_filter = self._build_crop_filter(bbox, frame_w, frame_h, col_w, col_h)
                             filters.append(f"[{input_ref}]{crop_filter}[col{j}];")
 
