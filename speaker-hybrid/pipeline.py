@@ -208,15 +208,15 @@ class Pipeline:
     def _build_crop_filter(bbox: dict, frame_w: int, frame_h: int,
                            out_w: int, out_h: int) -> str:
         """Build ffmpeg crop+scale filter string for a face bounding box.
-        Expands to head-and-shoulders framing, clamped to frame."""
+        Expands 5x/4x for natural head-and-shoulders framing."""
         if not bbox:
             return f"scale={out_w}:{out_h}"
 
-        # Raw expansion (before clamping)
-        cw = bbox["w"] * 2.2
-        ch = bbox["h"] * 3.2
+        # Expand for head-and-shoulders framing (5x width, 4x height)
+        cw = bbox["w"] * 5.0
+        ch = bbox["h"] * 4.0
 
-        # If the raw expanded region already covers most of the frame,
+        # If the expanded region already covers most of the frame,
         # the face is large enough — just scale instead of crop
         if cw >= frame_w * 0.85 and ch >= frame_h * 0.85:
             return f"scale={out_w}:{out_h}"
@@ -225,7 +225,7 @@ class Pipeline:
         cw = min(cw, frame_w)
         ch = min(ch, frame_h)
         cx = bbox["cx"] - cw / 2
-        cy = bbox["cy"] - ch * 0.35  # shift up for headroom
+        cy = bbox["cy"] - ch * 0.275  # shift up for headroom
 
         # Clamp position to stay within frame
         cx = max(0.0, cx)
