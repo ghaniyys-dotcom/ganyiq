@@ -161,40 +161,52 @@ class AudioVisualMatcher:
         """Build mapping from visual track IDs to audio speaker IDs.
 
         Two-step process:
-        1. For each audio speaker, count which visual face tracks appear
-           during their speaking segments → map each track to dominant
-           audio speaker.
-        2. Find UNMAPPED visual tracks that appear in the SAME frame as
-           a mapped speaker track but at a DIFFERENT horizontal position
-           → label them 'LISTENER_N'.  These are non-speaking people
-           visible on camera (reacters, co-hosts).
+        1. For each visual track, compute what PROPORTION of its appearances
+           happen during each audio speaker's segments.  Map to the speaker
+           with the highest exclusive association (≥55%).
+
+           Example: track_0 appears 20× during SPEAKER_00 and 8× during
+           SPEAKER_01 → 20/28=71% SPEAKER_00 → map to SPEAKER_00.
+
+           This is more robust than absolute counts because it handles
+           the common podcast case where both faces are always on camera.
+
+        2. Find UNMAPPED visual tracks that appear in frames alongside a
+           mapped speaker track but at a DIFFERENT horizontal position
+           → label them 'LISTENER_N' (non-speaking visible people).
 
         Returns dict: {track_id_str: audio_speaker_id_or_listener}
         """
         from collections import defaultdict, Counter
 
-        # ── Step 1: audio → visual track correlation ──
-        correlation: dict[str, Counter] = defaultdict(Counter)
+        # ── Step 1: audio → visual correlation by RATIO ──
+        # Count per-speaker appearances for each visual track
+        track_speaker_counts: dict[str, Counter] = defaultdict(Counter)
 
         for seg in audio_segments:
             overlapping = self._find_overlapping_frames(seg, visual_frames)
             for vf in overlapping:
                 for face in vf.faces:
                     tid = str(face.get("track_id", -1))
-                    correlation[seg.speaker_id][tid] += 1
+                    track_speaker_counts[tid][seg.speaker_id] += 1
 
-        # Map each visual track to its dominant audio speaker
+        # Map each track to the speaker it's MOST EXCLUSIVELY associated with
         track_to_audio: dict[str, str] = {}
-        seen_tracks: set[str] = set()
-        for audio_sid, track_counts in correlation.items():
-            for tid, _count in track_counts.most_common():
-                if tid not in seen_tracks:
-                    track_to_audio[tid] = audio_sid
-                    seen_tracks.add(tid)
+        for tid, speaker_counts in track_speaker_counts.items():
+            total = sum(speaker_counts.values())
+            if total < 2:
+                continue  # too few appearances, ignore
+            best_speaker = max(speaker_counts, key=speaker_counts.get)
+            best_count = speaker_counts[best_speaker]
+            best_ratio = best_count / total
+            # Only map if track is ≥55% associated with one speaker
+            # (avoids greedy assignment when both people are always on camera)
+            if best_ratio >= 0.55:
+                track_to_audio[tid] = best_speaker
 
         # ── Step 2: detect LISTENER tracks ──
-        # A listener is a face track that appears in the same frame
-        # as a mapped speaker track but at a different position
+        # A listener is a face track that appears alongside a mapped speaker
+        # but at a different position (non-speaking visible person)
         speaker_tids: set[str] = set(track_to_audio.keys())
         listener_counter = 0
 
@@ -210,7 +222,6 @@ class AudioVisualMatcher:
             if not speaker_in_frame:
                 continue
 
-            # Any unmapped track in this frame alongside a speaker = listener
             unmapped = frame_tids - speaker_tids
             for utid in unmapped:
                 if utid not in track_to_audio:
@@ -230,7 +241,6 @@ class AudioVisualMatcher:
                   file=sys.stderr)
 
         return track_to_audio
-
     def _find_overlapping_frames(
         self, segment: AudioSegment, frames: list[VisualFrame]
     ) -> list[VisualFrame]:

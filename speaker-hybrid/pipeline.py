@@ -222,15 +222,11 @@ class Pipeline:
         Strategy:
         1. Try to find a face with a DIFFERENT speaker_id than the primary
            (most reliable — requires AVM to have mapped tracks correctly).
-        2. Fallback: group ALL face detections by horizontal position
-           (rounded to nearest 50px), pick cluster ≥150px from primary.
-        3. Last resort: second most frequent cluster.
+        2. Fallback: spatial clustering from _get_face_clusters.
         """
         from collections import defaultdict
 
-        # Collect all faces in range grouped by cx bin + speaker_id
         clusters: dict[int, list[dict]] = defaultdict(list)
-        speaker_ids_in_range: set[str] = set()
 
         for entry in face_data.get("timeline", []):
             t = entry.get("time", 0)
@@ -245,9 +241,6 @@ class Pipeline:
                     continue
                 if w < 30 or h < 30:
                     continue
-                sid = face.get("speaker_id", "")
-                if sid:
-                    speaker_ids_in_range.add(sid)
                 cluster_key = round(cx / 50) * 50
                 clusters[cluster_key].append(face)
 
@@ -257,7 +250,6 @@ class Pipeline:
         # ── Step 1: try different speaker_id ──
         if primary_bbox:
             primary_sid = None
-            # Find speaker_id closest to primary bbox position
             primary_cx = primary_bbox.get("cx", 0)
             for cluster in clusters.values():
                 for face in cluster:
@@ -269,7 +261,6 @@ class Pipeline:
                     break
 
             if primary_sid:
-                # Look for a face with a DIFFERENT speaker_id
                 other_faces = []
                 for cluster in clusters.values():
                     for face in cluster:
@@ -286,22 +277,29 @@ class Pipeline:
                         return {"cx": avg_cx, "cy": avg_cy,
                                 "w": avg_w, "h": avg_h}
 
-        # ── Step 2: spatial clustering, pick cluster ≥150px from primary ──
+        # ── Step 2: spatial clustering, pick cluster farthest from primary ──
         sorted_clusters = sorted(
             clusters.values(), key=lambda c: len(c), reverse=True
         )
 
         if primary_bbox:
             primary_cx = primary_bbox["cx"]
+            # Pick the most-frequent cluster FARTHEST from primary
+            best_cluster = None
+            best_dist = 0
             for cluster in sorted_clusters:
                 avg_cx = sum(f["cx"] for f in cluster) / len(cluster)
-                if abs(avg_cx - primary_cx) >= 150:
-                    return {
-                        "cx": sum(f["cx"] for f in cluster) / len(cluster),
-                        "cy": sum(f["cy"] for f in cluster) / len(cluster),
-                        "w":  sum(f["w"] for f in cluster) / len(cluster),
-                        "h":  sum(f["h"] for f in cluster) / len(cluster),
-                    }
+                dist = abs(avg_cx - primary_cx)
+                if dist >= 100 and dist > best_dist:
+                    best_dist = dist
+                    best_cluster = cluster
+            if best_cluster:
+                return {
+                    "cx": sum(f["cx"] for f in best_cluster) / len(best_cluster),
+                    "cy": sum(f["cy"] for f in best_cluster) / len(best_cluster),
+                    "w":  sum(f["w"] for f in best_cluster) / len(best_cluster),
+                    "h":  sum(f["h"] for f in best_cluster) / len(best_cluster),
+                }
 
         # ── Step 3: second most frequent cluster (may be same person) ──
         if len(sorted_clusters) >= 2:
@@ -375,46 +373,38 @@ class Pipeline:
                             out_w: int, out_h: int) -> str:
         """Build filter_complex for split-screen vertical (9:16).
 
-        Each half is 720x640. We crop a narrow 9:16 strip (405px for 720p)
-        around each person's face, scale to fit height maintaining 9:16,
-        and pillarbox to 720x640 — NO STRETCHING.
+        Each half is 720x640 (9:8). Crop a matching 9:8 region from source
+        so scaling to each half is UNIFORM — no distortion, no pillarbox.
 
-        Top half:   crop around primary speaker's face → scale → pillarbox
-        Bottom half: crop around secondary speaker / reactor
+        405px 9:16 → 360x640 + pillarbox = black bars. Instead, crop wider:
+        crop_w = out_w * frame_h / half_h  (810px for 720p → 720x640 uniform)
+
+        Top half:   crop around primary speaker → scale to 720x640
+        Bottom half: crop around secondary speaker / reactor → scale to 720x640
         vstack → 720x1280
-
-        9:16 crop → scale to 640 height → pillarbox 180px black each side
-        = correct proportions for both halves
 
         If bbox_bottom is None, fall back to full frame letterboxed.
         """
         half_h = out_h // 2            # 640
 
-        # Narrow 9:16 strip — isolates each person (405px for 720p)
-        crop_w = frame_h * 9 / 16
+        # Crop width for uniform scaling: crop_w / frame_h = out_w / half_h
+        crop_w = out_w * frame_h / half_h   # 810px for 720p, 1215px for 1080p
 
-        # Scale target width that maintains 9:16 in 640-tall box
-        scaled_w = int(half_h * 9 / 16)  # 360
+        if crop_w >= frame_w * 0.98:
+            crop_w = float(frame_w)
 
-        # Top: crop narrow strip around primary face → scale → pillarbox
+        # Top: crop wide strip around primary face → scale to 720x640
         if bbox_top:
             vx = max(0.0, min(bbox_top["cx"] - crop_w / 2, frame_w - crop_w))
         else:
             vx = (frame_w - crop_w) / 2
-
-        pad_left = (out_w - scaled_w) // 2  # 180
-        top = (f"[0:v]crop={crop_w:.1f}:{frame_h:.1f}:{vx:.1f}:0,"
-               f"scale={scaled_w}:{half_h},"
-               f"pad={out_w}:{half_h}:{pad_left}:0:black[top]")
+        top = f"[0:v]crop={crop_w:.1f}:{frame_h:.1f}:{vx:.1f}:0,scale={out_w}:{half_h}[top]"
 
         if bbox_bottom:
-            # Bottom: crop to reactor's face (different cx from primary)
             vx_bot = max(0.0, min(bbox_bottom["cx"] - crop_w / 2, frame_w - crop_w))
             bottom = (f"[0:v]crop={crop_w:.1f}:{frame_h:.1f}:{vx_bot:.1f}:0,"
-                      f"scale={scaled_w}:{half_h},"
-                      f"pad={out_w}:{half_h}:{pad_left}:0:black[bottom]")
+                      f"scale={out_w}:{half_h}[bottom]")
         else:
-            # Fallback: full frame letterboxed into half area
             pad_h = half_h - int(out_w * 9 / 16)
             if pad_h > 0:
                 top_pad = pad_h // 2
