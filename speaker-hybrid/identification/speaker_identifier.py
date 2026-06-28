@@ -428,7 +428,7 @@ def main():
     parser.add_argument("--diarization", help="Path to audio diarization JSON (PyAnnote/Deepgram)")
     parser.add_argument("--faces", help="Path to pre-existing face detection JSON (skip detection)")
     parser.add_argument("--visual-only", action="store_true", help="Skip audio-visual matching")
-    parser.add_argument("--sample-rate", type=float, default=3.0, help="Face detection sample rate (fps)")
+    parser.add_argument("--sample-rate", type=float, default=10.0, help="Face detection sample rate (fps)")
     parser.add_argument("--split-weight", type=float, default=0.3, help="Reaction weight for split decisions")
     parser.add_argument("--quiet", action="store_true", help="Suppress progress logs")
 
