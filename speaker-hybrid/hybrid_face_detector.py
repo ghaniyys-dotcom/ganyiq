@@ -324,77 +324,18 @@ def face_iou(a: dict, b: dict) -> float:
 
 
 # =============================================================================
-# Face Embedding + Tracking
+# Face Embedding + Tracking → ByteTrack with Kalman filter
 # =============================================================================
 
-class FaceTracker:
-    """Simple face tracker with IoU matching across frames."""
-
-    def __init__(self, iou_threshold=0.35, max_disappeared=10):
-        self.next_id = 0
-        self.tracks = {}       # track_id → last detection
-        self.iou_threshold = iou_threshold
-        self.max_disappeared = max_disappeared
-        self.disappeared = {}  # track_id → frames since last seen
-
-    def update(self, faces):
-        if not self.tracks:
-            for face in faces:
-                self.tracks[self.next_id] = face
-                face["track_id"] = self.next_id
-                self.next_id += 1
-            return faces
-
-        # IoU matching
-        matched_current = set()
-        matched_prev = set()
-
-        for prev_id, prev_face in self.tracks.items():
-            best_iou = 0
-            best_idx = -1
-            for i, curr_face in enumerate(faces):
-                if i in matched_current:
-                    continue
-                iou = self._iou(prev_face, curr_face)
-                if iou > best_iou:
-                    best_iou = iou
-                    best_idx = i
-
-            if best_iou >= self.iou_threshold:
-                matched_current.add(best_idx)
-                matched_prev.add(prev_id)
-                faces[best_idx]["track_id"] = prev_id
-
-        # New tracks
-        for i, face in enumerate(faces):
-            if i not in matched_current:
-                face["track_id"] = self.next_id
-                self.tracks[self.next_id] = face
-                self.next_id += 1
-
-        # Update disappeared
-        for tid in list(self.tracks.keys()):
-            if tid not in matched_prev:
-                self.disappeared[tid] = self.disappeared.get(tid, 0) + 1
-                if self.disappeared[tid] > self.max_disappeared:
-                    del self.tracks[tid]
-                    del self.disappeared[tid]
-            else:
-                self.disappeared[tid] = 0
-
-        return faces
-
-    @staticmethod
-    def _iou(a, b):
-        ax, ay = a["cx"] - a["w"] / 2, a["cy"] - a["h"] / 2
-        bx, by = b["cx"] - b["w"] / 2, b["cy"] - b["h"] / 2
-        inter_x1 = max(ax, bx)
-        inter_y1 = max(ay, by)
-        inter_x2 = min(ax + a["w"], bx + b["w"])
-        inter_y2 = min(ay + a["h"], by + b["h"])
-        inter = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
-        union = a["w"] * a["h"] + b["w"] * b["h"] - inter
-        return inter / union if union > 0 else 0
+# Import ByteTrack from the parent directory (GANYIQ root)
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from tracker import ByteTrack
+    _sys.path.pop(0)
+    HAS_BYTE_TRACK = True
+except ImportError:
+    HAS_BYTE_TRACK = False
 
 
 # =============================================================================
@@ -505,7 +446,12 @@ def process_video(
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
     frame_interval = max(1, int(fps / sample_rate))
-    tracker = FaceTracker()
+    if HAS_BYTE_TRACK:
+        tracker = ByteTrack(conf_threshold=conf_threshold, max_lost=25)
+        print(f"[INFO] Using ByteTrack (Kalman + Hungarian) tracker", file=sys.stderr)
+    else:
+        from tracker import ByteTrack as _BT
+        tracker = _BT(conf_threshold=conf_threshold, max_lost=25)
     clusterer = SpeakerClusterer()
     results = []
     frame_idx = start_frame
@@ -546,11 +492,20 @@ def process_video(
                         all_faces.append(mf)
 
             # Step 3: Tracking
-            tracked_faces = tracker.update(all_faces)
+            if HAS_BYTE_TRACK:
+                tracked_faces = tracker.update(all_faces)
+            else:
+                # Fallback: direct ByteTrack import with same call
+                from tracker import ByteTrack as _BT
+                _fallback_tracker = _BT(conf_threshold=conf_threshold, max_lost=25)
+                tracked_faces = _fallback_tracker.update(all_faces)
 
             # Step 4: Speaker assignment + landmark attachment
             speaker_assignments = []
             for face in tracked_faces:
+                # ByteTrack returns 'id' — map to 'track_id' for clusterer
+                track_id = face.get("track_id", face.get("id", -1))
+                face["track_id"] = track_id
                 speaker_id = clusterer.assign(face)
                 # Attach MediaPipe landmarks if available
                 mp_key = face.get("_mp_key", "")
