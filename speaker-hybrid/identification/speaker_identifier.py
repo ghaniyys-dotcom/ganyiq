@@ -228,6 +228,12 @@ class SpeakerIdentifier:
                             entry["visual_speakers"] = list(new_visual)
                             entry["matched_speakers"] = list(new_visual)
 
+                        # WRITE remapped face data back to file
+                        self.log("Writing remapped face data to disk...")
+                        with open(temp_face_path, "w") as _f:
+                            json.dump(visual_data, _f, indent=2, default=str)
+                        self.log("Face data updated with audio speaker IDs")
+
         speaker_list = self._extract_speakers(matched_timeline)
 
         # ──────────────────────────────────────────
