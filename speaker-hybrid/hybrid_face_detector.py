@@ -486,22 +486,40 @@ def process_video(
 
             # Step 2: MediaPipe face detection + merge with YOLO
             all_faces = list(yolo_faces)
-            mp_landmarks_dict = {}  # _mp_key → landmarks list
+            mp_landmarks_dict = {}  # _mp_key → list of face data with lip_motion precomputed
             if mp_landmarker:
                 mp_faces, mp_landmarks_list = extract_mp_faces(
                     mp_landmarker, frame, int(time_sec * 1000)
                 )
-                # Deduplicate: skip MediaPipe faces that overlap YOLO faces
+
+                # Precompute lip_motion from MediaPipe 468-point landmarks
                 for idx, (mf, ml) in enumerate(zip(mp_faces, mp_landmarks_list)):
-                    overlap = False
-                    for yf in all_faces:
+                    lip_open = 0.0
+                    if ml and len(ml) > 14:
+                        upper = ml[13]   # upper inner lip
+                        lower = ml[14]   # lower inner lip
+                        if len(upper) >= 2 and len(lower) >= 2:
+                            dx = lower[0] - upper[0]
+                            dy = lower[1] - upper[1]
+                            lip_open = math.sqrt(dx*dx + dy*dy)
+                    mf["lip_motion"] = round(lip_open, 4)
+
+                    # Check overlap with YOLO faces
+                    overlap_idx = -1
+                    for yfi, yf in enumerate(all_faces):
                         if face_iou(mf, yf) > 0.5:
-                            overlap = True
+                            overlap_idx = yfi
                             break
-                    if not overlap:
+
+                    if overlap_idx >= 0:
+                        # Attach lip_motion to the overlapping YOLO face
+                        all_faces[overlap_idx]["lip_motion"] = mf["lip_motion"]
+                    else:
+                        # No YOLO overlap → add as MediaPipe-only face
                         mf_key = f"mp_{idx}"
                         mp_landmarks_dict[mf_key] = ml
                         mf["_mp_key"] = mf_key
+                        mf["landmarks"] = ml  # store 468-point mesh
                         all_faces.append(mf)
 
             # Step 3: Tracking
