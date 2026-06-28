@@ -217,17 +217,22 @@ class Pipeline:
 
     def _get_face_clusters(self, face_data: dict,
                            start: float, end: float,
-                           frame_w: int = 1280) -> list[dict]:
-        """Find distinct face positions in [start, end] range.
+                           frame_w: int = 1280,
+                           merge_dist: float = 150) -> list[dict]:
+        """Find DISTINCT face positions in [start, end] range.
 
-        Clusters ALL face detections by horizontal position (50px bins).
-        Returns clusters sorted by detection count (biggest first), each
-        with {'cx', 'cy', 'w', 'h', 'count', 'speaker_ids'}.
+        1. Bin all face detections by horizontal position (50px bins).
+        2. MERGE bins that are <merge_dist px apart (same person at diff angle).
+        3. Sort by detection count (most frequent first).
+
+        Returns list of {cx, cy, w, h, count, speaker_ids}.
         """
         from collections import defaultdict, Counter
+        import math
 
-        clusters: dict[int, list[dict]] = defaultdict(list)
-        cluster_sids: dict[int, Counter] = defaultdict(Counter)
+        # ── Step 1: bin by horizontal position (50px) ──
+        raw_bins: dict[int, list[dict]] = defaultdict(list)
+        bin_sids: dict[int, Counter] = defaultdict(Counter)
 
         for entry in face_data.get("timeline", []):
             t = entry.get("time", 0)
@@ -243,25 +248,58 @@ class Pipeline:
                 if w < 30 or h < 30:
                     continue
                 key = round(cx / 50) * 50
-                clusters[key].append(face)
+                raw_bins[key].append(face)
                 sid = face.get("speaker_id", "?")
-                cluster_sids[key][sid] += 1
+                bin_sids[key][sid] += 1
 
-        results = []
-        for key, faces in clusters.items():
+        if not raw_bins:
+            return []
+
+        # ── Step 2: convert bins to cluster objects ──
+        clusters = []
+        for key, faces in raw_bins.items():
             n = len(faces)
-            results.append({
+            clusters.append({
                 "cx": sum(f["cx"] for f in faces) / n,
                 "cy": sum(f["cy"] for f in faces) / n,
                 "w":  sum(f["w"] for f in faces) / n,
                 "h":  sum(f["h"] for f in faces) / n,
                 "count": n,
-                "key": key,
-                "speaker_ids": dict(cluster_sids[key].most_common(3)),
+                "speaker_ids": dict(bin_sids[key].most_common(3)),
             })
 
-        results.sort(key=lambda r: r["count"], reverse=True)
-        return results
+        # Sort by count descending for deterministic merge
+        clusters.sort(key=lambda c: c["count"], reverse=True)
+
+        # ── Step 3: MERGE clusters that are <merge_dist px apart ──
+        # (they belong to the same person at different face angles)
+        merged = []
+        for c in clusters:
+            # Find existing merged cluster within merge_dist
+            found = False
+            for m in merged:
+                if abs(m["cx"] - c["cx"]) < merge_dist:
+                    # Merge into existing cluster (weighted average)
+                    total = m["count"] + c["count"]
+                    m["cx"] = (m["cx"] * m["count"] + c["cx"] * c["count"]) / total
+                    m["cy"] = (m["cy"] * m["count"] + c["cy"] * c["count"]) / total
+                    m["w"] = (m["w"] * m["count"] + c["w"] * c["count"]) / total
+                    m["h"] = (m["h"] * m["count"] + c["h"] * c["count"]) / total
+                    m["count"] = total
+                    # Merge speaker_ids
+                    merged_sids = dict(m["speaker_ids"])
+                    for sid, cnt in c["speaker_ids"].items():
+                        merged_sids[sid] = merged_sids.get(sid, 0) + cnt
+                    m["speaker_ids"] = dict(
+                        sorted(merged_sids.items(), key=lambda x: x[1], reverse=True)[:3]
+                    )
+                    found = True
+                    break
+            if not found:
+                merged.append(dict(c))
+
+        merged.sort(key=lambda c: c["count"], reverse=True)
+        return merged
 
     def _get_secondary_bbox(self, face_data: dict,
                             start: float, end: float,
