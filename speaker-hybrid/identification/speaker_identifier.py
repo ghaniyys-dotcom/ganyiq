@@ -39,6 +39,7 @@ from hybrid_face_detector import process_video as run_face_detection
 from identification.audio_visual_matcher import AudioVisualMatcher, AudioSegment, VisualFrame
 from reaction.reaction_detector import analyze_reactions
 from split.split_decision_engine import SplitDecisionEngine
+from asd import compute_lip_energy
 
 
 # =============================================================================
@@ -184,12 +185,24 @@ class SpeakerIdentifier:
                         time_tolerance=self.avm_time_tolerance,
                         min_overlap=self.avm_min_overlap,
                     )
+
+                    # ── Run Active Speaker Detection (lip-motion ASD) ──
+                    self.log("Running active speaker detection (lip motion)...")
+                    asd_timeline = compute_lip_energy(
+                        temp_face_path, window_sec=0.5,
+                        min_lip_threshold=0.02, fps=self.face_sample_rate,
+                    )
+                    asd_active = sum(
+                        1 for e in asd_timeline if e["active_track_id"] >= 0
+                    )
+                    self.log(f"ASD: {asd_active}/{len(asd_timeline)} frames have active speaker")
+
                     matched_timeline = matcher.match(audio_segments, visual_frames)
 
-                    # ── Build audio→visual speaker mapping ──
-                    self.log("Building audio-visual speaker mapping...")
+                    # ── Build audio→visual speaker mapping (with ASD boost) ──
+                    self.log("Building audio-visual speaker mapping (ASD boosted)...")
                     audio_visual_map = matcher.build_audio_visual_map(
-                        audio_segments, visual_frames
+                        audio_segments, visual_frames, asd_timeline=asd_timeline,
                     )
                     if audio_visual_map:
                         n_audio = len(set(audio_visual_map.values()))

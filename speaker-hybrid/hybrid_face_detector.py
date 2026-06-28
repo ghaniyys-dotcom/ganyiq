@@ -17,6 +17,7 @@ Pipeline:
 """
 
 import json
+import math
 import sys
 import os
 import argparse
@@ -294,11 +295,23 @@ def extract_mp_faces(landmarker, frame, timestamp_ms):
             "w": w,
             "h": h,
             "confidence": 0.5,  # MediaPipe doesn't expose score via Landmarker
+            "lip_motion": 0.0,  # computed below
         })
 
         # Store landmarks
         points = [[lm.x, lm.y, lm.z] for lm in face_landmarks]
         landmarks_list.append(points)
+
+        # Compute lip motion from inner upper/lower lip landmarks (indices 13/14)
+        if len(points) >= 15:
+            upper = points[13]
+            lower = points[14]
+            lip_dist = math.sqrt(
+                (upper[0] - lower[0]) ** 2 +
+                (upper[1] - lower[1]) ** 2
+            )
+            # Normalize by face height for scale invariance
+            faces[-1]["lip_motion"] = round(lip_dist / max(h, 1), 6)
 
     return faces, landmarks_list
 
@@ -518,6 +531,7 @@ def process_video(
                     "confidence": face["confidence"],
                     "track_id": face.get("track_id", -1),
                     "speaker_id": speaker_id,
+                    "lip_motion": face.get("lip_motion", 0.0),
                     "landmarks": landmarks,
                 })
 

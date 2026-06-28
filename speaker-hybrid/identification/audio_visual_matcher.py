@@ -157,6 +157,7 @@ class AudioVisualMatcher:
         self,
         audio_segments: list[AudioSegment],
         visual_frames: list[VisualFrame],
+        asd_timeline: list[dict] | None = None,
     ) -> dict[str, str]:
         """Build mapping from visual track IDs to audio speaker IDs.
 
@@ -165,11 +166,9 @@ class AudioVisualMatcher:
            happen during each audio speaker's segments.  Map to the speaker
            with the highest exclusive association (≥55%).
 
-           Example: track_0 appears 20× during SPEAKER_00 and 8× during
-           SPEAKER_01 → 20/28=71% SPEAKER_00 → map to SPEAKER_00.
-
-           This is more robust than absolute counts because it handles
-           the common podcast case where both faces are always on camera.
+           If ASD data is available, tracks that are LIP-ACTIVE during a
+           speaker's segment get DOUBLE weight — making the mapping far
+           more reliable than time-overlap alone.
 
         2. Find UNMAPPED visual tracks that appear in frames alongside a
            mapped speaker track but at a DIFFERENT horizontal position
@@ -179,8 +178,7 @@ class AudioVisualMatcher:
         """
         from collections import defaultdict, Counter
 
-        # ── Step 1: audio → visual correlation by RATIO ──
-        # Count per-speaker appearances for each visual track
+        # ── Step 1: audio → visual correlation by RATIO (with ASD boost) ──
         track_speaker_counts: dict[str, Counter] = defaultdict(Counter)
 
         for seg in audio_segments:
@@ -188,7 +186,19 @@ class AudioVisualMatcher:
             for vf in overlapping:
                 for face in vf.faces:
                     tid = str(face.get("track_id", -1))
-                    track_speaker_counts[tid][seg.speaker_id] += 1
+                    # Base weight = 1.0
+                    weight = 1.0
+                    # Boost weight if ASD says this track is lip-active at this time
+                    if asd_timeline:
+                        for asd_entry in asd_timeline:
+                            if abs(asd_entry["time"] - vf.time) < 0.2:
+                                if str(asd_entry.get("active_track_id")) == tid:
+                                    weight = 2.0
+                                elif asd_entry.get("active_track_id", -1) >= 0:
+                                    # Track is visible but NOT the active speaker
+                                    weight = 0.5
+                                break
+                    track_speaker_counts[tid][seg.speaker_id] += weight
 
         # Map each track to the speaker it's MOST EXCLUSIVELY associated with
         track_to_audio: dict[str, str] = {}
@@ -199,14 +209,10 @@ class AudioVisualMatcher:
             best_speaker = max(speaker_counts, key=speaker_counts.get)
             best_count = speaker_counts[best_speaker]
             best_ratio = best_count / total
-            # Only map if track is ≥55% associated with one speaker
-            # (avoids greedy assignment when both people are always on camera)
             if best_ratio >= 0.55:
                 track_to_audio[tid] = best_speaker
 
         # ── Step 2: detect LISTENER tracks ──
-        # A listener is a face track that appears alongside a mapped speaker
-        # but at a different position (non-speaking visible person)
         speaker_tids: set[str] = set(track_to_audio.keys())
         listener_counter = 0
 
