@@ -337,29 +337,41 @@ class Pipeline:
                             out_w: int, out_h: int) -> str:
         """Build filter_complex for split-screen vertical (9:16).
 
-        Top half (720x640): tight crop to primary speaker's face
-        Bottom half (720x640): tight crop to SECONDARY speaker / reactor
+        Each half is 720x640 (9:8 aspect). We crop a matching 9:8 region
+        from the source (wider than a 9:16 strip) so that scaling to
+        each half is UNIFORM — no horizontal/vertical distortion.
+
+        Top half:   crop around primary speaker's face → scale to 720x640
+        Bottom half: crop around secondary speaker / reactor → scale to 720x640
         vstack → 720x1280
 
         If bbox_bottom is None, fall back to full frame letterboxed.
         """
-        vw = frame_h * 9 / 16          # 405px for 720p
         half_h = out_h // 2            # 640
 
-        # Top: crop 405px strip around primary face → scale to 720x640
+        # Crop width that gives uniform scaling when scaled to (out_w x half_h)
+        # Uniform scaling requires: crop_w / frame_h = out_w / half_h
+        crop_w = out_w * frame_h / half_h   # 810px for 720p, 1215px for 1080p
+
+        # Clamp to frame width to avoid out-of-bounds
+        if crop_w >= frame_w * 0.98:
+            crop_w = float(frame_w)
+
+        # Top: crop wide strip around primary face → scale to 720x640
         if bbox_top:
-            vx = max(0.0, min(bbox_top["cx"] - vw / 2, frame_w - vw))
+            vx = max(0.0, min(bbox_top["cx"] - crop_w / 2, frame_w - crop_w))
         else:
-            vx = (frame_w - vw) / 2
-        top = f"[0:v]crop={vw:.1f}:{frame_h:.1f}:{vx:.1f}:0,scale={out_w}:{half_h}[top]"
+            vx = (frame_w - crop_w) / 2
+        top = (f"[0:v]crop={crop_w:.1f}:{frame_h:.1f}:{vx:.1f}:0,"
+               f"scale={out_w}:{half_h}[top]")
 
         if bbox_bottom:
             # Bottom: crop to reactor's face (different cx from primary)
-            vx_bot = max(0.0, min(bbox_bottom["cx"] - vw / 2, frame_w - vw))
-            bottom = (f"[0:v]crop={vw:.1f}:{frame_h:.1f}:{vx_bot:.1f}:0,"
+            vx_bot = max(0.0, min(bbox_bottom["cx"] - crop_w / 2, frame_w - crop_w))
+            bottom = (f"[0:v]crop={crop_w:.1f}:{frame_h:.1f}:{vx_bot:.1f}:0,"
                       f"scale={out_w}:{half_h}[bottom]")
         else:
-            # Fallback: full frame letterboxed
+            # Fallback: full frame letterboxed into half area
             pad_h = half_h - int(out_w * 9 / 16)
             if pad_h > 0:
                 top_pad = pad_h // 2
