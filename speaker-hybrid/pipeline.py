@@ -181,7 +181,7 @@ class Pipeline:
             for face in entry.get("faces", []):
                 if face.get("speaker_id") == speaker_id:
                     cx, cy = face.get("cx", 0), face.get("cy", 0)
-                    if cx <= 10 or cy <= 10 or cx >= frame_w - 10 or cy >= frame_h - 10:
+                    if cx <= 5 or cy <= 5 or cx >= frame_w - 5 or cy >= frame_h - 5:
                         continue  # false positive at edge
                     boxes.append(face)
 
@@ -202,9 +202,9 @@ class Pipeline:
             for face in entry.get("faces", []):
                 cx, cy = face.get("cx", 0), face.get("cy", 0)
                 w, h = face.get("w", 0), face.get("h", 0)
-                if cx <= 10 or cy <= 10 or cx >= frame_w - 10 or cy >= frame_h - 10:
-                    continue
-                if w < 30 or h < 30:
+                if cx <= 5 or cy <= 5 or cx >= frame_w - 5 or cy >= frame_h - 5:
+                    continue  # false positive at edge
+                if w < 15 or h < 15:
                     continue  # too small = noise
                 dist = abs(cx - frame_w/2) + abs(cy - frame_h/2)
                 score = (w * h) / max(dist, 1)
@@ -245,7 +245,7 @@ class Pipeline:
                 h = face.get("h", 0)
                 if cx <= 10 or cy <= 10 or cx >= frame_w - 10:
                     continue
-                if w < 30 or h < 30:
+                if w < 15 or h < 15:
                     continue
                 key = round(cx / 50) * 50
                 raw_bins[key].append(face)

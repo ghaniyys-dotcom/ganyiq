@@ -58,7 +58,7 @@ class SpeakerIdentifier:
 
     def __init__(
         self,
-        face_sample_rate: float = 3.0,
+        face_sample_rate: float = 10.0,
         avm_time_tolerance: float = 0.5,
         avm_min_overlap: float = 0.3,
         split_reaction_weight: float = 0.3,
