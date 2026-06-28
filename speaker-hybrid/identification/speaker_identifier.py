@@ -186,6 +186,48 @@ class SpeakerIdentifier:
                     )
                     matched_timeline = matcher.match(audio_segments, visual_frames)
 
+                    # ── Build audio→visual speaker mapping ──
+                    self.log("Building audio-visual speaker mapping...")
+                    audio_visual_map = matcher.build_audio_visual_map(
+                        audio_segments, visual_frames
+                    )
+                    if audio_visual_map:
+                        n_audio = len(set(audio_visual_map.values()))
+                        self.log(
+                            f"Mapped {len(audio_visual_map)} visual tracks "
+                            f"to {n_audio} audio speakers"
+                        )
+
+                        # Remap face data in-place so downstream render uses
+                        # stable audio speaker IDs, not fragmented track IDs
+                        for entry in visual_data.get("timeline", []):
+                            for face in entry.get("faces", []):
+                                tid = str(face.get("track_id", -1))
+                                if tid in audio_visual_map:
+                                    face["speaker_id"] = audio_visual_map[tid]
+
+                        # Remap matched_timeline visual_speakers
+                        # speaker_X → extract track_id → map to audio speaker
+                        def _remap_sid(sid: str) -> str:
+                            if sid.startswith("speaker_"):
+                                tid = sid.split("_", 1)[1]
+                                return audio_visual_map.get(tid, sid)
+                            return sid
+
+                        for entry in matched_timeline:
+                            old_visual = entry.get("visual_speakers", [])
+                            new_visual = sorted(set(
+                                _remap_sid(vs) for vs in old_visual
+                            ))
+                            # Strip any remaining unmapped visual-only IDs
+                            # (their track had no audio overlap → noise)
+                            new_visual = [
+                                s for s in new_visual
+                                if not s.startswith("speaker_")
+                            ] or new_visual  # keep at least something
+                            entry["visual_speakers"] = list(new_visual)
+                            entry["matched_speakers"] = list(new_visual)
+
         speaker_list = self._extract_speakers(matched_timeline)
 
         # ──────────────────────────────────────────

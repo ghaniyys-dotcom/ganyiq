@@ -465,10 +465,18 @@ class Pipeline:
                         face_data, target_sid or "",
                         start, start + dur,
                         frame_w=frame_w, frame_h=frame_h)
-                    # Find second face by POSITION (robust to speaker_id fragmentation)
-                    bbox_secondary = self._get_secondary_bbox(
-                        face_data, start, start + dur,
-                        bbox_primary, frame_w=frame_w)
+                    # Find second face: try explicit secondary_speaker first
+                    secondary_sid = scene.get("secondary_speaker")
+                    if secondary_sid and secondary_sid != target_sid:
+                        bbox_secondary = self._get_speaker_bbox(
+                            face_data, secondary_sid,
+                            start, start + dur,
+                            frame_w=frame_w, frame_h=frame_h)
+                    if bbox_secondary is None:
+                        # Fallback: spatial clustering
+                        bbox_secondary = self._get_secondary_bbox(
+                            face_data, start, start + dur,
+                            bbox_primary, frame_w=frame_w)
 
                 vf = self._build_split_filter(
                     bbox_primary, bbox_secondary,

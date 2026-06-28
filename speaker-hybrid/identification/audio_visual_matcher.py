@@ -153,6 +153,43 @@ class AudioVisualMatcher:
 
         return timeline
 
+    def build_audio_visual_map(
+        self,
+        audio_segments: list[AudioSegment],
+        visual_frames: list[VisualFrame],
+    ) -> dict[str, str]:
+        """Build mapping from visual track IDs to audio speaker IDs.
+
+        For each audio speaker, counts which visual face tracks appear
+        during their speaking segments.  Each visual track is then assigned
+        to the audio speaker it correlates with most strongly.
+
+        Returns dict: {track_id_str: audio_speaker_id}
+        Tracks that never overlap any audio segment map to themselves.
+        """
+        from collections import defaultdict, Counter
+
+        # audio_speaker_id → Counter of visual track_ids
+        correlation: dict[str, Counter] = defaultdict(Counter)
+
+        for seg in audio_segments:
+            overlapping = self._find_overlapping_frames(seg, visual_frames)
+            for vf in overlapping:
+                for face in vf.faces:
+                    tid = str(face.get("track_id", -1))
+                    correlation[seg.speaker_id][tid] += 1
+
+        # Map each visual track to its dominant audio speaker
+        track_to_audio: dict[str, str] = {}
+        seen_tracks: set[str] = set()
+        for audio_sid, track_counts in correlation.items():
+            for tid, _count in track_counts.most_common():
+                if tid not in seen_tracks:
+                    track_to_audio[tid] = audio_sid
+                    seen_tracks.add(tid)
+
+        return track_to_audio
+
     def _find_overlapping_frames(
         self, segment: AudioSegment, frames: list[VisualFrame]
     ) -> list[VisualFrame]:
