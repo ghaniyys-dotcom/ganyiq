@@ -581,6 +581,30 @@ class Pipeline:
                         "-c:v", "libx264", "-preset", "fast", "-crf", "22",
                         "-c:a", "aac",
                         str(seg_out)
+                    ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
+
+            else:
+                # ── Fullscreen (non-split scenes) ──
+                if bbox:
+                    vf = self._build_crop_filter(
+                        bbox, frame_w, frame_h, out_w, out_h,
+                        vertical=self.vertical, layout=layout)
+                    desc = f"crop to cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}"
+                else:
+                    vf = self._build_crop_filter(
+                        None, frame_w, frame_h, out_w, out_h,
+                        vertical=self.vertical, layout=layout)
+                    desc = "center crop"
+
+                log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
+                run_cmd([
+                    "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                    "-i", str(self.video_path),
+                    "-t", f"{dur:.2f}",
+                    "-vf", vf,
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                    "-c:a", "aac",
+                    str(seg_out)
                 ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
 
             concat_lines.append(f"file '{seg_out.as_posix()}'")
