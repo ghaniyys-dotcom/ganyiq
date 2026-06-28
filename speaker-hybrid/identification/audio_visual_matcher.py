@@ -160,16 +160,20 @@ class AudioVisualMatcher:
     ) -> dict[str, str]:
         """Build mapping from visual track IDs to audio speaker IDs.
 
-        For each audio speaker, counts which visual face tracks appear
-        during their speaking segments.  Each visual track is then assigned
-        to the audio speaker it correlates with most strongly.
+        Two-step process:
+        1. For each audio speaker, count which visual face tracks appear
+           during their speaking segments → map each track to dominant
+           audio speaker.
+        2. Find UNMAPPED visual tracks that appear in the SAME frame as
+           a mapped speaker track but at a DIFFERENT horizontal position
+           → label them 'LISTENER_N'.  These are non-speaking people
+           visible on camera (reacters, co-hosts).
 
-        Returns dict: {track_id_str: audio_speaker_id}
-        Tracks that never overlap any audio segment map to themselves.
+        Returns dict: {track_id_str: audio_speaker_id_or_listener}
         """
         from collections import defaultdict, Counter
 
-        # audio_speaker_id → Counter of visual track_ids
+        # ── Step 1: audio → visual track correlation ──
         correlation: dict[str, Counter] = defaultdict(Counter)
 
         for seg in audio_segments:
@@ -187,6 +191,43 @@ class AudioVisualMatcher:
                 if tid not in seen_tracks:
                     track_to_audio[tid] = audio_sid
                     seen_tracks.add(tid)
+
+        # ── Step 2: detect LISTENER tracks ──
+        # A listener is a face track that appears in the same frame
+        # as a mapped speaker track but at a different position
+        speaker_tids: set[str] = set(track_to_audio.keys())
+        listener_counter = 0
+
+        for vf in visual_frames:
+            frame_tids: set[str] = set()
+            frame_tid_positions: dict[str, float] = {}
+            for face in vf.faces:
+                tid = str(face.get("track_id", -1))
+                frame_tids.add(tid)
+                frame_tid_positions[tid] = face.get("cx", 0)
+
+            speaker_in_frame = frame_tids & speaker_tids
+            if not speaker_in_frame:
+                continue
+
+            # Any unmapped track in this frame alongside a speaker = listener
+            unmapped = frame_tids - speaker_tids
+            for utid in unmapped:
+                if utid not in track_to_audio:
+                    ut_cx = frame_tid_positions.get(utid, 0)
+                    is_different = True
+                    for stid in speaker_in_frame:
+                        st_cx = frame_tid_positions.get(stid, 0)
+                        if abs(st_cx - ut_cx) < 100:
+                            is_different = False
+                            break
+                    if is_different:
+                        track_to_audio[utid] = f"LISTENER_{listener_counter}"
+                        listener_counter += 1
+
+        if listener_counter:
+            print(f"[AVM] Detected {listener_counter} listener track(s)",
+                  file=sys.stderr)
 
         return track_to_audio
 
