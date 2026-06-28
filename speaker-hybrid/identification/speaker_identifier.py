@@ -305,11 +305,19 @@ class SpeakerIdentifier:
                 "summary": reaction_result.get("summary", {}),
             },
             "split_plan": split_plan,
-            "face_data_summary": {
-                "total_frames": len(visual_data.get("timeline", [])),
-                "total_faces": sum(
-                    len(frame.get("faces", []))
-                    for frame in visual_data.get("timeline", [])
+            'face_data_summary': {
+                'total_frames': len(visual_data.get('timeline', [])),
+                'total_faces': sum(
+                    len(frame.get('faces', []))
+                    for frame in visual_data.get('timeline', [])
+                ),
+            },
+            'asd': {
+                'tracker': 'bytetrack_kalman',
+                'total_frames': len(asd_timeline) if 'asd_timeline' in dir() and asd_timeline else 0,
+                'active_frames': sum(
+                    1 for e in (asd_timeline if 'asd_timeline' in dir() and asd_timeline else [])
+                    if e.get('active_track_id', -1) >= 0
                 ),
             },
         }

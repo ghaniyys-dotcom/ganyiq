@@ -127,6 +127,12 @@ class Pipeline:
         log(f"Analysis complete: {len(result.get('speakers', []))} speakers, "
             f"{len(result.get('split_plan', {}).get('scenes', []))} scenes")
 
+        asd_info = result.get('asd', {})
+        if asd_info:
+            log(f"Tracker: {asd_info.get('tracker', '?')} | "
+                f"ASD: {asd_info.get('active_frames', 0)}/"
+                f"{asd_info.get('total_frames', 0)} frames lip-active")
+
         # ─────────────────────────────────────
         # Step 4: Render Output Video
         # ─────────────────────────────────────
