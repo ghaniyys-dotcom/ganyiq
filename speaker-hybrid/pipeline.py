@@ -213,20 +213,19 @@ class Pipeline:
         best = max(candidates, key=lambda x: x[0])
         return {"cx": best[1], "cy": best[2], "w": best[3], "h": best[4]}
 
-    def _get_secondary_bbox(self, face_data: dict,
-                            start: float, end: float,
-                            primary_bbox: dict | None,
-                            frame_w: int = 1280) -> dict | None:
-        """Find the SECOND most prominent face position in [start, end] range.
+    def _get_face_clusters(self, face_data: dict,
+                           start: float, end: float,
+                           frame_w: int = 1280) -> list[dict]:
+        """Find distinct face positions in [start, end] range.
 
-        Strategy:
-        1. Try to find a face with a DIFFERENT speaker_id than the primary
-           (most reliable — requires AVM to have mapped tracks correctly).
-        2. Fallback: spatial clustering from _get_face_clusters.
+        Clusters ALL face detections by horizontal position (50px bins).
+        Returns clusters sorted by detection count (biggest first), each
+        with {'cx', 'cy', 'w', 'h', 'count', 'speaker_ids'}.
         """
-        from collections import defaultdict
+        from collections import defaultdict, Counter
 
         clusters: dict[int, list[dict]] = defaultdict(list)
+        cluster_sids: dict[int, Counter] = defaultdict(Counter)
 
         for entry in face_data.get("timeline", []):
             t = entry.get("time", 0)
@@ -241,9 +240,40 @@ class Pipeline:
                     continue
                 if w < 30 or h < 30:
                     continue
-                cluster_key = round(cx / 50) * 50
-                clusters[cluster_key].append(face)
+                key = round(cx / 50) * 50
+                clusters[key].append(face)
+                sid = face.get("speaker_id", "?")
+                cluster_sids[key][sid] += 1
 
+        results = []
+        for key, faces in clusters.items():
+            n = len(faces)
+            results.append({
+                "cx": sum(f["cx"] for f in faces) / n,
+                "cy": sum(f["cy"] for f in faces) / n,
+                "w":  sum(f["w"] for f in faces) / n,
+                "h":  sum(f["h"] for f in faces) / n,
+                "count": n,
+                "key": key,
+                "speaker_ids": dict(cluster_sids[key].most_common(3)),
+            })
+
+        results.sort(key=lambda r: r["count"], reverse=True)
+        return results
+
+    def _get_secondary_bbox(self, face_data: dict,
+                            start: float, end: float,
+                            primary_bbox: dict | None,
+                            frame_w: int = 1280) -> dict | None:
+        """Find the SECOND most prominent face position in [start, end] range.
+
+        Strategy:
+        1. Try to find a face with a DIFFERENT speaker_id than the primary
+           (most reliable — requires AVM to have mapped tracks correctly).
+        2. Fallback: spatial clustering, pick cluster FARTHEST from primary
+           with minimum distance ≥100px.
+        """
+        clusters = self._get_face_clusters(face_data, start, end, frame_w)
         if not clusters:
             return None
 
@@ -251,65 +281,39 @@ class Pipeline:
         if primary_bbox:
             primary_sid = None
             primary_cx = primary_bbox.get("cx", 0)
-            for cluster in clusters.values():
-                for face in cluster:
-                    sid = face.get("speaker_id", "")
-                    if sid and abs(face.get("cx", 0) - primary_cx) < 50:
-                        primary_sid = sid
-                        break
-                if primary_sid:
+
+            # Find which speaker_id is at primary's position
+            for c in clusters:
+                if abs(c["cx"] - primary_cx) < 50:
+                    primary_sid = next(iter(c["speaker_ids"]), None)
                     break
 
             if primary_sid:
-                other_faces = []
-                for cluster in clusters.values():
-                    for face in cluster:
-                        sid = face.get("speaker_id", "")
-                        if sid and sid != primary_sid:
-                            other_faces.append(face)
+                # Find a cluster dominated by a DIFFERENT speaker_id
+                for c in clusters:
+                    c_sids = set(c["speaker_ids"].keys())
+                    if primary_sid not in c_sids and abs(c["cx"] - primary_cx) >= 100:
+                        return {"cx": c["cx"], "cy": c["cy"],
+                                "w": c["w"], "h": c["h"]}
 
-                if other_faces:
-                    avg_cx = sum(f["cx"] for f in other_faces) / len(other_faces)
-                    avg_cy = sum(f["cy"] for f in other_faces) / len(other_faces)
-                    avg_w = sum(f["w"] for f in other_faces) / len(other_faces)
-                    avg_h = sum(f["h"] for f in other_faces) / len(other_faces)
-                    if abs(avg_cx - primary_cx) >= 100:
-                        return {"cx": avg_cx, "cy": avg_cy,
-                                "w": avg_w, "h": avg_h}
-
-        # ── Step 2: spatial clustering, pick cluster farthest from primary ──
-        sorted_clusters = sorted(
-            clusters.values(), key=lambda c: len(c), reverse=True
-        )
-
+        # ── Step 2: pick cluster FARTHEST from primary (≥100px) ──
         if primary_bbox:
             primary_cx = primary_bbox["cx"]
-            # Pick the most-frequent cluster FARTHEST from primary
-            best_cluster = None
+            best = None
             best_dist = 0
-            for cluster in sorted_clusters:
-                avg_cx = sum(f["cx"] for f in cluster) / len(cluster)
-                dist = abs(avg_cx - primary_cx)
+            for c in clusters:
+                dist = abs(c["cx"] - primary_cx)
                 if dist >= 100 and dist > best_dist:
                     best_dist = dist
-                    best_cluster = cluster
-            if best_cluster:
-                return {
-                    "cx": sum(f["cx"] for f in best_cluster) / len(best_cluster),
-                    "cy": sum(f["cy"] for f in best_cluster) / len(best_cluster),
-                    "w":  sum(f["w"] for f in best_cluster) / len(best_cluster),
-                    "h":  sum(f["h"] for f in best_cluster) / len(best_cluster),
-                }
+                    best = c
+            if best:
+                return {"cx": best["cx"], "cy": best["cy"],
+                        "w": best["w"], "h": best["h"]}
 
-        # ── Step 3: second most frequent cluster (may be same person) ──
-        if len(sorted_clusters) >= 2:
-            cluster = sorted_clusters[1]
-            return {
-                "cx": sum(f["cx"] for f in cluster) / len(cluster),
-                "cy": sum(f["cy"] for f in cluster) / len(cluster),
-                "w":  sum(f["w"] for f in cluster) / len(cluster),
-                "h":  sum(f["h"] for f in cluster) / len(cluster),
-            }
+        # ── Step 3: second largest cluster ──
+        if len(clusters) >= 2:
+            c = clusters[1]
+            return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
 
         return None
 
@@ -506,53 +510,75 @@ class Pipeline:
                             start, start + dur,
                             frame_w=frame_w, frame_h=frame_h)
                     if bbox_secondary is None:
+                        # Debug: log face clusters so we can see what positions exist
+                        clusters = self._get_face_clusters(
+                            face_data, start, start + dur, frame_w=frame_w)
+                        if clusters:
+                            c_desc = "; ".join(
+                                f"cx={c['cx']:.0f}({c['count']}x,"
+                                f"sids={list(c['speaker_ids'].keys())})"
+                                for c in clusters[:4]
+                            )
+                            log(f"  Face clusters in {start:.1f}s-{start+dur:.1f}s: "
+                                f"{len(clusters)} clusters → {c_desc}")
                         # Fallback: spatial clustering
                         bbox_secondary = self._get_secondary_bbox(
                             face_data, start, start + dur,
                             bbox_primary, frame_w=frame_w)
 
-                vf = self._build_split_filter(
-                    bbox_primary, bbox_secondary,
-                    frame_w, frame_h, out_w, out_h)
-                desc = "split"
-                if bbox_primary:
-                    desc += f" primary=cx{bbox_primary['cx']:.0f}"
-                if bbox_secondary:
-                    desc += f" secondary=cx{bbox_secondary['cx']:.0f}"
-                log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
-                run_cmd([
-                    "ffmpeg", "-y", "-ss", f"{start:.2f}",
-                    "-i", str(self.video_path),
-                    "-t", f"{dur:.2f}",
-                    "-filter_complex", vf,
-                    "-map", "[v]",
-                    "-map", "0:a?",
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-                    "-c:a", "aac",
-                    str(seg_out)
-                ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
-            else:
-                # ── Fullscreen: single tight crop to face ──
-                if bbox:
-                    vf = self._build_crop_filter(
-                        bbox, frame_w, frame_h, out_w, out_h,
-                        vertical=self.vertical, layout=layout)
-                    desc = f"crop to cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}"
-                else:
-                    vf = self._build_crop_filter(
-                        None, frame_w, frame_h, out_w, out_h,
-                        vertical=self.vertical, layout=layout)
-                    desc = "center crop"
+                    # If secondary is essentially the same position, DON'T split
+                    if (bbox_primary and bbox_secondary
+                            and abs(bbox_primary["cx"] - bbox_secondary["cx"]) < 100):
+                        log(f"  Split cancelled: both crops at same position "
+                            f"(cx={bbox_primary['cx']:.0f} vs {bbox_secondary['cx']:.0f})"
+                            f" — falling back to fullscreen")
+                        is_split = False
+                        bbox = bbox_primary  # use primary face for fullscreen
 
-                log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
-                run_cmd([
-                    "ffmpeg", "-y", "-ss", f"{start:.2f}",
-                    "-i", str(self.video_path),
-                    "-t", f"{dur:.2f}",
-                    "-vf", vf,
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-                    "-c:a", "aac",
-                    str(seg_out)
+                if is_split:
+                    # ── ACTUAL SPLIT ──
+                    vf = self._build_split_filter(
+                        bbox_primary, bbox_secondary,
+                        frame_w, frame_h, out_w, out_h)
+                    desc = "split"
+                    if bbox_primary:
+                        desc += f" primary=cx{bbox_primary['cx']:.0f}"
+                    if bbox_secondary:
+                        desc += f" secondary=cx{bbox_secondary['cx']:.0f}"
+                    log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
+                    run_cmd([
+                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                        "-i", str(self.video_path),
+                        "-t", f"{dur:.2f}",
+                        "-filter_complex", vf,
+                        "-map", "[v]",
+                        "-map", "0:a?",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-c:a", "aac",
+                        str(seg_out)
+                    ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
+                else:
+                    # ── Fullscreen: single tight crop to face ──
+                    if bbox:
+                        vf = self._build_crop_filter(
+                            bbox, frame_w, frame_h, out_w, out_h,
+                            vertical=self.vertical, layout=layout)
+                        desc = f"crop to cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}"
+                    else:
+                        vf = self._build_crop_filter(
+                            None, frame_w, frame_h, out_w, out_h,
+                            vertical=self.vertical, layout=layout)
+                        desc = "center crop"
+
+                    log(f"    Scene {i+1}: {layout} ({desc}) {start:.1f}s-{start+dur:.1f}s")
+                    run_cmd([
+                        "ffmpeg", "-y", "-ss", f"{start:.2f}",
+                        "-i", str(self.video_path),
+                        "-t", f"{dur:.2f}",
+                        "-vf", vf,
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-c:a", "aac",
+                        str(seg_out)
                 ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
 
             concat_lines.append(f"file '{seg_out.as_posix()}'")
