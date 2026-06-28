@@ -41,7 +41,9 @@ def run_cmd(cmd: list[str], desc: str = "", timeout: int = 600) -> str:
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if result.returncode != 0:
         log(f"ERROR: {desc or ' '.join(cmd)}")
-        log(f"  stderr: {result.stderr[:500]}")
+        # Show ALL stderr so we can see the actual error
+        for line in result.stderr.splitlines():
+            log(f"  | {line}")
         raise RuntimeError(f"Command failed: {desc or ' '.join(cmd)[:100]}")
     return result.stdout
 
@@ -590,7 +592,7 @@ class Pipeline:
             log(f"1 scene — copied directly to output")
         else:
             concat_file = self.work_dir / "concat.txt"
-            concat_file.write_text("\n".join(concat_lines))
+            concat_file.write_text("\n".join(concat_lines) + "\n")
             log(f"Concatenating {len(segment_files)} segments...")
             run_cmd([
                 "ffmpeg", "-y", "-f", "concat", "-safe", "0",
