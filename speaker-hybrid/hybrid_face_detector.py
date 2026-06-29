@@ -572,6 +572,7 @@ def process_video(
                     "track_id": face.get("track_id", -1),
                     "speaker_id": speaker_id,
                     "lip_motion": face.get("lip_motion", 0.0),
+                    "_raw_cy": face.get("_raw_cy", 0.0),
                     "landmarks": landmarks,
                 })
 
