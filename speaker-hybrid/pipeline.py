@@ -446,23 +446,30 @@ class Pipeline:
         If bbox_bottom is None, fall back to full frame letterboxed.
         """
         half_h = out_h // 2            # 640
+        zoom_factor = 1.6              # Zoom factor for tight crop of individual speaker
 
-        # Crop width for uniform scaling: crop_w / frame_h = out_w / half_h
-        crop_w = out_w * frame_h / half_h   # 810px for 720p, 1215px for 1080p
+        # Crop height and width for uniform scaling: crop_w / crop_h = out_w / half_h
+        crop_h = frame_h / zoom_factor
+        crop_w = out_w * crop_h / half_h
 
         if crop_w >= frame_w * 0.98:
             crop_w = float(frame_w)
+            crop_h = crop_w * half_h / out_w
 
-        # Top: crop wide strip around primary face → scale to 720x640
+        # Top: crop around primary face (x and y) → scale to 720x640
         if bbox_top:
             vx = max(0.0, min(bbox_top["cx"] - crop_w / 2, frame_w - crop_w))
+            vy = max(0.0, min(bbox_top["cy"] - crop_h / 2, frame_h - crop_h))
         else:
             vx = (frame_w - crop_w) / 2
-        top = f"[0:v]crop={crop_w:.1f}:{frame_h:.1f}:{vx:.1f}:0,scale={out_w}:{half_h}[top]"
+            vy = (frame_h - crop_h) / 2
+        top = f"[0:v]crop={crop_w:.1f}:{crop_h:.1f}:{vx:.1f}:{vy:.1f},scale={out_w}:{half_h}[top]"
 
+        # Bottom: crop around secondary face (x and y) → scale to 720x640
         if bbox_bottom:
             vx_bot = max(0.0, min(bbox_bottom["cx"] - crop_w / 2, frame_w - crop_w))
-            bottom = (f"[0:v]crop={crop_w:.1f}:{frame_h:.1f}:{vx_bot:.1f}:0,"
+            vy_bot = max(0.0, min(bbox_bottom["cy"] - crop_h / 2, frame_h - crop_h))
+            bottom = (f"[0:v]crop={crop_w:.1f}:{crop_h:.1f}:{vx_bot:.1f}:{vy_bot:.1f},"
                       f"scale={out_w}:{half_h}[bottom]")
         else:
             pad_h = half_h - int(out_w * 9 / 16)
@@ -474,7 +481,6 @@ class Pipeline:
                 bottom = f"[0:v]scale={out_w}:{half_h}[bottom]"
 
         return f"{top};{bottom};[top][bottom]vstack=inputs=2[v]"
-
     # ── Render ──────────────────────────────────────────────────────
 
     def _render(self, result: dict):
