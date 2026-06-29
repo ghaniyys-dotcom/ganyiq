@@ -524,6 +524,7 @@ def process_video(
 
                     if overlap_idx >= 0:
                         # Attach lip_motion to the overlapping YOLO face
+                        # Preserve _raw_cy from YOLO (already set at line 492)
                         all_faces[overlap_idx]["lip_motion"] = mf["lip_motion"]
                     else:
                         # No YOLO overlap → add as MediaPipe-only face
@@ -531,6 +532,8 @@ def process_video(
                         mp_landmarks_dict[mf_key] = ml
                         mf["_mp_key"] = mf_key
                         mf["landmarks"] = ml  # store 468-point mesh
+                        # Set _raw_cy for ASD fallback (MediaPipe uses face cy)
+                        mf["_raw_cy"] = mf.get("cy", 0.0)
                         all_faces.append(mf)
 
             # Step 3: Tracking
