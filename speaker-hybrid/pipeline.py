@@ -359,17 +359,25 @@ class Pipeline:
             best_dist = 0
             for c in clusters:
                 dist = abs(c["cx"] - primary_cx)
-                if dist >= 200 and dist > best_dist:
+                count = c.get("count", 0)
+                # Require minimum face count to avoid noise
+                if dist >= 200 and count >= 10 and dist > best_dist:
                     best_dist = dist
                     best = c
             if best:
+                self.log(f"  [SECONDARY-STEP2] cluster cx={best['cx']:.0f} dist={best_dist:.0f} count={best['count']}")
                 return {"cx": best["cx"], "cy": best["cy"],
                         "w": best["w"], "h": best["h"]}
 
-        # ── Step 3: second largest cluster ──
+        # ── Step 3: second largest cluster (with min count) ──
         if len(clusters) >= 2:
-            c = clusters[1]
-            return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
+                    # Sort by count, pick 2nd if it has enough faces
+                    sorted_clusters = sorted(clusters, key=lambda c: c["count"], reverse=True)
+                    second = sorted_clusters[1]
+                    if second.get("count", 0) >= 10:
+                        self.log(f"  [SECONDARY-STEP3] 2nd cluster cx={second['cx']:.0f} count={second['count']}")
+                        return {"cx": second["cx"], "cy": second["cy"],
+                                "w": second["w"], "h": second["h"]}
 
         return None
 
