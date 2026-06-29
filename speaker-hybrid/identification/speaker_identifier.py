@@ -161,9 +161,9 @@ class SpeakerIdentifier:
             print(f"  Sample face[0]: lip_motion={sample_faces[0].get('lip_motion', 'MISSING')}, _raw_cy={sample_faces[0].get('_raw_cy', 'MISSING')}, cy={sample_faces[0].get('cy', '?')}", flush=True)
         
         if faces_nonzero_lip == 0:
-            print(f"[DIAGNOSTIC] ❌ ALL lip_motion are ZERO → ASD will fail", flush=True)
+            print(f"[DIAGNOSTIC] ERROR: ALL lip_motion are ZERO -> ASD will fail", flush=True)
         else:
-            print(f"[DIAGNOSTIC] ✓ {faces_nonzero_lip} faces have non-zero lip_motion", flush=True)
+            print(f"[DIAGNOSTIC] OK: {faces_nonzero_lip} faces have non-zero lip_motion", flush=True)
 
         # ──────────────────────────────────────────
         # STEP 2: Audio-Visual Matching
