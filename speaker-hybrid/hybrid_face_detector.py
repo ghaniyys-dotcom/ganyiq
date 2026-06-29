@@ -487,6 +487,10 @@ def process_video(
                     session, input_name, frame, conf_threshold
                 )
 
+            # Save raw YOLO position before ByteTrack (for ASD fallback)
+            for face in yolo_faces:
+                face["_raw_cy"] = face.get("cy", 0.0)
+
             # Step 2: MediaPipe face detection + merge with YOLO
             all_faces = list(yolo_faces)
             mp_landmarks_dict = {}  # _mp_key → list of face data with lip_motion precomputed
@@ -549,11 +553,12 @@ def process_video(
                 mp_key = face.get("_mp_key", "")
                 landmarks = mp_landmarks_dict.get(mp_key, face.get("landmarks", {}))
 
-                # ── ASD fallback: if MediaPipe not available, use face cy as
-                #    lip_motion proxy.  When speaking, head bobs + jaw drops
-                #    slightly → cy varies → ASD detects energy variance.
+                # ── ASD fallback: if MediaPipe not available, use raw_cy before
+                #    ByteTrack smoothed values.  Raw cy varies 3-5px
+                #    during speech → ASD detects variance.
                 if not mp_landmarker and face.get("lip_motion", 0.0) == 0.0:
-                    face["lip_motion"] = float(face.get("cy", 0))
+                    raw_cy = face.get("_raw_cy", 0.0)
+                    face["lip_motion"] = raw_cy if raw_cy > 0 else float(face.get("cy", 0))
 
                 speaker_assignments.append({
                     "cx": face["cx"],
