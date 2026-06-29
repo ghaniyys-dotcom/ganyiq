@@ -565,6 +565,10 @@ class Pipeline:
                             face_data, secondary_sid,
                             start, start + dur,
                             frame_w=frame_w, frame_h=frame_h)
+                        # Discard if too close to primary (same person error)
+                        if (bbox_primary and bbox_secondary 
+                                and abs(bbox_primary["cx"] - bbox_secondary["cx"]) < 200):
+                            bbox_secondary = None
 
                     # ALWAYS log face clusters for split scenes
                     clusters = self._get_face_clusters(
