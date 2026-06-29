@@ -446,6 +446,9 @@ def process_video(
     duration = total_frames / fps if fps > 0 else 0
 
     print(f"[INFO] Video: {total_frames} frames, {fps:.2f} fps, {duration:.1f}s", file=sys.stderr)
+    print(f"[INFO] MediaPipe: {'loaded' if mp_landmarker else 'NOT LOADED'}", file=sys.stderr)
+    print(f"[INFO] YOLO: {'loaded' if use_yolo else 'NOT LOADED'}", file=sys.stderr)
+    print(f"[INFO] ByteTrack: {'loaded' if HAS_BYTE_TRACK else 'NOT LOADED'}", file=sys.stderr)
 
     # Time range
     if start_time is not None and end_time is not None:
@@ -545,6 +548,13 @@ def process_video(
                 # Attach MediaPipe landmarks if available
                 mp_key = face.get("_mp_key", "")
                 landmarks = mp_landmarks_dict.get(mp_key, face.get("landmarks", {}))
+
+                # ── ASD fallback: if MediaPipe not available, use face cy as
+                #    lip_motion proxy.  When speaking, head bobs + jaw drops
+                #    slightly → cy varies → ASD detects energy variance.
+                if not mp_landmarker and face.get("lip_motion", 0.0) == 0.0:
+                    face["lip_motion"] = float(face.get("cy", 0))
+
                 speaker_assignments.append({
                     "cx": face["cx"],
                     "cy": face["cy"],
