@@ -142,6 +142,28 @@ class SpeakerIdentifier:
                 visual_data = json.load(f)
 
         self.log(f"Face detection complete: {len(visual_data.get('timeline', []))} frames")
+        
+        # ── DIAGNOSTIC: Check lip_motion field presence (print to STDOUT) ──
+        timeline = visual_data.get('timeline', [])
+        all_faces = [f for entry in timeline for f in entry.get('faces', [])]
+        faces_with_lip = sum(1 for f in all_faces if 'lip_motion' in f)
+        faces_nonzero_lip = sum(1 for f in all_faces if f.get('lip_motion', 0) != 0)
+        faces_with_raw_cy = sum(1 for f in all_faces if '_raw_cy' in f)
+        
+        print(f"[DIAGNOSTIC] Face data stats:", flush=True)
+        print(f"  Total faces: {len(all_faces)}", flush=True)
+        print(f"  Faces with 'lip_motion': {faces_with_lip}/{len(all_faces)}", flush=True)
+        print(f"  Faces with NON-ZERO lip_motion: {faces_nonzero_lip}/{len(all_faces)}", flush=True)
+        print(f"  Faces with '_raw_cy': {faces_with_raw_cy}/{len(all_faces)}", flush=True)
+        
+        if len(all_faces) > 0:
+            sample_faces = all_faces[:5]
+            print(f"  Sample face[0]: lip_motion={sample_faces[0].get('lip_motion', 'MISSING')}, _raw_cy={sample_faces[0].get('_raw_cy', 'MISSING')}, cy={sample_faces[0].get('cy', '?')}", flush=True)
+        
+        if faces_nonzero_lip == 0:
+            print(f"[DIAGNOSTIC] ❌ ALL lip_motion are ZERO → ASD will fail", flush=True)
+        else:
+            print(f"[DIAGNOSTIC] ✓ {faces_nonzero_lip} faces have non-zero lip_motion", flush=True)
 
         # ──────────────────────────────────────────
         # STEP 2: Audio-Visual Matching
