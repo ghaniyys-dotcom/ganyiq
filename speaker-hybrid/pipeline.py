@@ -177,29 +177,30 @@ class Pipeline:
     def _get_speaker_bbox(self, face_data: dict, speaker_id: str,
                           start: float, end: float,
                           frame_w: int = 1280, frame_h: int = 720) -> dict | None:
-        """Average face bounding box for a speaker in [start, end] range.
-        Returns {cx, cy, w, h} or None if no valid face found.
-        Filters false-positive detections at frame edges.
-        Falls back to best face in range if speaker_id not found."""
-        boxes = []
-        for entry in face_data.get("timeline", []):
-            t = entry.get("time", 0)
-            if t < start - 0.2 or t > end + 0.2:
-                continue
-            for face in entry.get("faces", []):
-                if face.get("speaker_id") == speaker_id:
-                    cx, cy = face.get("cx", 0), face.get("cy", 0)
-                    if cx <= 5 or cy <= 5 or cx >= frame_w - 5 or cy >= frame_h - 5:
-                        continue  # false positive at edge
-                    boxes.append(face)
+        """Find speaker's face via CLUSTER selection — NOT naive averaging.
 
-        if boxes:
-            return {
-                "cx": sum(b["cx"] for b in boxes) / len(boxes),
-                "cy": sum(b["cy"] for b in boxes) / len(boxes),
-                "w":  sum(b["w"] for b in boxes) / len(boxes),
-                "h":  sum(b["h"] for b in boxes) / len(boxes),
-            }
+        ASD often assigns the same speaker_id to MULTIPLE physical faces
+        (false-positive lip motion on listeners). Averaging across those
+        produces a cx pointing at empty space between people.
+
+        Instead: run face clustering on [start,end], pick the LARGEST
+        cluster that contains this speaker_id.  This gives the actual
+        position of the main person.
+
+        Falls back to best face (largest × most central) if no match.
+        """
+        clusters = self._get_face_clusters(face_data, start, end,
+                                           frame_w=frame_w, merge_dist=150)
+        if clusters:
+            sid = str(speaker_id) if speaker_id else None
+            # Pick largest cluster containing target speaker_id
+            for c in clusters:
+                c_sids = set(c.get("speaker_ids", {}).keys())
+                if sid in c_sids:
+                    log(f"  [SPEAKER_BBOX] cluster cx={c['cx']:.0f} "
+                        f"count={c['count']} sids={list(c['speaker_ids'].keys())}")
+                    return {"cx": c["cx"], "cy": c["cy"],
+                            "w": c["w"], "h": c["h"]}
 
         # Fallback: best face in range (largest × most central)
         candidates = []
@@ -211,9 +212,9 @@ class Pipeline:
                 cx, cy = face.get("cx", 0), face.get("cy", 0)
                 w, h = face.get("w", 0), face.get("h", 0)
                 if cx <= 5 or cy <= 5 or cx >= frame_w - 5 or cy >= frame_h - 5:
-                    continue  # false positive at edge
+                    continue
                 if w < 15 or h < 15:
-                    continue  # too small = noise
+                    continue
                 dist = abs(cx - frame_w/2) + abs(cy - frame_h/2)
                 score = (w * h) / max(dist, 1)
                 candidates.append((score, cx, cy, w, h))
