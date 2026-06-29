@@ -39,11 +39,13 @@ def run_cmd(cmd: list[str], desc: str = "", timeout: int = 600) -> str:
     if desc:
         log(desc)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    
+    # Always print stderr (for diagnostics and progress logs)
+    for line in result.stderr.splitlines():
+        log(f"  | {line}")
+    
     if result.returncode != 0:
         log(f"ERROR: {desc or ' '.join(cmd)}")
-        # Show ALL stderr so we can see the actual error
-        for line in result.stderr.splitlines():
-            log(f"  | {line}")
         raise RuntimeError(f"Command failed: {desc or ' '.join(cmd)[:100]}")
     return result.stdout
 
