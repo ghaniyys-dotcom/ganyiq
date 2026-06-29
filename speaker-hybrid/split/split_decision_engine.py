@@ -373,15 +373,13 @@ class SplitDecisionEngine:
             short_prev = prev['duration'] < self.MIN_SEGMENT
 
             if same_layout and (same_primary or short_next or short_prev):
-                prev['end'] = cur['end']
-                prev['duration'] = prev['end'] - prev['start']
-                total = prev['duration'] + cur['duration']
-                prev['confidence'] = (
-                    prev['confidence'] * prev['duration'] + cur['confidence'] * cur['duration']
-                ) / total if total else prev['confidence']
-                prev['reactions'] = (prev.get('reactions') or []) + (cur.get('reactions') or [])
-            else:
-                merged.append(dict(cur))
+                # Cap scene duration — don't merge beyond 12s so crops stay fresh
+                merged_dur = cur['end'] - prev['start']
+                if merged_dur < 12.0:
+                    prev['end'] = cur['end']
+                else:
+                    merged.append(dict(cur))
+                    continue
 
         # Pass 2: absorb very short scenes into longer neighbors
         if len(merged) > 1:

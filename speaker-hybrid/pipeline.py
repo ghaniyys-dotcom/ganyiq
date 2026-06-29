@@ -554,63 +554,71 @@ class Pipeline:
             target_sid = primary or (speakers[0] if speakers else None)
 
             bbox = None
-            if face_data:
-                bbox = self._get_speaker_bbox(
-                    face_data, target_sid or "",
-                    start, start + dur,
-                    frame_w=frame_w, frame_h=frame_h)
+            bbox_primary = None
+            bbox_secondary = None
 
             is_split = self.vertical and layout != "fullscreen"
 
-            if is_split:
-                # ── Split screen: primary face top + secondary face bottom ──
-                bbox_primary = None
-                bbox_secondary = None
-                if face_data:
+            if face_data:
+                clusters = self._get_face_clusters(
+                    face_data, start, start + dur, frame_w=frame_w)
+                has_multiple_faces = clusters and len(clusters) >= 2 \
+                    and abs(clusters[0]["cx"] - clusters[1]["cx"]) >= 200
+
+                # Force split when multiple distinct faces visible
+                if self.vertical and has_multiple_faces and not is_split:
+                    is_split = True
+                    layout = "split_screen"
+                    log(f"  Force split {start:.1f}s-{start+dur:.1f}s: "
+                        f"{len(clusters)} face clusters ≥200px apart")
+
+                if is_split:
                     bbox_primary = self._get_speaker_bbox(
                         face_data, target_sid or "",
                         start, start + dur,
                         frame_w=frame_w, frame_h=frame_h)
-                    # Find second face: try explicit secondary_speaker first
+
                     secondary_sid = scene.get("secondary_speaker")
                     if secondary_sid and secondary_sid != target_sid:
                         bbox_secondary = self._get_speaker_bbox(
                             face_data, secondary_sid,
                             start, start + dur,
                             frame_w=frame_w, frame_h=frame_h)
-                        # Discard if too close to primary (same person error)
-                        if (bbox_primary and bbox_secondary 
+                        if (bbox_primary and bbox_secondary
                                 and abs(bbox_primary["cx"] - bbox_secondary["cx"]) < 200):
                             bbox_secondary = None
 
-                    # ALWAYS log face clusters for split scenes
-                    clusters = self._get_face_clusters(
-                        face_data, start, start + dur, frame_w=frame_w)
-                    if clusters:
-                        c_desc = "; ".join(
-                            f"cx={c['cx']:.0f}({c['count']}x,"
-                            f"sids={list(c['speaker_ids'].keys())})"
-                            for c in clusters[:4]
-                        )
-                        log(f"  Face clusters in {start:.1f}s-{start+dur:.1f}s: "
-                            f"{len(clusters)} clusters → {c_desc}")
+                    # Always log clusters for vertical output
+                    if clusters or self.vertical:
+                        if not clusters:
+                            clusters = self._get_face_clusters(
+                                face_data, start, start + dur, frame_w=frame_w)
+                        if clusters:
+                            c_desc = "; ".join(
+                                f"cx={c['cx']:.0f}({c['count']}x,"
+                                f"sids={list(c['speaker_ids'].keys())})"
+                                for c in clusters[:4]
+                            )
+                            log(f"  Face clusters in {start:.1f}s-{start+dur:.1f}s: "
+                                f"{len(clusters)} clusters → {c_desc}")
 
                     if bbox_secondary is None:
-                        # Fallback: spatial clustering
                         bbox_secondary = self._get_secondary_bbox(
                             face_data, start, start + dur,
                             bbox_primary, frame_w=frame_w)
 
-                    # If secondary is essentially the same position, DON'T split
-                    # (faces within 200px are too close for a meaningful split)
                     if (bbox_primary and bbox_secondary
                             and abs(bbox_primary["cx"] - bbox_secondary["cx"]) < 200):
                         log(f"  Split cancelled: both crops at same position "
-                            f"(cx={bbox_primary['cx']:.0f} vs {bbox_secondary['cx']:.0f}, "
-                            f"diff={abs(bbox_primary['cx'] - bbox_secondary['cx']):.0f}px)"
+                            f"(cx={bbox_primary['cx']:.0f} vs {bbox_secondary['cx']:.0f})"
                             f" — falling back to fullscreen")
                         is_split = False
-                        bbox = bbox_primary  # use primary face for fullscreen
+                        bbox = bbox_primary
+                else:
+                    bbox = self._get_speaker_bbox(
+                        face_data, target_sid or "",
+                        start, start + dur,
+                        frame_w=frame_w, frame_h=frame_h)
 
                 if is_split:
                     # ── ACTUAL SPLIT ──
