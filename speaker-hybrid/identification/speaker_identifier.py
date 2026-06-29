@@ -273,7 +273,17 @@ class SpeakerIdentifier:
                         # ByteTrack creates new track IDs for the same person on
                         # re-detection → AVM gives each track its own LISTENER_* ID.
                         # Merge tracks whose face cx is within threshold.
-                        self._consolidate_by_position(visual_data, cx_threshold=100.0)
+                        id_map = self._consolidate_by_position(visual_data, cx_threshold=150.0)
+
+                        # Also remap matched_timeline (used by split engine)
+                        for entry in matched_timeline:
+                            old_visual = entry.get("visual_speakers", [])
+                            new_visual = sorted(set(
+                                id_map.get(vs, vs) if isinstance(vs, str) else str(vs)
+                                for vs in old_visual
+                            ))
+                            entry["visual_speakers"] = list(new_visual)
+                            entry["matched_speakers"] = list(new_visual)
 
                         # Re-write face data with consolidated IDs
                         with open(temp_face_path, "w") as _f:
@@ -424,90 +434,95 @@ class SpeakerIdentifier:
         timeline = visual_data.get("timeline", [])
         return [VisualFrame(float(e["time"]), e.get("faces", [])) for e in timeline if e]
 
-    def _consolidate_by_position(self, visual_data: dict, cx_threshold: float = 100.0):
-        """Merge fragmented LISTENER_*/SPEAKER_* IDs whose faces are spatially close.
+    def _consolidate_by_position(self, visual_data: dict, cx_threshold: float = 100.0) -> dict[str, str]:
+            """Merge fragmented LISTENER_*/SPEAKER_* IDs whose faces are spatially close.
         
-        ByteTrack creates new track IDs per re-detection → each track gets a
-        unique AVM speaker ID.  This merges tracks at similar x-position into
-        a single canonical speaker, so split engine sees 5 real people not 63.
-        """
-        timeline = visual_data.get("timeline", [])
-        if not timeline:
-            return
+            ByteTrack creates new track IDs for the same person on
+            re-detection → each track gets a unique AVM speaker ID.  This merges
+            tracks at similar x-position into a single canonical speaker, so split
+            engine sees real speakers, not fragmented IDs.
+        
+            Returns id_map: {old_speaker_id -> canonical_speaker_id}
+            """
+            timeline = visual_data.get("timeline", [])
+            if not timeline:
+                return {}
 
-        # 1. compute per-speaker average face position
-        pos = {}  # speaker_id -> (total_cx, total_cy, count)
-        for entry in timeline:
-            for face in entry.get("faces", []):
-                sid = str(face.get("speaker_id", ""))
-                if not sid:
-                    continue
-                cx = float(face.get("cx", 0))
-                cy = float(face.get("cy", 0))
-                if sid not in pos:
-                    pos[sid] = [0.0, 0.0, 0]
-                pos[sid][0] += cx
-                pos[sid][1] += cy
-                pos[sid][2] += 1
-
-        avg = {sid: (p[0] / p[2], p[1] / p[2]) for sid, p in pos.items() if p[2] > 0}
-        if not avg:
-            return
-
-        # 2. cluster by average cx proximity
-        sids = list(avg.keys())
-        groups = []  # list of [canonical_id, set[member_ids]]
-        for sid in sids:
-            cx_s = avg[sid][0]
-            placed = False
-            for g in groups:
-                g_cx = avg[g[0]][0]
-                if abs(g_cx - cx_s) < cx_threshold:
-                    g[1].add(sid)
-                    placed = True
-                    break
-            if not placed:
-                groups.append([sid, {sid}])
-
-        # 3. pick canonical ID per group — prefer SPEAKER_ over LISTENER_
-        id_map = {}
-        for g in groups:
-            canonical = g[0]
-            for member in g[1]:
-                if not member.startswith("LISTENER_"):
-                    canonical = member
-                    break
-            for member in g[1]:
-                id_map[member] = canonical
-
-        # 4. rewrite timeline & visual_speakers
-        n_rewritten = 0
-        for entry in timeline:
-            for face in entry.get("faces", []):
-                old = str(face.get("speaker_id", ""))
-                if old in id_map and id_map[old] != old:
-                    face["speaker_id"] = id_map[old]
-                    n_rewritten += 1
-            # also update visual_speakers set
-            vs = entry.get("visual_speakers", [])
-            if vs:
-                new_vs = set()
-                for s in vs:
-                    new_vs.add(id_map.get(str(s), str(s)))
-                entry["visual_speakers"] = list(new_vs)
-            ms = entry.get("matched_speakers", [])
-            if ms:
-                new_ms = set()
-                for s in ms:
-                    new_ms.add(id_map.get(str(s), str(s)))
-                entry["matched_speakers"] = list(new_ms)
-
-        if timeline:
-            unique_after = set()
+            # 1. compute per-speaker average face position
+            pos = {}  # speaker_id -> [total_cx, total_cy, count]
             for entry in timeline:
                 for face in entry.get("faces", []):
-                    unique_after.add(str(face.get("speaker_id", "")))
-            self.log(f"[CONSOLIDATE] Merged {n_rewritten} face entries, {len(unique_after)} unique speaker IDs remaining")
+                    sid = str(face.get("speaker_id", ""))
+                    if not sid:
+                        continue
+                    cx = float(face.get("cx", 0))
+                    cy = float(face.get("cy", 0))
+                    if sid not in pos:
+                        pos[sid] = [0.0, 0.0, 0]
+                    pos[sid][0] += cx
+                    pos[sid][1] += cy
+                    pos[sid][2] += 1
+
+            avg = {sid: (p[0] / p[2], p[1] / p[2]) for sid, p in pos.items() if p[2] > 0}
+            if not avg:
+                return {}
+
+            # 2. cluster by average cx proximity
+            sids = list(avg.keys())
+            groups = []  # list of [canonical_id, set[member_ids]]
+            for sid in sids:
+                cx_s = avg[sid][0]
+                placed = False
+                for g in groups:
+                    g_cx = avg[g[0]][0]
+                    if abs(g_cx - cx_s) < cx_threshold:
+                        g[1].add(sid)
+                        placed = True
+                        break
+                if not placed:
+                    groups.append([sid, {sid}])
+
+            # 3. pick canonical ID per group — prefer SPEAKER_ over LISTENER_
+            id_map = {}
+            for g in groups:
+                canonical = g[0]
+                for member in g[1]:
+                    if member.startswith("SPEAKER_"):
+                        canonical = member
+                        break
+                for member in g[1]:
+                    id_map[member] = canonical
+
+            # 4. rewrite timeline & visual_speakers
+            n_rewritten = 0
+            for entry in timeline:
+                for face in entry.get("faces", []):
+                    old = str(face.get("speaker_id", ""))
+                    if old in id_map and id_map[old] != old:
+                        face["speaker_id"] = id_map[old]
+                        n_rewritten += 1
+                # also update visual_speakers set
+                vs = entry.get("visual_speakers", [])
+                if vs:
+                    new_vs = set()
+                    for s in vs:
+                        new_vs.add(id_map.get(str(s), str(s)))
+                    entry["visual_speakers"] = list(new_vs)
+                ms = entry.get("matched_speakers", [])
+                if ms:
+                    new_ms = set()
+                    for s in ms:
+                        new_ms.add(id_map.get(str(s), str(s)))
+                    entry["matched_speakers"] = list(new_ms)
+
+            if timeline:
+                unique_after = set()
+                for entry in timeline:
+                    for face in entry.get("faces", []):
+                        unique_after.add(str(face.get("speaker_id", "")))
+                self.log(f"[CONSOLIDATE] Merged {n_rewritten} face entries, {len(unique_after)} unique speaker IDs remaining")
+
+            return id_map
 
     def _extract_speakers(self, timeline: list[dict] | None) -> list[dict]:
         """Extract speaker identities, filtering false positives (< 3s)."""
