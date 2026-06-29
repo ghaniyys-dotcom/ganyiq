@@ -493,14 +493,18 @@ def process_video(
                 )
 
                 # Precompute lip_motion from MediaPipe 468-point landmarks
+                # MediaPipe landmarks are normalized (0.0-1.0), so multiply by
+                # frame dimensions to get pixel-space distances for ASD
+                frame_h, frame_w = frame.shape[:2]
                 for idx, (mf, ml) in enumerate(zip(mp_faces, mp_landmarks_list)):
                     lip_open = 0.0
                     if ml and len(ml) > 14:
                         upper = ml[13]   # upper inner lip
                         lower = ml[14]   # lower inner lip
                         if len(upper) >= 2 and len(lower) >= 2:
-                            dx = lower[0] - upper[0]
-                            dy = lower[1] - upper[1]
+                            # Convert to pixel space for meaningful lip distance
+                            dx = (lower[0] - upper[0]) * frame_w
+                            dy = (lower[1] - upper[1]) * frame_h
                             lip_open = math.sqrt(dx*dx + dy*dy)
                     mf["lip_motion"] = round(lip_open, 4)
 

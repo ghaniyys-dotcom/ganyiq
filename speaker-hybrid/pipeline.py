@@ -277,14 +277,18 @@ class Pipeline:
         # Sort by count descending for deterministic merge
         clusters.sort(key=lambda c: c["count"], reverse=True)
 
-        # ── Step 3: MERGE clusters that are <merge_dist px apart ──
-        # (they belong to the same person at different face angles)
+        # ── Step 3: MERGE clusters that are <merge_dist px apart AND same speaker_id ──
+        # NEVER merge clusters that have DIFFERENT dominant speaker_ids — they're
+        # different people even if sitting close together.
         merged = []
         for c in clusters:
-            # Find existing merged cluster within merge_dist
+            c_top_sid = next(iter(c["speaker_ids"]), None)
+            # Find existing merged cluster within merge_dist AND same speaker
             found = False
             for m in merged:
-                if abs(m["cx"] - c["cx"]) < merge_dist:
+                m_top_sid = next(iter(m["speaker_ids"]), None)
+                same_person = (c_top_sid and m_top_sid and c_top_sid == m_top_sid)
+                if same_person and abs(m["cx"] - c["cx"]) < merge_dist:
                     # Merge into existing cluster (weighted average)
                     total = m["count"] + c["count"]
                     m["cx"] = (m["cx"] * m["count"] + c["cx"] * c["count"]) / total
@@ -316,14 +320,17 @@ class Pipeline:
         Strategy:
         1. Try to find a face with a DIFFERENT speaker_id than the primary
            (most reliable — requires AVM to have mapped tracks correctly).
+           No cx-distance threshold — if speaker_id differs, they're different
+           people regardless of how close they sit.
         2. Fallback: spatial clustering, pick cluster FARTHEST from primary
-           with minimum distance ≥100px.
+           with minimum distance ≥50px.
+        3. Last resort: second largest cluster.
         """
         clusters = self._get_face_clusters(face_data, start, end, frame_w)
         if not clusters:
             return None
 
-        # ── Step 1: try different speaker_id ──
+        # ── Step 1: try different speaker_id (NO cx threshold) ──
         if primary_bbox:
             primary_sid = None
             primary_cx = primary_bbox.get("cx", 0)
@@ -338,18 +345,18 @@ class Pipeline:
                 # Find a cluster dominated by a DIFFERENT speaker_id
                 for c in clusters:
                     c_sids = set(c["speaker_ids"].keys())
-                    if primary_sid not in c_sids and abs(c["cx"] - primary_cx) >= 100:
+                    if primary_sid not in c_sids:
                         return {"cx": c["cx"], "cy": c["cy"],
                                 "w": c["w"], "h": c["h"]}
 
-        # ── Step 2: pick cluster FARTHEST from primary (≥100px) ──
+        # ── Step 2: pick cluster FARTHEST from primary (≥50px) ──
         if primary_bbox:
             primary_cx = primary_bbox["cx"]
             best = None
             best_dist = 0
             for c in clusters:
                 dist = abs(c["cx"] - primary_cx)
-                if dist >= 100 and dist > best_dist:
+                if dist >= 50 and dist > best_dist:
                     best_dist = dist
                     best = c
             if best:
