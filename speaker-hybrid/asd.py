@@ -45,13 +45,16 @@ def compute_lip_energy(
     # Collect raw lip_motion values per track per time
     # track_id → list of (time, lip_motion)
     raw: dict[int, list[tuple[float, float]]] = defaultdict(list)
+    raw_cy: dict[int, list[tuple[float, float]]] = defaultdict(list)
 
     for entry in timeline:
         t = entry.get("time", 0)
         for face in entry.get("faces", []):
             tid = face.get("track_id", -1)
             lm = face.get("lip_motion", 0.0)
+            rcy = face.get("_raw_cy", 0.0)
             raw[tid].append((t, lm))
+            raw_cy[tid].append((t, rcy))
 
     window_frames = max(3, int(window_sec * fps))
 
@@ -69,6 +72,12 @@ def compute_lip_energy(
                 v for ft, v in vals
                 if t - window_sec <= ft <= t
             ]
+            # FALLBACK: If all lip_motion are zero, use _raw_cy variance instead
+            if len(window_vals) >= 3 and all(v == 0.0 for v in window_vals):
+                window_vals = [
+                    v for ft, v in raw_cy.get(tid, [])
+                    if t - window_sec <= ft <= t
+                ]
             if len(window_vals) < 3:
                 track_energies[tid] = 0.0
                 continue
