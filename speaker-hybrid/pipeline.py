@@ -345,20 +345,21 @@ class Pipeline:
 
             if primary_sid:
                 # Find a cluster dominated by a DIFFERENT speaker_id
+                # AND far enough from primary (≥200px) to be truly different person
                 for c in clusters:
                     c_sids = set(c["speaker_ids"].keys())
-                    if primary_sid not in c_sids:
+                    if primary_sid not in c_sids and abs(c["cx"] - primary_cx) >= 200:
                         return {"cx": c["cx"], "cy": c["cy"],
                                 "w": c["w"], "h": c["h"]}
 
-        # ── Step 2: pick cluster FARTHEST from primary (≥50px) ──
+        # ── Step 2: pick cluster FARTHEST from primary (≥200px) ──
         if primary_bbox:
             primary_cx = primary_bbox["cx"]
             best = None
             best_dist = 0
             for c in clusters:
                 dist = abs(c["cx"] - primary_cx)
-                if dist >= 50 and dist > best_dist:
+                if dist >= 200 and dist > best_dist:
                     best_dist = dist
                     best = c
             if best:
@@ -584,9 +585,9 @@ class Pipeline:
                             bbox_primary, frame_w=frame_w)
 
                     # If secondary is essentially the same position, DON'T split
-                    # (faces within 50px are too close for a meaningful split)
+                    # (faces within 200px are too close for a meaningful split)
                     if (bbox_primary and bbox_secondary
-                            and abs(bbox_primary["cx"] - bbox_secondary["cx"]) < 50):
+                            and abs(bbox_primary["cx"] - bbox_secondary["cx"]) < 200):
                         log(f"  Split cancelled: both crops at same position "
                             f"(cx={bbox_primary['cx']:.0f} vs {bbox_secondary['cx']:.0f}, "
                             f"diff={abs(bbox_primary['cx'] - bbox_secondary['cx']):.0f}px)"
