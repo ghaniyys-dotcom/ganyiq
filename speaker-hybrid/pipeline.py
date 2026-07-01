@@ -349,15 +349,16 @@ class Pipeline:
         bottom_edge = frame_h * 0.85
         
         if mode == "single":
+            # Aggressive centering: nudge stuck edges to 50% center
             if cx < left_edge:
-                cx = left_edge + w / 2
+                cx = frame_w * 0.5  # center horizontal
             elif cx > right_edge:
-                cx = right_edge - w / 2
+                cx = frame_w * 0.5
             
             if cy < top_edge:
-                cy = top_edge + h / 2
+                cy = frame_h * 0.5  # center vertical
             elif cy > bottom_edge:
-                cy = bottom_edge - h / 2
+                cy = frame_h * 0.5
         
         # Final bounds clamp
         cx = max(w / 2, min(cx, frame_w - w / 2))
@@ -481,28 +482,37 @@ class Pipeline:
                         return {"cx": c["cx"], "cy": c["cy"],
                                 "w": c["w"], "h": c["h"]}
 
-        # ── Step 2: pick cluster FARTHEST from primary (≥200px, count >= 10) ──
+        # ── Step 2: pick MOST CENTRAL valid cluster (≥200px from primary, size filter) ──
         if primary_bbox:
             primary_cx = primary_bbox["cx"]
-            best = None
-            best_dist = 0
+            candidates = []
             for c in clusters:
                 dist = abs(c["cx"] - primary_cx)
                 count = c.get("count", 0)
-                if dist >= 200 and count >= 10 and dist > best_dist:
-                    best_dist = dist
-                    best = c
-            if best:
-                log(f"  [SECONDARY-STEP2] cluster cx={best['cx']:.0f} dist={best_dist:.0f} count={best['count']}")
+                w, h = c.get("w", 0), c.get("h", 0)
+                # Quality filters: far enough, big enough bbox, enough detections
+                if dist >= 200 and count >= 10 and w >= 50 and h >= 50:
+                    # Score = centrality (closer to horizontal center = higher score)
+                    centrality = 1.0 / (1.0 + abs(c["cx"] - frame_w / 2))
+                    candidates.append((centrality, c, dist, count))
+            
+            if candidates:
+                # Pick most central (highest score)
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                best_score, best, best_dist, best_count = candidates[0]
+                log(f"  [SECONDARY-STEP2] cluster cx={best['cx']:.0f} centrality={best_score:.4f} "
+                    f"dist={best_dist:.0f} count={best_count} w={best['w']:.0f} h={best['h']:.0f}")
                 return {"cx": best["cx"], "cy": best["cy"],
                         "w": best["w"], "h": best["h"]}
 
-        # ── Step 3: second largest cluster (count >= 10) ──
+        # ── Step 3: second largest cluster (count >= 10, size filter) ──
         if len(clusters) >= 2:
             sorted_clusters = sorted(clusters, key=lambda c: c.get("count", 0), reverse=True)
             second = sorted_clusters[1]
-            if second.get("count", 0) >= 10:
-                log(f"  [SECONDARY-STEP3] 2nd cluster cx={second['cx']:.0f} count={second['count']}")
+            w, h = second.get("w", 0), second.get("h", 0)
+            if second.get("count", 0) >= 10 and w >= 50 and h >= 50:
+                log(f"  [SECONDARY-STEP3] 2nd cluster cx={second['cx']:.0f} count={second['count']} "
+                    f"w={w:.0f} h={h:.0f}")
                 return {"cx": second["cx"], "cy": second["cy"],
                         "w": second["w"], "h": second["h"]}
 
