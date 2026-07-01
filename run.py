@@ -1,10 +1,11 @@
 import sys
-import os
+from pathlib import Path
 
-# Add the project root to the Python path.
-# This ensures that imports like 'from speaker_hybrid...' work correctly
-# when this script is run from the project root directory.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add the project root (the directory containing 'run.py') to sys.path
+# This ensures that 'speaker_hybrid' can be found as a top-level package.
+project_root = Path(__file__).resolve().parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from speaker_hybrid.pipeline import main as run_pipeline
 
