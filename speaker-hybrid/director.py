@@ -138,10 +138,16 @@ class DirectorAI:
 
         # Collect other faces (listeners) that are NOT the speaker
         other_faces = []
+        speaker_tid = speaker_face.get("track_id")
         for face in all_faces_now:
-            # Skip if it is the primary speaker face
-            if face == speaker_face:
+            # Skip if it's the same person as the speaker
+            if face.get("track_id") == speaker_tid:
                 continue
+            # Skip if face too close to speaker (same person, tracking artifact)
+            if speaker_tid is not None:
+                dx = abs(face.get("cx", 0) - speaker_face.get("cx", 0))
+                if dx < 150.0:
+                    continue
             # Apply size filter to filter out hands/noise
             if face.get('w', 0) >= 40 and face.get('h', 0) >= 40:
                 other_faces.append(face)

@@ -48,27 +48,45 @@ def run_cmd(cmd: list[str], desc: str = "", timeout: int = 600) -> str:
     return result.stdout
 
 class Pipeline:
-    """End-to-end GANYIQ Speaker Hybrid Pipeline."""
+    class CameraSmoother:
+        """Exponential moving average for smooth camera pan (FASE 13)."""
+        def __init__(self, alpha=0.2):
+            self.alpha = alpha
+            self.reset()
+        def reset(self):
+            self._cx = None
+            self._cy = None
+        def smooth(self, cx, cy):
+            if self._cx is None:
+                self._cx, self._cy = cx, cy
+            else:
+                self._cx = self._cx * (1 - self.alpha) + cx * self.alpha
+                self._cy = self._cy * (1 - self.alpha) + cy * self.alpha
+            return self._cx, self._cy
 
-    def __init__(self, video_path: str, output_path: str,
-                 work_dir: str | None = None, vertical: bool = False,
-                 debug_mode: bool = False):
-        self.video_path = Path(video_path).resolve()
-        self.output_path = Path(output_path).resolve()
-        self.work_dir = Path(work_dir or tempfile.mkdtemp(prefix="ganyiq_")).resolve()
-        self.work_dir.mkdir(parents=True, exist_ok=True)
-        self.vertical = vertical
-        self.debug_mode = debug_mode
-        self.debug_log_path = self.work_dir / "debug.log" if debug_mode else None
-        self.debug_fontfile = ""
-        if debug_mode and platform.system() == "Windows":
-            for cand in ["C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/calibri.ttf"]:
-                if os.path.exists(cand):
-                    self.debug_fontfile = cand
-                    break
-        self.audio_path = self.work_dir / "audio.wav"
-        self.diarization_path = self.work_dir / "diarization.json"
-        self.result_path = self.work_dir / "analysis_result.json"
+
+    class Pipeline:
+        """Pipeline for orchestrating face detection and video rendering."""
+        def __init__(self, video_path: str, output_path: str,
+                     work_dir: str | None = None, vertical: bool = False,
+                     debug_mode: bool = False):
+            self.video_path = Path(video_path).resolve()
+            self.output_path = Path(output_path).resolve()
+            self.work_dir = Path(work_dir or tempfile.mkdtemp(prefix="ganyiq_")).resolve()
+            self.work_dir.mkdir(parents=True, exist_ok=True)
+            self.vertical = vertical
+            self.debug_mode = debug_mode
+            self.debug_log_path = self.work_dir / "debug.log" if debug_mode else None
+            self.debug_fontfile = ""
+            if debug_mode and platform.system() == "Windows":
+                for cand in ["C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/calibri.ttf"]:
+                    if os.path.exists(cand):
+                        self.debug_fontfile = cand
+                        break
+            self.audio_path = self.work_dir / "audio.wav"
+            self.diarization_path = self.work_dir / "diarization.json"
+            self.result_path = self.work_dir / "analysis_result.json"
+            self.cam = CameraSmoother(alpha=0.2)
 
     def run(self):
         """Execute the full pipeline."""
@@ -241,12 +259,12 @@ class Pipeline:
         if vertical:
             vw = frame_h * 9 / 16
             vx = max(0.0, min(bbox["cx"] - vw / 2, frame_w - vw))
-            vy = max(0.0, min(bbox["cy"] - frame_h * 0.65, frame_h - frame_h))
+            vy = max(0.0, min(bbox["cy"] - frame_h * 0.35, frame_h - frame_h * 0.15))
             return f"crop={vw:.0f}:{frame_h}:{vx:.0f}:0,scale={out_w}:{out_h}"
         cw = min(frame_w, max(100, bbox["w"] * 4))
         ch = min(frame_h, max(100, bbox["h"] * 4))
         cx = max(0.0, min(bbox["cx"] - cw / 2, frame_w - cw))
-        cy = max(0.0, min(bbox["cy"] - ch * 0.65, frame_h - ch))
+        cy = max(0.0, min(bbox["cy"] - ch * 0.35, frame_h - ch))
         return f"crop={cw:.0f}:{ch:.0f}:{cx:.0f}:{cy:.0f},scale={out_w}:{out_h}"
 
     @staticmethod
