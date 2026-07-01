@@ -19,11 +19,24 @@ import sys
 import os
 import argparse
 import subprocess
+import tempfile
 from pathlib import Path
-from dotenv import load_dotenv
+def load_env_vars(filename=".env.local"):
+    """Manually parse a .env file and set environment variables."""
+    try:
+        with open(filename, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    key, value = line.split('=', 1)
+                    os.environ.setdefault(key.strip(), value.strip())
+    except FileNotFoundError:
+        log(f"Info: {filename} not found, relying on system environment variables.")
+    except Exception as e:
+        log(f"Warning: Could not parse {filename}: {e}")
 
-# Load .env file from the project root
-load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / '.env')
+# Load env vars at script start
+load_env_vars(Path(__file__).resolve().parent / '.env.local')
 
 
 def log(msg: str):

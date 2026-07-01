@@ -7,9 +7,25 @@ directory, bypassing all import path issues on Windows.
 """
 import sys
 from pathlib import Path
+import os
+
+def load_env_vars(base_dir: Path):
+    """Manually parse .env.local file."""
+    env_file = base_dir / ".env.local"
+    if not env_file.exists(): return
+    try:
+        with open(env_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    key, value = line.split('=', 1)
+                    os.environ.setdefault(key.strip(), value.strip())
+    except Exception as e:
+        print(f"[WARN] Could not parse {env_file}: {e}", file=sys.stderr)
 
 def main():
     project_root = Path(__file__).resolve().parent
+    load_env_vars(project_root) # Load .env.local
     pipeline_file = project_root / "speaker-hybrid" / "pipeline.py"
     
     if not pipeline_file.exists():
