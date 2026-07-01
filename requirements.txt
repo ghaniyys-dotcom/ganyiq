@@ -1,19 +1,2 @@
-# GANYIQ Worker — Python Dependencies
-# Install: pip install -r requirements.txt
 
-# ── Core Pipeline (required) ──
-opencv-python>=4.8.0          # Face detection (Haar + YOLO preprocessing)
-numpy>=1.24.0                 # Matrix operations everywhere
-onnxruntime>=1.15.0           # YOLOv8-face ONNX inference
-scipy>=1.10.0                 # ByteTrack matching, DCT for MFCC
-scikit-learn>=1.3.0           # KMeans speaker clustering fallback
-
-# ── Optional Diarization (torch + pyannote, ~2GB) ──
-# torch>=2.0.0                 # PyAnnote backend (CPU or CUDA)
-# torchaudio>=2.0.0            # Audio processing for PyAnnote
-# pyannote.audio>=4.0.0        # Speaker diarization (requires HF token)
-# huggingface-hub>=0.20.0      # Model download for PyAnnote
-
-# ── Optional Audio Analysis (disabled by default in Phase A) ──
-# librosa>=0.10.0              # Spectral audio analysis (reaction detection)
-# soundfile>=0.12.0            # Audio I/O for librosa
+python-dotenv

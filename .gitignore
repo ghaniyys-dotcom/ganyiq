@@ -1,5 +1,3 @@
-node_modules/
-dist/
-.env.local
-*.pyc
-__pycache__/
+
+# Environment variables
+.env

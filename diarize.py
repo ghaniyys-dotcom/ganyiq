@@ -20,6 +20,10 @@ import os
 import argparse
 import subprocess
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file from the project root
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / '.env')
 
 
 def log(msg: str):
@@ -486,17 +490,66 @@ def main():
     parser = argparse.ArgumentParser(description='Speaker diarization')
     parser.add_argument('input_path', help='Path to video or audio file')
     parser.add_argument('output_json', help='Output speaker segments JSON')
-    parser.add_argument('--hf-token', default='', help='HuggingFace token for PyAnnote')
-    parser.add_argument('--deepgram-key', default='', help='Deepgram API key for diarization')
-    parser.add_argument('--num-speakers', type=int, default=0,
-                        help='Estimated number of speakers (0=auto)')
-    parser.add_argument('--skip-extract', action='store_true',
-                        help='Input is already audio (skip extraction)')
-
+    parser.add_argument('--hf-token', default=None, help='HuggingFace token for PyAnnote')
+    parser.add_argument('--deepgram-key', default=None, help='Deepgram API key')
+    parser.add_argument('--num-speakers', type=int, default=0, help='Num speakers (0=auto)')
+    parser.add_argument('--skip-extract', action='store_true', help='Input is audio')
     args = parser.parse_args()
 
     audio_path = args.input_path
-    cleanup_audio = False
+    cleanup_audio_path = None
+    if not args.skip_extract:
+        temp_dir = tempfile.mkdtemp(prefix="diarize_")
+        temp_audio_path = os.path.join(temp_dir, "temp_audio.wav")
+        if not extract_audio(args.input_path, temp_audio_path):
+            sys.exit(1)
+        audio_path = temp_audio_path
+        cleanup_audio_path = temp_audio_path
+    
+    segments = []
+    strategy_used = "none"
+
+    deepgram_key = args.deepgram_key or os.getenv("DEEPGRAM_API_KEY")
+    if deepgram_key:
+        segments = diarize_deepgram(audio_path, deepgram_key)
+        if segments: strategy_used = "deepgram"
+
+    if not segments:
+        hf_token = args.hf_token or os.getenv("HF_TOKEN")
+        if hf_token:
+            segments = diarize_pyannote(audio_path, hf_token)
+            if segments: strategy_used = "pyannote"
+    
+    if not segments:
+        segments = diarize_clustering(audio_path, args.num_speakers)
+        if segments: strategy_used = "clustering"
+
+    if not segments:
+        segments = diarize_energy_fallback(audio_path)
+        if segments: strategy_used = "energy_fallback"
+
+    num_speakers_found = len(set(s['speaker'] for s in segments))
+    total_speech_dur = sum(s['end'] - s['start'] for s in segments)
+    
+    log(f"[DONE] {len(segments)} segments, {num_speakers_found} speakers, "
+        f"strategy={strategy_used}, {total_speech_dur:.1f}s total speech")
+
+    output_data = {
+        "metadata": {"strategy": strategy_used, "num_speakers": num_speakers_found, "total_speech_duration_sec": total_speech_dur},
+        "segments": segments
+    }
+    with open(args.output_json, 'w') as f:
+        json.dump(output_data, f, indent=2)
+
+    if cleanup_audio_path:
+        try:
+            os.remove(cleanup_audio_path)
+            os.rmdir(os.path.dirname(cleanup_audio_path))
+        except OSError as e:
+            log(f"Failed to cleanup temp audio: {e}")
+
+if __name__ == "__main__":
+    main()
 
     if not args.skip_extract:
         ext = Path(args.input_path).suffix.lower()
