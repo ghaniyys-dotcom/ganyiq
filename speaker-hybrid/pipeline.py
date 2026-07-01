@@ -573,9 +573,11 @@ class Pipeline:
             crop_h = crop_w * half_h / out_w
 
         # Top: crop around primary face (x and y) → scale to 720x640
+        # YOLO person bbox cy = chest centroid, not face. Bias crop upward
+        # so 65% is above cy (face) and 35% below (chest/shoulders).
         if bbox_top:
             vx = max(0.0, min(bbox_top["cx"] - crop_w / 2, frame_w - crop_w))
-            vy = max(0.0, min(bbox_top["cy"] - crop_h / 2, frame_h - crop_h))
+            vy = max(0.0, min(bbox_top["cy"] - crop_h * 0.65, frame_h - crop_h))
         else:
             vx = (frame_w - crop_w) / 2
             vy = (frame_h - crop_h) / 2
@@ -584,7 +586,7 @@ class Pipeline:
         # Bottom: crop around secondary face (x and y) → scale to 720x640
         if bbox_bottom:
             vx_bot = max(0.0, min(bbox_bottom["cx"] - crop_w / 2, frame_w - crop_w))
-            vy_bot = max(0.0, min(bbox_bottom["cy"] - crop_h / 2, frame_h - crop_h))
+            vy_bot = max(0.0, min(bbox_bottom["cy"] - crop_h * 0.65, frame_h - crop_h))
             bottom = (f"[0:v]crop={crop_w:.1f}:{crop_h:.1f}:{vx_bot:.1f}:{vy_bot:.1f},"
                       f"scale={out_w}:{half_h}[bottom]")
         else:
