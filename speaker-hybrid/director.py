@@ -46,21 +46,139 @@ class DirectorAI:
         """
         The main directorial logic. Iterates through the video timeline and
         makes stateful decisions about camera shots.
-
-        (Logic to be implemented in Step 2, 3, 4)
         """
-        # Placeholder logic: create one long fullscreen shot for now
-        # This will be replaced with the state machine logic.
-        print("[DirectorAI] WARNING: Using placeholder logic. Shot list will be basic.")
+        raw_shots = []
         
-        shot_list = [
-            Shot(
-                start_time=0.0,
+        # State variables
+        current_layout = None
+        current_primary = None
+        current_secondary = None
+        last_cut_time = 0.0
+
+        # Loop through time, second by second
+        for t in range(int(self.video_duration)):
+            # 1. Who is active at this second?
+            speaker, listener = self._get_scene_actors(float(t))
+            
+            # 2. What's the best layout for them?
+            ideal_layout = self._determine_layout(speaker, listener)
+            
+            # 3. Time to cut? (Layout changed AND min duration passed)
+            if (ideal_layout != current_layout or speaker != current_primary) and (t - last_cut_time > self.min_shot_duration):
+                # Finalize the previous shot
+                if current_layout is not None:
+                    raw_shots.append(Shot(
+                        start_time=last_cut_time,
+                        end_time=float(t),
+                        layout=current_layout,
+                        primary_target_id=current_primary,
+                        secondary_target_id=current_secondary,
+                    ))
+                
+                # Start a new shot
+                current_layout = ideal_layout
+                current_primary = speaker
+                current_secondary = listener
+                last_cut_time = float(t)
+
+        # Add the final shot
+        if current_layout is not None:
+            raw_shots.append(Shot(
+                start_time=last_cut_time,
                 end_time=self.video_duration,
-                layout="fullscreen",
-                debug_info={"reason": "placeholder"}
-            )
-        ]
+                layout=current_layout,
+                primary_target_id=current_primary,
+                secondary_target_id=current_secondary
+            ))
+
+        # Post-processing: merge consecutive identical shots
+        return self._merge_consecutive_shots(raw_shots)
+
+    def _get_scene_actors(self, time_sec: float) -> tuple[str | None, str | None]:
+        """
+        Find the primary speaker and best listener at a given time.
+        THIS IS THE CORE INTELLECT OF THE DIRECTOR.
+        """
+        active_speakers = self.speech_timeline.get(time_sec, [])
+        if not active_speakers:
+            return None, None
         
-        return shot_list
+        speaker_id = active_speakers[0]
+        
+        # Get all faces visible at this specific time
+        all_faces_now = []
+        for entry in self.face_data.get("timeline", []):
+            if abs(entry.get("time", 0) - time_sec) < 0.5: # 0.5s tolerance
+                all_faces_now = entry.get("faces", [])
+                break
+
+        if not all_faces_now:
+            return speaker_id, None
+
+        speaker_face = None
+        for face in all_faces_now:
+            if face.get('speaker_id') == speaker_id:
+                speaker_face = face
+                break
+        
+        # If speaker's face isn't visible, we can't do a split
+        if not speaker_face:
+            return speaker_id, None
+
+        # --- Intelligent Listener Selection ---
+        candidates = []
+        for face in all_faces_now:
+            # Can't be the speaker
+            if face.get('speaker_id') == speaker_id:
+                continue
+            
+            # **Anti-Nyangsang Filter**: Must be a real face, not noise
+            if face.get('w', 0) < 40 or face.get('h', 0) < 40:
+                continue
+
+            # Scoring: Centrality + Reaction
+            # 1. Centrality (closer to horizontal center is better)
+            centrality_score = 1.0 / (1.0 + abs(face.get('cx', 640) - 640))
+            
+            # 2. Reaction Score (placeholder, assumes reaction module adds this)
+            reaction_score = face.get('reaction_intensity', 0.0) 
+            
+            # Final score
+            score = centrality_score * (1 + reaction_score)
+            candidates.append((score, face))
+
+        if not candidates:
+            return speaker_id, None
+            
+        # Pick the best listener
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best_listener_face = candidates[0][1]
+        
+        return speaker_id, best_listener_face.get('speaker_id')
+
+    def _determine_layout(self, speaker_id: str | None, listener_id: str | None) -> str:
+        """Determines the layout based on who is present."""
+        if speaker_id and listener_id:
+            return "split_screen"
+        elif speaker_id:
+            return "fullscreen"
+        else:
+            return "wide_shot" # Fallback if no one is active
+
+    def _merge_consecutive_shots(self, shots: list[Shot]) -> list[Shot]:
+        """Merge identical consecutive shots to avoid jarring micro-cuts."""
+        if not shots:
+            return []
+            
+        merged = [shots[0]]
+        for next_shot in shots[1:]:
+            last_shot = merged[-1]
+            # If layout and targets are the same, merge by extending the end time
+            if (last_shot.layout == next_shot.layout and
+                last_shot.primary_target_id == next_shot.primary_target_id and
+                last_shot.secondary_target_id == next_shot.secondary_target_id):
+                last_shot.end_time = next_shot.end_time
+            else:
+                merged.append(next_shot)
+        return merged
 
