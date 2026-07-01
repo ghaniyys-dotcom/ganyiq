@@ -29,6 +29,19 @@ import tempfile
 import time
 import platform
 from pathlib import Path
+from .director import DirectorAI
+
+# Import DirectorAI for stateful shot planning
+try:
+    from speaker_hybrid.director import DirectorAI, find_conversation_pair, load_audio_segments
+except ImportError:
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from director import DirectorAI, find_conversation_pair, load_audio_segments
+    except ImportError:
+        DirectorAI = None
+        find_conversation_pair = None
+        load_audio_segments = None
 
 
 def log(msg: str):
@@ -49,6 +62,203 @@ def run_cmd(cmd: list[str], desc: str = "", timeout: int = 600) -> str:
         log(f"ERROR: {desc or ' '.join(cmd)}")
         raise RuntimeError(f"Command failed: {desc or ' '.join(cmd)[:100]}")
     return result.stdout
+
+
+class ShotMode:
+    """Shot composition modes for DirectorAI."""
+    FULLSCREEN_FOCUS = "fullscreen_focus"
+    SPLIT_CONVERSATION = "split_conversation"
+    WIDE_SHOT = "wide_shot"
+
+
+class DirectorAI:
+    """
+    Stateful director that plans shots for entire video.
+    
+    Instead of deciding layout per scene reactively, this analyzes the whole video
+    upfront and creates a "shot list" (like a real director) with smooth transitions.
+    """
+    
+    def __init__(self, face_data: dict, diarization_data: dict, fps: int = 60):
+        """
+        Args:
+            face_data: {frame_num: [{'cx', 'cy', 'w', 'h', 'speaker_id', 'track_id', ...}]}
+            diarization_data: {'segments': [{'start', 'end', 'speaker'}]}
+            fps: frames per second
+        """
+        self.face_data = face_data
+        self.diarization_segments = diarization_data.get('segments', [])
+        self.fps = fps
+        
+        # Sinematik parameters (can be tuned)
+        self.min_shot_duration = 2.5  # seconds - prevent jittery cuts
+        self.speaker_dominance_threshold = 4.0  # seconds - when to zoom fullscreen
+        self.conversation_gap_threshold = 1.5  # seconds - max gap in dialogue
+        
+    def analyze(self) -> list[dict]:
+        """
+        Generate shot list for entire video.
+        
+        Returns:
+            List of shots: [
+                {
+                    'start': float (seconds),
+                    'end': float (seconds),
+                    'mode': ShotMode constant,
+                    'primary_speaker': str or None,
+                    'secondary_speaker': str or None
+                },
+                ...
+            ]
+        """
+        shots = []
+        
+        # Build speaker activity timeline (who speaks when)
+        speaker_timeline = self._build_speaker_timeline()
+        
+        # Detect conversation pairs (who talks to whom)
+        conversation_pairs = self._detect_conversations(speaker_timeline)
+        
+        # Generate shots with state machine logic
+        current_time = 0.0
+        current_state = ShotMode.WIDE_SHOT
+        current_primary = None
+        current_secondary = None
+        shot_start = 0.0
+        
+        # Sort segments by time
+        sorted_segments = sorted(self.diarization_segments, key=lambda x: x['start'])
+        
+        for i, seg in enumerate(sorted_segments):
+            seg_start = seg['start']
+            seg_end = seg['end']
+            seg_speaker = seg['speaker']
+            seg_duration = seg_end - seg_start
+            
+            # Find if this speaker is in a conversation
+            conversation_partner = conversation_pairs.get(seg_speaker)
+            
+            # State transition logic
+            new_state = current_state
+            new_primary = seg_speaker
+            new_secondary = conversation_partner
+            
+            # Rule 1: Single speaker dominance → FULLSCREEN_FOCUS
+            if seg_duration >= self.speaker_dominance_threshold:
+                new_state = ShotMode.FULLSCREEN_FOCUS
+                new_secondary = None
+            
+            # Rule 2: Conversation pair → SPLIT_CONVERSATION
+            elif conversation_partner:
+                new_state = ShotMode.SPLIT_CONVERSATION
+            
+            # Rule 3: Multiple speakers or unclear → WIDE_SHOT
+            else:
+                # Check if multiple speakers active in this time range
+                overlapping = self._count_overlapping_speakers(seg_start, seg_end)
+                if overlapping >= 3:
+                    new_state = ShotMode.WIDE_SHOT
+                    new_secondary = None
+                else:
+                    # Default to fullscreen for single speaker
+                    new_state = ShotMode.FULLSCREEN_FOCUS
+                    new_secondary = None
+            
+            # Check if state changed (requires new shot)
+            state_changed = (new_state != current_state or 
+                           new_primary != current_primary or
+                           new_secondary != current_secondary)
+            
+            # Enforce minimum shot duration (anti-jitter)
+            time_since_last_cut = seg_start - shot_start
+            can_cut = time_since_last_cut >= self.min_shot_duration
+            
+            if state_changed and can_cut:
+                # Finalize previous shot
+                if shot_start < seg_start:
+                    shots.append({
+                        'start': shot_start,
+                        'end': seg_start,
+                        'mode': current_state,
+                        'primary_speaker': current_primary,
+                        'secondary_speaker': current_secondary
+                    })
+                
+                # Start new shot
+                shot_start = seg_start
+                current_state = new_state
+                current_primary = new_primary
+                current_secondary = new_secondary
+        
+        # Finalize last shot
+        if sorted_segments:
+            last_end = sorted_segments[-1]['end']
+            shots.append({
+                'start': shot_start,
+                'end': last_end,
+                'mode': current_state,
+                'primary_speaker': current_primary,
+                'secondary_speaker': current_secondary
+            })
+        
+        log(f"[DirectorAI] Generated {len(shots)} shots from {len(sorted_segments)} audio segments")
+        return shots
+    
+    def _build_speaker_timeline(self) -> dict:
+        """
+        Build timeline of speaker activity.
+        
+        Returns:
+            {speaker_id: [(start, end), ...]}
+        """
+        timeline = {}
+        for seg in self.diarization_segments:
+            speaker = seg['speaker']
+            if speaker not in timeline:
+                timeline[speaker] = []
+            timeline[speaker].append((seg['start'], seg['end']))
+        return timeline
+    
+    def _detect_conversations(self, speaker_timeline: dict) -> dict:
+        """
+        Detect conversation pairs (speaker A talks, then speaker B responds).
+        
+        Returns:
+            {speaker_id: partner_speaker_id or None}
+        """
+        pairs = {}
+        speakers = list(speaker_timeline.keys())
+        
+        for i, speaker_a in enumerate(speakers):
+            for speaker_b in speakers[i+1:]:
+                # Check if A and B alternate speaking (conversation pattern)
+                a_times = speaker_timeline[speaker_a]
+                b_times = speaker_timeline[speaker_b]
+                
+                # Count "handoffs" (A ends, then B starts within threshold)
+                handoffs = 0
+                for a_start, a_end in a_times:
+                    for b_start, b_end in b_times:
+                        gap = b_start - a_end
+                        if 0 < gap < self.conversation_gap_threshold:
+                            handoffs += 1
+                
+                # If enough handoffs, mark as conversation pair
+                if handoffs >= 2:
+                    pairs[speaker_a] = speaker_b
+                    pairs[speaker_b] = speaker_a
+                    break  # Each speaker can only have one primary conversation partner
+        
+        return pairs
+    
+    def _count_overlapping_speakers(self, start: float, end: float) -> int:
+        """Count how many speakers are active in time range [start, end]."""
+        active_speakers = set()
+        for seg in self.diarization_segments:
+            # Check if segment overlaps with [start, end]
+            if seg['start'] < end and seg['end'] > start:
+                active_speakers.add(seg['speaker'])
+        return len(active_speakers)
 
 
 class Pipeline:
@@ -116,6 +326,7 @@ class Pipeline:
 
         with open(self.diarization_path) as f:
             diar_data = json.load(f)
+        self.diarization_data = diar_data  # Store for DirectorAI
         n_speakers = diar_data.get("metadata", {}).get("num_speakers", 0)
         n_segments = len(diar_data.get("segments", []))
         log(f"Diarization: {n_speakers} speakers, {n_segments} segments")
@@ -676,6 +887,21 @@ class Pipeline:
                         f"tid={face.get('track_id')}")
         else:
             log("Face data NOT available — all scenes will be center crop")
+
+        # ─────────────────────────────────────
+        # DirectorAI: Generate shot list
+        # ─────────────────────────────────────
+        director_shots = []
+        if face_data and hasattr(self, 'diarization_data'):
+            director = DirectorAI(
+                face_data=face_data,
+                diarization_data=self.diarization_data,
+                fps=60
+            )
+            director_shots = director.analyze()
+            log(f"[DirectorAI] Generated {len(director_shots)} shots (overriding split_plan)")
+        else:
+            log("[DirectorAI] Skipped — no face_data or diarization_data available")
 
         concat_lines = []
         segment_files = []

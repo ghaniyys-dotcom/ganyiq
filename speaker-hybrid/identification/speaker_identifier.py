@@ -41,6 +41,13 @@ from reaction.reaction_detector import analyze_reactions
 from split.split_decision_engine import SplitDecisionEngine
 from asd import compute_lip_energy
 
+# Import DirectorAI from the main pipeline file
+try:
+    from pipeline import DirectorAI
+except ImportError:
+    # Fallback for running standalone
+    DirectorAI = None
+
 
 # =============================================================================
 # Orchestrator
@@ -296,27 +303,36 @@ class SpeakerIdentifier:
         self.log(f"Reactions detected: {len(reaction_result.get('reactions', []))}")
 
         # ──────────────────────────────────────────
-        # STEP 4: Split Decision
+        # STEP 4: DirectorAI Shot Planning
         # ──────────────────────────────────────────
-        self.log("Running split decision engine...")
-        engine = SplitDecisionEngine(reaction_weight=self.split_reaction_weight)
-        video_dur = visual_data.get("duration") or (matched_timeline[-1].get("end", 0) if matched_timeline else 0)
+        self.log("Running DirectorAI to create shot list...")
+        
+        if not DirectorAI:
+            return self._error("DirectorAI class not found.", "director_missing")
 
-        result = engine.decide(
-            speakers=speaker_list or [],
-            reactions=reaction_result.get("reactions", []),
-            video_duration=float(video_dur) if video_dur else None,
+        # Get video duration from face data, fallback to diarization
+        video_dur = visual_data.get("duration") or (
+            diarization_raw['segments'][-1]['end'] if 'diarization_raw' in locals() and diarization_raw.get('segments') else 0
         )
+        
+        director = DirectorAI(
+            face_data=visual_data,
+            diarization=diarization_raw.get("segments", []) if 'diarization_raw' in locals() else [],
+            video_duration=float(video_dur)
+        )
+        
+        shot_list = director.create_shot_list()
 
+        # Format for legacy split_plan structure
         split_plan = {
-            "scenes": [s.__dict__ if hasattr(s, '__dict__') else s for s in result.scenes],
-            "total_duration_sec": round(result.total_duration_sec, 2),
-            "layout_distribution": result.layout_distribution,
-            "split_count": result.split_count,
-            "warnings": result.warnings,
+            "scenes": [shot.__dict__ for shot in shot_list],
+            "total_duration_sec": round(video_dur, 2),
+            "layout_distribution": {shot.layout: shot.duration for shot in shot_list},
+            "split_count": sum(1 for shot in shot_list if shot.layout != "fullscreen"),
+            "warnings": [],
         }
 
-        self.log(f"Split plan: {result.split_count} non-fullscreen segments")
+        self.log(f"DirectorAI plan: {len(shot_list)} shots created")
 
         # ──────────────────────────────────────────
         # ASSEMBLE RESULT
