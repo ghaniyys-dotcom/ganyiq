@@ -283,17 +283,20 @@ class Pipeline:
         # Sort by count descending for deterministic merge
         clusters.sort(key=lambda c: c["count"], reverse=True)
 
-        # ── Step 3: MERGE clusters that are <merge_dist px apart AND share dominant speaker_id ──
-        # NEVER merge clusters with DIFFERENT dominant speakers — they're
-        # different people even if sitting close.
+        # ── Step 3: MERGE clusters <merge_dist px apart ──
+        #   - same dominant speaker_id → always merge (same person, diff angle)
+        #   - BOTH unlabeled (no speaker_id) → merge by spatial (likely same person,
+        #     AVM didn't label)
+        #   - DIFFERENT dominant speaker_ids → NEVER merge (different people)
         merged = []
         for c in clusters:
             c_top_sid = next(iter(c["speaker_ids"]), None)
-            # Find existing merged cluster within merge_dist AND same speaker
             found = False
             for m in merged:
                 m_top_sid = next(iter(m["speaker_ids"]), None)
-                same_person = (c_top_sid and m_top_sid and c_top_sid == m_top_sid)
+                both_unlabeled = (c_top_sid is None and m_top_sid is None)
+                same_person = (both_unlabeled or
+                              (c_top_sid and m_top_sid and c_top_sid == m_top_sid))
                 if same_person and abs(m["cx"] - c["cx"]) < merge_dist:
                     # Merge into existing cluster (weighted average)
                     total = m["count"] + c["count"]
@@ -668,15 +671,24 @@ class Pipeline:
             if face_data:
                 clusters = self._get_face_clusters(
                     face_data, start, start + dur, frame_w=frame_w)
-                has_multiple_faces = clusters and len(clusters) >= 2 \
-                    and abs(clusters[0]["cx"] - clusters[1]["cx"]) >= 200
+                # Split requires: ≥2 clusters, ≥200px apart, AND
+                # both clusters carry a dominant speaker_id (unlabeled =
+                # AVM didn't map, can't trust it's 2 distinct people).
+                has_multiple_faces = False
+                if clusters and len(clusters) >= 2 \
+                        and abs(clusters[0]["cx"] - clusters[1]["cx"]) >= 200:
+                    c0_sid = next(iter(clusters[0]["speaker_ids"]), None)
+                    c1_sid = next(iter(clusters[1]["speaker_ids"]), None)
+                    has_multiple_faces = bool(c0_sid and c1_sid)
 
                 # Force split when multiple distinct faces visible
                 if self.vertical and has_multiple_faces and not is_split:
                     is_split = True
                     layout = "split_screen"
                     log(f"  Force split {start:.1f}s-{start+dur:.1f}s: "
-                        f"{len(clusters)} face clusters ≥200px apart")
+                        f"{len(clusters)} face clusters ≥200px apart "
+                        f"(sids={list(clusters[0]['speaker_ids'].keys())} vs "
+                        f"{list(clusters[1]['speaker_ids'].keys())})")
 
                 if is_split:
                     bbox_primary = self._get_speaker_bbox(
