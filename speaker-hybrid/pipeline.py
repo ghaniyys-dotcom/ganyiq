@@ -166,7 +166,7 @@ class Pipeline:
                 "cx": sum(f["cx"] for f in faces) / n, "cy": sum(f["cy"] for f in faces) / n,
                 "w": sum(f["w"] for f in faces) / n, "h": sum(f["h"] for f in faces) / n,
                 "count": n, "speaker_ids": dict(bin_sids[key].most_common(3)),
-                "track_ids": [f.get("track_id") for f in faces]
+                "track_ids": list(set(f.get("track_id") for f in faces if f.get("track_id") is not None))
             })
         clusters.sort(key=lambda c: c["count"], reverse=True)
         # ── Merge logic: clusters <merge_dist apart AND same/both-unlabeled speaker → one face ──
@@ -184,11 +184,12 @@ class Pipeline:
                     m["cx"] = (m["cx"] * m["count"] + c["cx"] * c["count"]) / total
                     m["cy"] = (m["cy"] * m["count"] + c["cy"] * c["count"]) / total
                     m["w"] = (m["w"] * m["count"] + c["w"] * c["count"]) / total
+                    m["h"] = (m["h"] * m["count"] + c["h"] * c["count"]) / total
                     m["count"] = total
                     # Merge speaker_ids and track_ids
                     for sid, cnt in c["speaker_ids"].items():
                         m["speaker_ids"][sid] = m["speaker_ids"].get(sid, 0) + cnt
-                    m["track_ids"].extend(c.get("track_ids", []))
+                    m["track_ids"] = list(set(m["track_ids"] + c.get("track_ids", [])))
                     found = True
                     break
             if not found:
@@ -229,7 +230,7 @@ class Pipeline:
         # Top
         if bbox_top:
             vx = max(0.0, min(bbox_top["cx"] - crop_w / 2, frame_w - crop_w))
-            vy = max(0.0, min(bbox_top["cy"] - crop_h * 0.65, frame_h - crop_h))
+            vy = max(0.0, min(bbox_top["cy"] - crop_h * 0.35, frame_h - crop_h))
         else:
             vx = (frame_w - crop_w) / 2
             vy = (frame_h - crop_h) / 2
@@ -237,7 +238,7 @@ class Pipeline:
         # Bottom
         if bbox_bottom:
             vx_bot = max(0.0, min(bbox_bottom["cx"] - crop_w / 2, frame_w - crop_w))
-            vy_bot = max(0.0, min(bbox_bottom["cy"] - crop_h * 0.65, frame_h - crop_h))
+            vy_bot = max(0.0, min(bbox_bottom["cy"] - crop_h * 0.35, frame_h - crop_h))
             bottom = f"[0:v]crop={crop_w:.1f}:{crop_h:.1f}:{vx_bot:.1f}:{vy_bot:.1f},scale={out_w}:{half_h}[bottom]"
         else:
             pad_h = half_h - int(out_w * 9 / 16)
@@ -251,6 +252,36 @@ class Pipeline:
     def _build_debug_overlay(self, bbox, bbox_secondary, crop_x, crop_y, crop_w, crop_h, frame_w, frame_h, scene_num, layout, speaker_id):
         # ... (same as before)
         return ""
+
+    def _build_two_shot_filter(self, bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h):
+        """Build ffmpeg crop filter for two_shot_wide (9:16 aspect ratio).
+        Frames both speakers in a single wide vertical shot by calculating
+        a bounding box that spans both speakers.
+        """
+        if not bbox_primary and not bbox_secondary:
+            vx = (frame_w - frame_h * 9 / 16) / 2
+            return f"crop={frame_h*9/16:.0f}:{frame_h}:{vx:.0f}:0,scale={out_w}:{out_h}"
+            
+        bbox1 = bbox_primary or bbox_secondary
+        bbox2 = bbox_secondary or bbox_primary
+        
+        min_x = min(bbox1["cx"] - bbox1["w"]/2, bbox2["cx"] - bbox2["w"]/2)
+        max_x = max(bbox1["cx"] + bbox1["w"]/2, bbox2["cx"] + bbox2["w"]/2)
+        
+        target_w = (max_x - min_x) + 160.0
+        target_h = target_w * 16 / 9
+        
+        if target_h > frame_h:
+            target_h = float(frame_h)
+            target_w = target_h * 9 / 16
+        
+        mid_cx = (min_x + max_x) / 2
+        vx = max(0.0, min(mid_cx - target_w / 2, frame_w - target_w))
+        
+        mid_cy = (bbox1["cy"] + bbox2["cy"]) / 2
+        vy = max(0.0, min(mid_cy - target_h * 0.35, frame_h - target_h))
+        
+        return f"crop={target_w:.0f}:{target_h:.0f}:{vx:.0f}:{vy:.0f},scale={out_w}:{out_h}"
 
     def _render_from_shot_list(self, result: dict):
         """Renders video from a DirectorAI shot list."""
@@ -288,11 +319,17 @@ class Pipeline:
             if layout == 'split_screen' and not (bbox_primary and bbox_secondary):
                 layout = 'fullscreen'
                 log(f"  [RENDER-WARN] Shot {i+1} fallback to fullscreen (missing target)")
+            
+            if layout == 'two_shot_wide' and not (bbox_primary and bbox_secondary):
+                layout = 'fullscreen'
+                log(f"  [RENDER-WARN] Shot {i+1} fallback to fullscreen (missing target for two-shot)")
 
             vf = ""
             if self.vertical:
                 if layout == 'split_screen':
                     vf = self._build_split_filter(bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h)
+                elif layout == 'two_shot_wide':
+                    vf = self._build_two_shot_filter(bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h)
                 else:
                     bbox_to_track = bbox_primary or bbox_secondary
                     vf = self._build_crop_filter(bbox_to_track, frame_w, frame_h, out_w, out_h, self.vertical, "fullscreen")

@@ -32,11 +32,13 @@ class DirectorAI:
         self.speech_timeline = self._build_speech_timeline()
 
     def _build_speech_timeline(self) -> defaultdict[float, list[str]]:
-        """Creates a per-second lookup of active speaker IDs."""
+        """Creates a per-second lookup of active speaker IDs with anticipation offset."""
         timeline = defaultdict(list)
+        anticipation_offset = 0.6  # Shift cuts 0.6s earlier than audio to anticipate speaking
         for segment in self.diarization:
             speaker_id = segment['speaker']
-            start, end = segment['start'], segment['end']
+            start = max(0.0, segment['start'] - anticipation_offset)
+            end = max(0.0, segment['end'] - anticipation_offset)
             for t in range(int(start), int(end) + 1):
                 if speaker_id not in timeline[float(t)]:
                     timeline[float(t)].append(speaker_id)
@@ -58,10 +60,10 @@ class DirectorAI:
         # Loop through time, second by second
         for t in range(int(self.video_duration)):
             # 1. Who is active at this second?
-            speaker, listener = self._get_scene_actors(float(t))
+            speaker, listener, is_close = self._get_scene_actors(float(t))
             
             # 2. What's the best layout for them?
-            ideal_layout = self._determine_layout(speaker, listener)
+            ideal_layout = self._determine_layout(speaker, listener, is_close)
             
             # 3. Time to cut? (Layout changed AND min duration passed)
             if (ideal_layout != current_layout or speaker != current_primary) and (t - last_cut_time > self.min_shot_duration):
@@ -94,14 +96,14 @@ class DirectorAI:
         # Post-processing: merge consecutive identical shots
         return self._merge_consecutive_shots(raw_shots)
 
-    def _get_scene_actors(self, time_sec: float) -> tuple[str | None, str | None]:
+    def _get_scene_actors(self, time_sec: float) -> tuple[str | None, str | None, bool]:
         """
-        Find the primary speaker and best listener at a given time.
+        Find the primary speaker, best listener, and whether they sit close to each other.
         THIS IS THE CORE INTELLECT OF THE DIRECTOR.
         """
         active_speakers = self.speech_timeline.get(time_sec, [])
         if not active_speakers:
-            return None, None
+            return None, None, False
         
         speaker_id = active_speakers[0]
         
@@ -114,25 +116,34 @@ class DirectorAI:
 
         # If no faces at all, speaker is off-screen → wide/audio-only shot
         if not all_faces_now:
-            return speaker_id, None
+            return speaker_id, None, False
 
         # Try to find speaker's face by matching speaker_id
         speaker_face = None
-        other_faces = []
         for face in all_faces_now:
             if face.get('speaker_id') == speaker_id:
                 speaker_face = face
-            elif face.get('w', 0) >= 40 and face.get('h', 0) >= 40:
-                other_faces.append(face)
+                break
 
         # If speaker not found by id, pick the most central face as primary
-        if not speaker_face and other_faces:
-            other_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
-            speaker_face = other_faces.pop(0)
+        if not speaker_face:
+            valid_faces = [f for f in all_faces_now if f.get('w', 0) >= 40 and f.get('h', 0) >= 40]
+            if valid_faces:
+                valid_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
+                speaker_face = valid_faces[0]
 
-        # No usable face at all
-        if not speaker_face and not other_faces:
-            return speaker_id, None
+        if not speaker_face:
+            return speaker_id, None, False
+
+        # Collect other faces (listeners) that are NOT the speaker
+        other_faces = []
+        for face in all_faces_now:
+            # Skip if it is the primary speaker face
+            if face == speaker_face:
+                continue
+            # Apply size filter to filter out hands/noise
+            if face.get('w', 0) >= 40 and face.get('h', 0) >= 40:
+                other_faces.append(face)
 
         # Score and pick the best listener from remaining faces
         if other_faces:
@@ -140,15 +151,22 @@ class DirectorAI:
             other_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
             best_listener = other_faces[0]
             
-            # Use track_id for people who haven't spoken yet
+            # Use speaker_id if available, otherwise track_id
             listener_id = best_listener.get('speaker_id') or f"track_{best_listener.get('track_id')}"
-            return speaker_id, listener_id
+            
+            # Check if they are sitting very close (threshold: 300px horizontally)
+            dist_x = abs(speaker_face.get('cx', 0) - best_listener.get('cx', 0))
+            is_close = dist_x < 300.0
+            
+            return speaker_id, listener_id, is_close
 
-        return speaker_id, None
+        return speaker_id, None, False
 
-    def _determine_layout(self, speaker_id: str | None, listener_id: str | None) -> str:
+    def _determine_layout(self, speaker_id: str | None, listener_id: str | None, is_close: bool) -> str:
         """Determines the layout based on who is present."""
         if speaker_id and listener_id:
+            if is_close:
+                return "two_shot_wide"
             return "split_screen"
         elif speaker_id:
             return "fullscreen"
