@@ -231,9 +231,21 @@ class Pipeline:
         concat_path = self.work_dir / "concat.txt"
         with open(concat_path, "w") as f:
             for seg_file in segment_files:
-                f.write(f"file '{seg_file}'\n")
+                # Use forward slashes for Windows compat in concat file
+                f.write(f"file '{os.path.normpath(seg_file)}'\n")
         
-        final_audio_cmd = ["ffmpeg", "-y", "-i", str(concat_path), "-i", str(self.video_path), "-c:v", "copy", "-c:a", "aac", "-map", "0:v:0", "-map", "1:a:0", str(self.output_path)]
+        final_audio_cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_path),
+            "-i", str(self.video_path),
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            "-shortest",
+            str(self.output_path)
+        ]
         run_cmd(final_audio_cmd, "Rendering final output...")
 
 def main():
