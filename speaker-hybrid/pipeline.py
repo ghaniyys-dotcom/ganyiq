@@ -145,10 +145,11 @@ class Pipeline:
         return None
 
     def _get_speaker_bbox(self, face_data: dict, target_id: str, start: float, end: float, frame_w: int, frame_h: int) -> dict | None:
-        """Finds a target's face BBox, with case-insensitive speaker_id matching."""
+        """Finds a target's face BBox, with case-insensitive speaker_id + person_id matching."""
         if not target_id: return None
         
         is_track_id = target_id.startswith("track_")
+        is_person_id = target_id.startswith("person_")
         search_val = target_id  # Keep as string for comparison
         
         clusters = self._get_face_clusters(face_data, start, end, frame_w)
@@ -156,7 +157,7 @@ class Pipeline:
 
         # Normalize target_id to uppercase for case-insensitive matching
         target_upper = target_id.upper()
-        is_speaker_match = not is_track_id
+        is_speaker_match = not (is_track_id or is_person_id)
 
         for c in clusters:
             if is_track_id:
@@ -164,6 +165,14 @@ class Pipeline:
                 try:
                     search_num = int(search_val.split('_')[1])
                     if search_num in c.get("track_ids", []):
+                        return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
+                except (ValueError, IndexError):
+                    pass
+            elif is_person_id:
+                # person_Y: match against cluster person_ids
+                try:
+                    search_pid = int(search_val.split('_')[1])
+                    if search_pid in c.get("person_ids", set()):
                         return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
                 except (ValueError, IndexError):
                     pass
@@ -219,7 +228,8 @@ class Pipeline:
                 "cx": sum(f["cx"] for f in faces) / n, "cy": sum(f["cy"] for f in faces) / n,
                 "w": sum(f["w"] for f in faces) / n, "h": sum(f["h"] for f in faces) / n,
                 "count": n, "speaker_ids": dict(bin_sids[key].most_common(3)),
-                "track_ids": list(set(f.get("track_id") for f in faces if f.get("track_id") is not None))
+                "track_ids": list(set(f.get("track_id") for f in faces if f.get("track_id") is not None)),
+                "person_ids": set(f.get("person_id") for f in faces if f.get("person_id") is not None and f.get("person_id") > 0)
             })
         clusters.sort(key=lambda c: c["count"], reverse=True)
         # ── Merge logic: clusters <merge_dist apart AND same/both-unlabeled speaker → one face ──
@@ -231,7 +241,8 @@ class Pipeline:
                 m_top_sid = next(iter(m["speaker_ids"]), None)
                 both_unlabeled = (c_top_sid is None and m_top_sid is None)
                 same_person = (both_unlabeled or
-                              (c_top_sid and m_top_sid and c_top_sid == m_top_sid))
+                              (c_top_sid and m_top_sid and c_top_sid == m_top_sid) or
+                              (c.get("person_ids") and m.get("person_ids") and c["person_ids"] & m["person_ids"]))
                 if same_person and abs(m["cx"] - c["cx"]) < merge_dist:
                     total = m["count"] + c["count"]
                     m["cx"] = (m["cx"] * m["count"] + c["cx"] * c["count"]) / total
@@ -239,10 +250,11 @@ class Pipeline:
                     m["w"] = (m["w"] * m["count"] + c["w"] * c["count"]) / total
                     m["h"] = (m["h"] * m["count"] + c["h"] * c["count"]) / total
                     m["count"] = total
-                    # Merge speaker_ids and track_ids
+                    # Merge speaker_ids, track_ids, person_ids
                     for sid, cnt in c["speaker_ids"].items():
                         m["speaker_ids"][sid] = m["speaker_ids"].get(sid, 0) + cnt
                     m["track_ids"] = list(set(m["track_ids"] + c.get("track_ids", [])))
+                    m["person_ids"] = m.get("person_ids", set()) | c.get("person_ids", set())
                     found = True
                     break
             if not found:

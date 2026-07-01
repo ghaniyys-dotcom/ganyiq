@@ -23,6 +23,7 @@ import os
 import argparse
 import urllib.request
 from pathlib import Path
+from face_db import FaceDB
 
 # =============================================================================
 # YOLOv8-face (from face-detect-v2.py)
@@ -485,6 +486,8 @@ def process_video(
         from tracker import ByteTrack as _BT
         tracker = _BT(conf_threshold=conf_threshold, max_lost=25)
     clusterer = SpeakerClusterer()
+    face_db = FaceDB("face_identities.db") if 'FaceDB' in dir() else None
+    face_db_cache: dict[int, int] = {}  # track_id -> person_id
     results = []
     frame_idx = start_frame
 
@@ -631,6 +634,19 @@ def process_video(
                     raw_cy = face.get("_raw_cy", 0.0)
                     face["lip_motion"] = raw_cy if raw_cy > 0 else float(face.get("cy", 0))
 
+                # ── FaceDB: persistent person_id ──
+                _pid = None
+                if face_db is not None and frame is not None:
+                    fx1 = max(0, int(face["cx"] - face["w"] / 2))
+                    fy1 = max(0, int(face["cy"] - face["h"] / 2))
+                    fx2 = min(frame.shape[1], int(face["cx"] + face["w"] / 2))
+                    fy2 = min(frame.shape[0], int(face["cy"] + face["h"] / 2))
+                    fcrop = frame[fy1:fy2, fx1:fx2]
+                    if fcrop.size > 0:
+                        rcrop = cv2.cvtColor(fcrop, cv2.COLOR_BGR2RGB)
+                        _pid = face_db.lookup_by_track(track_id, rcrop, min_size=40)
+                        if _pid is not None:
+                            face_db_cache[track_id] = _pid
                 speaker_assignments.append({
                     "cx": face["cx"],
                     "cy": face["cy"],
@@ -639,6 +655,7 @@ def process_video(
                     "confidence": face["confidence"],
                     "track_id": face.get("track_id", -1),
                     "speaker_id": speaker_id,
+                    "person_id": _pid,
                     "lip_motion": face.get("lip_motion", 0.0),
                     "_raw_cy": face.get("_raw_cy", 0.0),
                     "landmarks": landmarks,
