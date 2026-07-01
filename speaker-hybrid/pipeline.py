@@ -156,16 +156,86 @@ class Pipeline:
                 "count": n, "speaker_ids": dict(bin_sids[key].most_common(3))
             })
         clusters.sort(key=lambda c: c["count"], reverse=True)
-        # ... (merge logic is complex, skipping full reimplementation for brevity, assuming it exists)
-        return clusters
+        # ── Merge logic: clusters <merge_dist apart AND same/both-unlabeled speaker → one face ──
+        merged = []
+        for c in clusters:
+            c_top_sid = next(iter(c["speaker_ids"]), None)
+            found = False
+            for m in merged:
+                m_top_sid = next(iter(m["speaker_ids"]), None)
+                both_unlabeled = (c_top_sid is None and m_top_sid is None)
+                same_person = (both_unlabeled or
+                              (c_top_sid and m_top_sid and c_top_sid == m_top_sid))
+                if same_person and abs(m["cx"] - c["cx"]) < merge_dist:
+                    total = m["count"] + c["count"]
+                    m["cx"] = (m["cx"] * m["count"] + c["cx"] * c["count"]) / total
+                    m["cy"] = (m["cy"] * m["count"] + c["cy"] * c["count"]) / total
+                    m["w"] = (m["w"] * m["count"] + c["w"] * c["count"]) / total
+                    m["h"] = (m["h"] * m["count"] + c["h"] * c["count"]) / total
+                    m["count"] = total
+                    merged_sids = dict(m["speaker_ids"])
+                    for sid, cnt in c["speaker_ids"].items():
+                        merged_sids[sid] = merged_sids.get(sid, 0) + cnt
+                    m["speaker_ids"] = dict(
+                        sorted(merged_sids.items(), key=lambda x: x[1], reverse=True)[:3])
+                    found = True
+                    break
+            if not found:
+                merged.append(dict(c))
+        merged.sort(key=lambda c: c["count"], reverse=True)
+        return merged
 
     def _build_crop_filter(self, bbox, frame_w, frame_h, out_w, out_h, vertical, layout):
-        # ... (same as before)
-        return "crop=w=iw:h=ih,scale=720:1280"
+        """Build ffmpeg crop filter: vertical=9:16 strip, landscape=head-and-shoulders."""
+        if not bbox:
+            vx = (frame_w - frame_h * 9 / 16) / 2 if vertical else 0
+            return f"crop={frame_h*9/16:.0f}:{frame_h}:{vx:.0f}:0,scale={out_w}:{out_h}" if vertical else f"scale={out_w}:{out_h}"
+        if vertical:
+            vw = frame_h * 9 / 16
+            vx = max(0.0, min(bbox["cx"] - vw / 2, frame_w - vw))
+            vy = max(0.0, min(bbox["cy"] - frame_h * 0.65, frame_h - frame_h))
+            return f"crop={vw:.0f}:{frame_h}:{vx:.0f}:0,scale={out_w}:{out_h}"
+        cw = min(frame_w, max(100, bbox["w"] * 4))
+        ch = min(frame_h, max(100, bbox["h"] * 4))
+        cx = max(0.0, min(bbox["cx"] - cw / 2, frame_w - cw))
+        cy = max(0.0, min(bbox["cy"] - ch * 0.65, frame_h - ch))
+        return f"crop={cw:.0f}:{ch:.0f}:{cx:.0f}:{cy:.0f},scale={out_w}:{out_h}"
 
-    def _build_split_filter(self, bbox_top, bbox_bottom, frame_w, frame_h, out_w, out_h):
-        # ... (same as before)
-        return "split[a][b];[a]scale=720:640[top];[b]scale=720:640[bottom];[top][bottom]vstack"
+    @staticmethod
+    def _build_split_filter(bbox_top, bbox_bottom, frame_w, frame_h, out_w, out_h):
+        """Build filter_complex for split-screen vertical (9:16).
+        Top half: crop around primary speaker → scale to 720x640
+        Bottom half: crop around secondary speaker → scale to 720x640
+        vstack → 720x1280
+        """
+        half_h = out_h // 2            # 640
+        zoom_factor = 1.6
+        crop_h = frame_h / zoom_factor
+        crop_w = out_w * crop_h / half_h
+        if crop_w >= frame_w * 0.98:
+            crop_w = float(frame_w)
+            crop_h = crop_w * half_h / out_w
+        # Top
+        if bbox_top:
+            vx = max(0.0, min(bbox_top["cx"] - crop_w / 2, frame_w - crop_w))
+            vy = max(0.0, min(bbox_top["cy"] - crop_h * 0.65, frame_h - crop_h))
+        else:
+            vx = (frame_w - crop_w) / 2
+            vy = (frame_h - crop_h) / 2
+        top = f"[0:v]crop={crop_w:.1f}:{crop_h:.1f}:{vx:.1f}:{vy:.1f},scale={out_w}:{half_h}[top]"
+        # Bottom
+        if bbox_bottom:
+            vx_bot = max(0.0, min(bbox_bottom["cx"] - crop_w / 2, frame_w - crop_w))
+            vy_bot = max(0.0, min(bbox_bottom["cy"] - crop_h * 0.65, frame_h - crop_h))
+            bottom = f"[0:v]crop={crop_w:.1f}:{crop_h:.1f}:{vx_bot:.1f}:{vy_bot:.1f},scale={out_w}:{half_h}[bottom]"
+        else:
+            pad_h = half_h - int(out_w * 9 / 16)
+            if pad_h > 0:
+                top_pad = pad_h // 2
+                bottom = f"[0:v]scale={out_w}:-1,pad={out_w}:{half_h}:(ow-iw)/2:{top_pad}:black[bottom]"
+            else:
+                bottom = f"[0:v]scale={out_w}:{half_h}[bottom]"
+        return f"{top};{bottom};[top][bottom]vstack=inputs=2[v]"
 
     def _build_debug_overlay(self, bbox, bbox_secondary, crop_x, crop_y, crop_w, crop_h, frame_w, frame_h, scene_num, layout, speaker_id):
         # ... (same as before)
@@ -224,29 +294,31 @@ class Pipeline:
                 # ... debug overlay logic
                 pass
             
-            cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", str(self.video_path), "-t", str(dur), "-an", "-vf", f"{debug_ov}{vf}" if debug_ov else vf, "-c:v", "libx264", "-preset", "fast", "-crf", "22", str(seg_out)]
+            cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", str(self.video_path), "-t", str(dur),
+                   "-vf", f"{debug_ov}{vf}" if debug_ov else vf,
+                   "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                   "-c:a", "aac", "-b:a", "128k",
+                   "-avoid_negative_ts", "make_zero",
+                   str(seg_out)]
             run_cmd(cmd, f"  Scene {i+1}/{len(shot_list)}: {layout} {start:.1f}s-{start+dur:.1f}s")
 
-        # Concatenate segments
+        # Concatenate segments (each has embedded audio, mapped directly)
         concat_path = self.work_dir / "concat.txt"
         with open(concat_path, "w") as f:
             for seg_file in segment_files:
-                # Use forward slashes for Windows compat in concat file
-                f.write(f"file '{os.path.normpath(seg_file)}'\n")
+                # Use forward slashes in concat file for ffmpeg compat
+                norm = str(seg_file).replace("\\", "/")
+                f.write(f"file '{norm}'\n")
         
-        final_audio_cmd = [
+        final_cmd = [
             "ffmpeg", "-y",
             "-f", "concat", "-safe", "0",
             "-i", str(concat_path),
-            "-i", str(self.video_path),
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-map", "0:v:0",
-            "-map", "1:a:0",
-            "-shortest",
+            "-c", "copy",
+            "-movflags", "+faststart",
             str(self.output_path)
         ]
-        run_cmd(final_audio_cmd, "Rendering final output...")
+        run_cmd(final_cmd, "Merging segments into final video...")
 
 def main():
     parser = argparse.ArgumentParser(description="GANYIQ Speaker Hybrid Pipeline")
