@@ -159,19 +159,42 @@ class DirectorAI:
             return "wide_shot" # Fallback if no one is active
 
     def _merge_consecutive_shots(self, shots: list[Shot]) -> list[Shot]:
-        """Merge identical consecutive shots to avoid jarring micro-cuts."""
+        """Merge consecutive shots with the same layout.
+        
+        This is more aggressive than exact-match merging. Since the DirectorAI
+        creates shots second-by-second, the speaker IDs can fluctuate even
+        when the scene is the same. We merge by layout to produce longer,
+        more natural segments.
+        
+        Minimum shot duration is enforced: if a segment is <2.5s, it gets
+        absorbed into the previous segment (merged by layout).
+        """
         if not shots:
             return []
-            
-        merged = [shots[0]]
+        
+        # First pass: merge by layout only (ignore primary/secondary changes)
+        layout_merged = [shots[0]]
         for next_shot in shots[1:]:
-            last_shot = merged[-1]
-            # If layout and targets are the same, merge by extending the end time
-            if (last_shot.layout == next_shot.layout and
-                last_shot.primary_target_id == next_shot.primary_target_id and
-                last_shot.secondary_target_id == next_shot.secondary_target_id):
+            last_shot = layout_merged[-1]
+            if last_shot.layout == next_shot.layout:
+                # Same layout → merge (even if targets changed)
+                last_shot.end_time = next_shot.end_time
+                # Keep primary target from the longer segment
+                if next_shot.end_time - next_shot.start_time > last_shot.end_time - last_shot.start_time:
+                    last_shot.primary_target_id = next_shot.primary_target_id
+                    last_shot.secondary_target_id = next_shot.secondary_target_id
+            else:
+                layout_merged.append(next_shot)
+        
+        # Second pass: absorb micro-shots (<2.5s) into previous shot
+        final = [layout_merged[0]]
+        for next_shot in layout_merged[1:]:
+            last_shot = final[-1]
+            if next_shot.duration < 2.5:
+                # Absorb into previous shot (keep that layout)
                 last_shot.end_time = next_shot.end_time
             else:
-                merged.append(next_shot)
-        return merged
+                final.append(next_shot)
+        
+        return final
 
