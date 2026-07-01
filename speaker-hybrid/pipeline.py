@@ -17,8 +17,16 @@ import time
 import platform
 from pathlib import Path
 
-# This will now be the single source of truth
-from .director import DirectorAI
+# Force parent directory into sys.path to resolve sibling modules
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+# Now this should work
+from speaker_hybrid.director import DirectorAI
+
+print("--- PIPELINE SCRIPT STARTED ---", file=sys.stderr) # DEBUG
+
 
 def log(msg: str):
     print(f"[PIPELINE] {msg}", file=sys.stderr, flush=True)

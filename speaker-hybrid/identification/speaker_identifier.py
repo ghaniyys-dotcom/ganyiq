@@ -41,12 +41,8 @@ from reaction.reaction_detector import analyze_reactions
 from split.split_decision_engine import SplitDecisionEngine
 from asd import compute_lip_energy
 
-# Import DirectorAI from the main pipeline file
-try:
-    from pipeline import DirectorAI
-except ImportError:
-    # Fallback for running standalone
-    DirectorAI = None
+# This should work now that pipeline.py adds the root path
+from speaker_hybrid.director import DirectorAI
 
 
 # =============================================================================
