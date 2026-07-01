@@ -294,12 +294,20 @@ class Pipeline:
                 # ... debug overlay logic
                 pass
             
-            cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", str(self.video_path), "-t", str(dur),
-                   "-vf", f"{debug_ov}{vf}" if debug_ov else vf,
-                   "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-                   "-c:a", "aac", "-b:a", "128k",
-                   "-avoid_negative_ts", "make_zero",
-                   str(seg_out)]
+            cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", str(self.video_path), "-t", str(dur)]
+            # Split screen → filter_complex (need [v] output mapping)
+            if layout == 'split_screen':
+                cmd += ["-filter_complex", vf,
+                        "-map", "[v]", "-map", "0:a",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22"]
+            else:
+                cmd += ["-vf", vf,
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-map", "0:v", "-map", "0:a"]
+            cmd += ["-c:a", "aac", "-b:a", "128k",
+                    "-avoid_negative_ts", "make_zero",
+                    str(seg_out)]
+            
             run_cmd(cmd, f"  Scene {i+1}/{len(shot_list)}: {layout} {start:.1f}s-{start+dur:.1f}s")
 
         # Concatenate segments (each has embedded audio, mapped directly)
