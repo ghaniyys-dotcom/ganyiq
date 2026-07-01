@@ -15,6 +15,19 @@ class Shot:
     def duration(self) -> float:
         return self.end_time - self.start_time
 
+def _is_same_person(a, b):
+    """Compare faces by person_id > speaker_id > track_id."""
+    ap = a.get("person_id")
+    bp = b.get("person_id")
+    if ap is not None and bp is not None and ap > 0 and bp > 0:
+        return ap == bp
+    asid = a.get("speaker_id", "").upper()
+    bsid = b.get("speaker_id", "").upper()
+    if asid and bsid and asid != "UNKNOWN" and bsid != "UNKNOWN":
+        return asid == bsid
+    return a.get("track_id") == b.get("track_id")
+
+
 class DirectorAI:
     """
     Analyzes the entire video's worth of data (audio diarization, face tracks)
