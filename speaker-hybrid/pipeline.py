@@ -233,3 +233,23 @@ class Pipeline:
         run_cmd(final_audio_cmd, "Rendering final output...")
         
 # ... (argparse and main call)
+\n
+def main():
+    parser = argparse.ArgumentParser(description="GANYIQ Speaker Hybrid Pipeline")
+    parser.add_argument("--video", required=True, help="Path to input video")
+    parser.add_argument("--output", required=True, help="Path to output video")
+    parser.add_argument("--work-dir", help="Working directory for temp files")
+    parser.add_argument("--vertical", action="store_true", help="Output 9:16 vertical video")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode overlays")
+    args = parser.parse_args()
+    pipeline = Pipeline(
+        video_path=args.video,
+        output_path=args.output,
+        work_dir=args.work_dir,
+        vertical=args.vertical,
+        debug_mode=args.debug,
+    )
+    pipeline.run()
+
+if __name__ == "__main__":
+    main()
