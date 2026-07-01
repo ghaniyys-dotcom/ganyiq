@@ -30,18 +30,6 @@ import time
 from pathlib import Path
 
 # ── Add project root to sys.path so sibling packages resolve ──
-_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-
-# Now we can import using absolute module names
-from .hybrid_face_detector import process_video as run_face_detection
-from identification.audio_visual_matcher import AudioVisualMatcher, AudioSegment, VisualFrame
-from reaction.reaction_detector import analyze_reactions
-from split.split_decision_engine import SplitDecisionEngine
-from asd import compute_lip_energy
-
-# This should work now that pipeline.py adds the root path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
@@ -52,6 +40,10 @@ if _DIRECTOR_DIR not in sys.path:
     sys.path.insert(0, _DIRECTOR_DIR)
 
 from director import DirectorAI
+from hybrid_face_detector import process_video as run_face_detection
+from identification.audio_visual_matcher import AudioVisualMatcher, AudioSegment, VisualFrame
+from reaction.reaction_detector import analyze_reactions
+from asd import compute_lip_energy
 
 
 # =============================================================================
