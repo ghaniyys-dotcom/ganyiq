@@ -47,46 +47,45 @@ def run_cmd(cmd: list[str], desc: str = "", timeout: int = 600) -> str:
         raise RuntimeError(f"Command failed: {desc or ' '.join(cmd)[:100]}")
     return result.stdout
 
+class CameraSmoother:
+    """Exponential moving average for smooth camera pan (FASE 13)."""
+    def __init__(self, alpha=0.2):
+        self.alpha = alpha
+        self.reset()
+    def reset(self):
+        self._cx = None
+        self._cy = None
+    def smooth(self, cx, cy):
+        if self._cx is None:
+            self._cx, self._cy = cx, cy
+        else:
+            self._cx = self._cx * (1 - self.alpha) + cx * self.alpha
+            self._cy = self._cy * (1 - self.alpha) + cy * self.alpha
+        return self._cx, self._cy
+
+
 class Pipeline:
-    class CameraSmoother:
-        """Exponential moving average for smooth camera pan (FASE 13)."""
-        def __init__(self, alpha=0.2):
-            self.alpha = alpha
-            self.reset()
-        def reset(self):
-            self._cx = None
-            self._cy = None
-        def smooth(self, cx, cy):
-            if self._cx is None:
-                self._cx, self._cy = cx, cy
-            else:
-                self._cx = self._cx * (1 - self.alpha) + cx * self.alpha
-                self._cy = self._cy * (1 - self.alpha) + cy * self.alpha
-            return self._cx, self._cy
-
-
-    class Pipeline:
-        """Pipeline for orchestrating face detection and video rendering."""
-        def __init__(self, video_path: str, output_path: str,
-                     work_dir: str | None = None, vertical: bool = False,
-                     debug_mode: bool = False):
-            self.video_path = Path(video_path).resolve()
-            self.output_path = Path(output_path).resolve()
-            self.work_dir = Path(work_dir or tempfile.mkdtemp(prefix="ganyiq_")).resolve()
-            self.work_dir.mkdir(parents=True, exist_ok=True)
-            self.vertical = vertical
-            self.debug_mode = debug_mode
-            self.debug_log_path = self.work_dir / "debug.log" if debug_mode else None
-            self.debug_fontfile = ""
-            if debug_mode and platform.system() == "Windows":
-                for cand in ["C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/calibri.ttf"]:
-                    if os.path.exists(cand):
-                        self.debug_fontfile = cand
-                        break
-            self.audio_path = self.work_dir / "audio.wav"
-            self.diarization_path = self.work_dir / "diarization.json"
-            self.result_path = self.work_dir / "analysis_result.json"
-            self.cam = CameraSmoother(alpha=0.2)
+    """Pipeline for orchestrating face detection and video rendering."""
+    def __init__(self, video_path: str, output_path: str,
+                 work_dir: str | None = None, vertical: bool = False,
+                 debug_mode: bool = False):
+        self.video_path = Path(video_path).resolve()
+        self.output_path = Path(output_path).resolve()
+        self.work_dir = Path(work_dir or tempfile.mkdtemp(prefix="ganyiq_")).resolve()
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+        self.vertical = vertical
+        self.debug_mode = debug_mode
+        self.debug_log_path = self.work_dir / "debug.log" if debug_mode else None
+        self.debug_fontfile = ""
+        if debug_mode and platform.system() == "Windows":
+            for cand in ["C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/calibri.ttf"]:
+                if os.path.exists(cand):
+                    self.debug_fontfile = cand
+                    break
+        self.audio_path = self.work_dir / "audio.wav"
+        self.diarization_path = self.work_dir / "diarization.json"
+        self.result_path = self.work_dir / "analysis_result.json"
+        self.cam = CameraSmoother(alpha=0.2)
 
     def run(self):
         """Execute the full pipeline."""
