@@ -37,7 +37,7 @@ class DirectorAI:
         for segment in self.diarization:
             speaker_id = segment['speaker']
             start, end = segment['start'], segment['end']
-            for t in range(int(start), int(end)):
+            for t in range(int(start), int(end) + 1):
                 if speaker_id not in timeline[float(t)]:
                     timeline[float(t)].append(speaker_id)
         return timeline
@@ -108,53 +108,46 @@ class DirectorAI:
         # Get all faces visible at this specific time
         all_faces_now = []
         for entry in self.face_data.get("timeline", []):
-            if abs(entry.get("time", 0) - time_sec) < 0.5: # 0.5s tolerance
+            if abs(entry.get("time", 0) - time_sec) < 0.5:
                 all_faces_now = entry.get("faces", [])
                 break
 
+        # If no faces at all, speaker is off-screen → wide/audio-only shot
         if not all_faces_now:
             return speaker_id, None
 
+        # Try to find speaker's face by matching speaker_id
         speaker_face = None
+        other_faces = []
         for face in all_faces_now:
             if face.get('speaker_id') == speaker_id:
                 speaker_face = face
-                break
-        
-        # If speaker's face isn't visible, we can't do a split
-        if not speaker_face:
+            elif face.get('w', 0) >= 40 and face.get('h', 0) >= 40:
+                other_faces.append(face)
+
+        # If speaker not found by id, pick the most central face as primary
+        if not speaker_face and other_faces:
+            other_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
+            speaker_face = other_faces.pop(0)
+
+        # No usable face at all
+        if not speaker_face and not other_faces:
             return speaker_id, None
 
-        # --- Intelligent Listener Selection ---
-        candidates = []
-        for face in all_faces_now:
-            # Can't be the speaker
-            if face.get('speaker_id') == speaker_id:
-                continue
+        # Score and pick the best listener from remaining faces
+        if other_faces:
+            candidates = []
+            for face in other_faces:
+                centrality = 1.0 / (1.0 + abs(face.get('cx', 640) - 640))
+                reaction = face.get('reaction_intensity', 0.0)
+                score = centrality * (1 + reaction)
+                candidates.append((score, face))
             
-            # **Anti-Nyangsang Filter**: Must be a real face, not noise
-            if face.get('w', 0) < 40 or face.get('h', 0) < 40:
-                continue
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            best_listener = candidates[0][1]
+            return speaker_id, best_listener.get('speaker_id')
 
-            # Scoring: Centrality + Reaction
-            # 1. Centrality (closer to horizontal center is better)
-            centrality_score = 1.0 / (1.0 + abs(face.get('cx', 640) - 640))
-            
-            # 2. Reaction Score (placeholder, assumes reaction module adds this)
-            reaction_score = face.get('reaction_intensity', 0.0) 
-            
-            # Final score
-            score = centrality_score * (1 + reaction_score)
-            candidates.append((score, face))
-
-        if not candidates:
-            return speaker_id, None
-            
-        # Pick the best listener
-        candidates.sort(key=lambda x: x[0], reverse=True)
-        best_listener_face = candidates[0][1]
-        
-        return speaker_id, best_listener_face.get('speaker_id')
+        return speaker_id, None
 
     def _determine_layout(self, speaker_id: str | None, listener_id: str | None) -> str:
         """Determines the layout based on who is present."""
