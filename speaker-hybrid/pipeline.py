@@ -128,24 +128,60 @@ class Pipeline:
         return None
 
     def _get_speaker_bbox(self, face_data: dict, target_id: str, start: float, end: float, frame_w: int, frame_h: int) -> dict | None:
-        """Finds a target's face BBox, supporting both 'speaker_X' and 'track_Y' IDs."""
+        """Finds a target's face BBox, with case-insensitive speaker_id matching."""
         if not target_id: return None
         
         is_track_id = target_id.startswith("track_")
-        search_val = int(target_id.split('_')[1]) if is_track_id else target_id
-
+        search_val = target_id  # Keep as string for comparison
+        
         clusters = self._get_face_clusters(face_data, start, end, frame_w)
         if not clusters: return None
 
+        # Normalize target_id to uppercase for case-insensitive matching
+        target_upper = target_id.upper()
+        is_speaker_match = not is_track_id
+
         for c in clusters:
             if is_track_id:
-                if search_val in c.get("track_ids", []):
-                    return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
-            else: # is speaker_id
-                if search_val in c.get("speaker_ids", {}):
-                    return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
+                # track_Y: numeric match
+                try:
+                    search_num = int(search_val.split('_')[1])
+                    if search_num in c.get("track_ids", []):
+                        return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
+                except (ValueError, IndexError):
+                    pass
+            else:
+                # speaker_X: case-insensitive dict key match
+                for sid in c.get("speaker_ids", {}):
+                    if sid.upper() == target_upper:
+                        return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
         
-        log(f"  [BBOX-WARN] Target '{target_id}' not found in any cluster for shot {start:.1f}s-{end:.1f}s")
+        # Fallback: try to find any face in the shot range with matching speaker_id
+        if not is_track_id:
+            for entry in face_data.get("timeline", []):
+                t = entry.get("time", 0)
+                if t < start - 0.2 or t > end + 0.2: continue
+                for face in entry.get("faces", []):
+                    if face.get("speaker_id", "").upper() == target_upper:
+                        cx, cy, w, h = face.get("cx"), face.get("cy"), face.get("w"), face.get("h")
+                        if cx and cy and w and h:
+                            return {"cx": cx, "cy": cy, "w": w, "h": h}
+        
+        # Last resort: use the best (largest) face in the shot range
+        candidates = []
+        for entry in face_data.get("timeline", []):
+            t = entry.get("time", 0)
+            if t < start - 0.2 or t > end + 0.2: continue
+            for face in entry.get("faces", []):
+                cx, cy, w, h = face.get("cx"), face.get("cy"), face.get("w"), face.get("h")
+                if cx and cy and w and h and w >= 15 and h >= 15:
+                    candidates.append((w * h, cx, cy, w, h))
+        if candidates:
+            best = max(candidates, key=lambda x: x[0])
+            log(f"  [BBOX-LAST] Target '{target_id}' not found — using largest face in shot")
+            return {"cx": best[1], "cy": best[2], "w": best[3], "h": best[4]}
+        
+        log(f"  [BBOX-WARN] Target '{target_id}' not found in any cluster for {start:.1f}s-{end:.1f}s")
         return None
 
     def _get_face_clusters(self, face_data: dict, start: float, end: float, frame_w: int, merge_dist: float = 150) -> list[dict]:

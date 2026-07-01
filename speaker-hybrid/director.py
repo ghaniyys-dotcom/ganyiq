@@ -118,10 +118,11 @@ class DirectorAI:
         if not all_faces_now:
             return speaker_id, None, False
 
-        # Try to find speaker's face by matching speaker_id
+        # Try to find speaker's face by matching speaker_id (case-insensitive)
         speaker_face = None
+        speaker_upper = speaker_id.upper()
         for face in all_faces_now:
-            if face.get('speaker_id') == speaker_id:
+            if face.get('speaker_id', '').upper() == speaker_upper:
                 speaker_face = face
                 break
 
