@@ -54,18 +54,21 @@ class Pipeline:
     """End-to-end GANYIQ Speaker Hybrid Pipeline."""
 
     def __init__(self, video_path: str, output_path: str,
-                 work_dir: str | None = None, vertical: bool = False):
+                 work_dir: str | None = None, vertical: bool = False,
+                 debug_mode: bool = False):
         self.video_path = Path(video_path).resolve()
         self.output_path = Path(output_path).resolve()
         self.work_dir = Path(work_dir or tempfile.mkdtemp(prefix="ganyiq_")).resolve()
         self.work_dir.mkdir(parents=True, exist_ok=True)
         self.vertical = vertical
+        self.debug_mode = debug_mode
 
         # Temp files
         self.audio_path = self.work_dir / "audio.wav"
         self.diarization_path = self.work_dir / "diarization.json"
         self.face_data_path = self.work_dir / "face_data.json"
         self.result_path = self.work_dir / "analysis_result.json"
+        self.debug_log_path = self.work_dir / "debug.log" if debug_mode else None
 
     def run(self):
         """Execute the full pipeline."""
@@ -280,9 +283,9 @@ class Pipeline:
         # Sort by count descending for deterministic merge
         clusters.sort(key=lambda c: c["count"], reverse=True)
 
-        # ── Step 3: MERGE clusters that are <merge_dist px apart AND same speaker_id ──
-        # NEVER merge clusters that have DIFFERENT dominant speaker_ids — they're
-        # different people even if sitting close together.
+        # ── Step 3: MERGE clusters that are <merge_dist px apart AND share dominant speaker_id ──
+        # NEVER merge clusters with DIFFERENT dominant speakers — they're
+        # different people even if sitting close.
         merged = []
         for c in clusters:
             c_top_sid = next(iter(c["speaker_ids"]), None)
@@ -313,6 +316,109 @@ class Pipeline:
 
         merged.sort(key=lambda c: c["count"], reverse=True)
         return merged
+
+    @staticmethod
+    def _sanitize_bbox(bbox: dict | None, frame_w: int, frame_h: int,
+                       mode: str = "single") -> dict | None:
+        """Apply sanity checks to prevent edge-screen lock.
+        For single-shot: nudge centroid toward center if at edge (<15% or >85%).
+        """
+        if not bbox:
+            return None
+        
+        cx, cy = bbox["cx"], bbox["cy"]
+        w, h = bbox["w"], bbox["h"]
+        
+        left_edge = frame_w * 0.15
+        right_edge = frame_w * 0.85
+        top_edge = frame_h * 0.15
+        bottom_edge = frame_h * 0.85
+        
+        if mode == "single":
+            if cx < left_edge:
+                cx = left_edge + w / 2
+            elif cx > right_edge:
+                cx = right_edge - w / 2
+            
+            if cy < top_edge:
+                cy = top_edge + h / 2
+            elif cy > bottom_edge:
+                cy = bottom_edge - h / 2
+        
+        # Final bounds clamp
+        cx = max(w / 2, min(cx, frame_w - w / 2))
+        cy = max(h / 2, min(cy, frame_h - h / 2))
+        
+        return {"cx": cx, "cy": cy, "w": w, "h": h}
+
+    @staticmethod
+    def _build_debug_overlay(bbox: dict | None, bbox_secondary: dict | None,
+                             crop_x: float, crop_y: float, crop_w: float, crop_h: float,
+                             frame_w: int, frame_h: int,
+                             scene_num: int, layout: str, speaker_id: str = "") -> str:
+        """Build ffmpeg drawbox/drawtext overlay for debug visualization."""
+        overlays = []
+        
+        # YELLOW: Crop window
+        overlays.append(
+            f"drawbox=x={crop_x:.0f}:y={crop_y:.0f}:w={crop_w:.0f}:h={crop_h:.0f}:"
+            f"color=yellow@0.5:t=4"
+        )
+        
+        if bbox:
+            cx, cy = bbox["cx"], bbox["cy"]
+            w_b, h_b = bbox["w"], bbox["h"]
+            
+            # GREEN: Face bbox
+            bx = cx - w_b / 2
+            by = cy - h_b / 2
+            overlays.append(
+                f"drawbox=x={bx:.0f}:y={by:.0f}:w={w_b:.0f}:h={h_b:.0f}:"
+                f"color=green@0.7:t=3"
+            )
+            
+            # RED: Centroid crosshair
+            r = 8
+            for dx, dy in [(-r, 0), (r, 0), (0, -r), (0, r)]:
+                overlays.append(
+                    f"drawbox=x={cx+dx-2:.0f}:y={cy+dy-2:.0f}:w=4:h=4:color=red:t=fill"
+                )
+        
+        if bbox_secondary:
+            cx2, cy2 = bbox_secondary["cx"], bbox_secondary["cy"]
+            w2, h2 = bbox_secondary["w"], bbox_secondary["h"]
+            overlays.append(
+                f"drawbox=x={cx2-w2/2:.0f}:y={cy2-h2/2:.0f}:w={w2:.0f}:h={h2:.0f}:"
+                f"color=cyan@0.7:t=3"
+            )
+            for dx, dy in [(-r, 0), (r, 0), (0, -r), (0, r)]:
+                overlays.append(
+                    f"drawbox=x={cx2+dx-2:.0f}:y={cy2+dy-2:.0f}:w=4:h=4:color=cyan:t=fill"
+                )
+        
+        # Text overlay
+        text_y = 30
+        scene_text = f"Scene {scene_num} | {layout}"
+        overlays.append(
+            f"drawtext=text='{scene_text}':x=20:y={text_y}:"
+            f"fontsize=24:fontcolor=white:box=1:boxcolor=black@0.7"
+        )
+        if speaker_id:
+            text_y += 35
+            sp_text = f"Speaker {speaker_id}".replace(":", "\\:")
+            overlays.append(
+                f"drawtext=text='{sp_text}':x=20:y={text_y}:"
+                f"fontsize=20:fontcolor=yellow:box=1:boxcolor=black@0.7"
+            )
+        if bbox:
+            text_y += 35
+            tgt_text = f"Target cx={int(bbox['cx'])} cy={int(bbox['cy'])}".replace(":", "\\:")
+            overlays.append(
+                f"drawtext=text='{tgt_text}':x=20:y={text_y}:"
+                f"fontsize=18:fontcolor=green:box=1:boxcolor=black@0.7"
+            )
+        
+        return ",".join(overlays)
 
     def _get_secondary_bbox(self, face_data: dict,
                             start: float, end: float,
@@ -613,18 +719,36 @@ class Pipeline:
                             f"(cx={bbox_primary['cx']:.0f} vs {bbox_secondary['cx']:.0f})"
                             f" — falling back to fullscreen")
                         is_split = False
-                        bbox = bbox_primary
+                        bbox = self._sanitize_bbox(bbox_primary, frame_w, frame_h, "single")
                 else:
-                    bbox = self._get_speaker_bbox(
-                        face_data, target_sid or "",
-                        start, start + dur,
-                        frame_w=frame_w, frame_h=frame_h)
+                    bbox = self._sanitize_bbox(
+                        self._get_speaker_bbox(
+                            face_data, target_sid or "",
+                            start, start + dur,
+                            frame_w=frame_w, frame_h=frame_h),
+                        frame_w, frame_h, "single")
 
                 if is_split:
+                    # Sanitize both bboxes
+                    bbox_primary = self._sanitize_bbox(bbox_primary, frame_w, frame_h, "single")
+                    bbox_secondary = self._sanitize_bbox(bbox_secondary, frame_w, frame_h, "split")
+
                     # ── ACTUAL SPLIT ──
                     vf = self._build_split_filter(
                         bbox_primary, bbox_secondary,
                         frame_w, frame_h, out_w, out_h)
+                    
+                    # Debug mode: inject visual overlay
+                    if self.debug_mode and bbox_primary:
+                        crop_w_split = frame_h * 9 / 16
+                        vx_primary = max(0.0, min(bbox_primary["cx"] - crop_w_split / 2, frame_w - crop_w_split))
+                        debug_ov = self._build_debug_overlay(
+                            bbox_primary, bbox_secondary,
+                            vx_primary, 0, crop_w_split, frame_h,
+                            frame_w, frame_h, i + 1, layout, target_sid or "unknown"
+                        )
+                        vf = f"[0:v]{debug_ov}[debug];[debug]{vf[5:]}"
+                    
                     desc = "split"
                     if bbox_primary:
                         desc += f" primary=cx{bbox_primary['cx']:.0f}"
@@ -649,6 +773,24 @@ class Pipeline:
                             bbox, frame_w, frame_h, out_w, out_h,
                             vertical=self.vertical, layout=layout)
                         desc = f"crop to cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}"
+                        
+                        # Debug overlay
+                        if self.debug_mode:
+                            if self.vertical and layout == "fullscreen":
+                                cw = frame_h * 9 / 16
+                                cx = max(0.0, min(bbox["cx"] - cw / 2, frame_w - cw))
+                                cy_debug = 0
+                                ch = frame_h
+                            else:
+                                cw = min(bbox["w"] * 5.0, frame_w)
+                                ch = min(bbox["h"] * 4.0, frame_h)
+                                cx = max(0.0, bbox["cx"] - cw / 2)
+                                cy_debug = max(0.0, bbox["cy"] - ch * 0.275)
+                            debug_ov = self._build_debug_overlay(
+                                bbox, None, cx, cy_debug, cw, ch,
+                                frame_w, frame_h, i + 1, layout, target_sid or "unknown"
+                            )
+                            vf = f"{debug_ov},{vf}"
                     else:
                         vf = self._build_crop_filter(
                             None, frame_w, frame_h, out_w, out_h,
@@ -667,12 +809,23 @@ class Pipeline:
                     ], f"  Scene {i+1}/{len(scenes)}: {layout} {start:.1f}s-{start+dur:.1f}s")
 
             else:
-                # ── Fullscreen (non-split scenes) ──
+                # ── Fullscreen (no face_data — center crop) ──
                 if bbox:
                     vf = self._build_crop_filter(
                         bbox, frame_w, frame_h, out_w, out_h,
                         vertical=self.vertical, layout=layout)
                     desc = f"crop to cx={bbox['cx']:.0f} cy={bbox['cy']:.0f}"
+                    
+                    if self.debug_mode:
+                        cw = frame_h * 9 / 16 if self.vertical else min(bbox["w"] * 5.0, frame_w)
+                        ch = frame_h if self.vertical else min(bbox["h"] * 4.0, frame_h)
+                        cx_debug = max(0.0, min(bbox["cx"] - cw / 2, frame_w - cw))
+                        cy_debug = 0 if self.vertical else max(0.0, bbox["cy"] - ch * 0.275)
+                        debug_ov = self._build_debug_overlay(
+                            bbox, None, cx_debug, cy_debug, cw, ch,
+                            frame_w, frame_h, i + 1, layout, target_sid or "unknown"
+                        )
+                        vf = f"{debug_ov},{vf}"
                 else:
                     vf = self._build_crop_filter(
                         None, frame_w, frame_h, out_w, out_h,
@@ -717,6 +870,8 @@ def main():
     parser.add_argument("--work-dir", help="Working directory (auto temp)")
     parser.add_argument("--vertical", "-v", action="store_true",
                         help="Output 9:16 vertical (shorts format)")
+    parser.add_argument("--debug", action="store_true",
+                        help="Enable debug visualization overlay + debug.log")
     args = parser.parse_args()
 
     if not os.path.exists(args.video):
@@ -724,7 +879,7 @@ def main():
         sys.exit(1)
 
     pipeline = Pipeline(args.video, args.output, args.work_dir,
-                        vertical=args.vertical)
+                        vertical=args.vertical, debug_mode=args.debug)
     try:
         result = pipeline.run()
         print(json.dumps({
