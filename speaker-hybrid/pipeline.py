@@ -376,7 +376,9 @@ class Pipeline:
         Fontconfig error.
         """
         # Inject :fontfile= if provided (Windows compatibility)
-        ff_arg = f":fontfile='{fontfile}'" if fontfile else ""
+        # Escape colons in path — ffmpeg filter uses : as separator
+        ff_path = fontfile.replace(":", "\\:") if fontfile else ""
+        ff_arg = f":fontfile='{ff_path}'" if fontfile else ""
         overlays = []
         
         # YELLOW: Crop window
