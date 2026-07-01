@@ -22,8 +22,12 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-# Now this should work
-from speaker_hybrid.director import DirectorAI
+# director.py is in the same folder as pipeline.py, so add that dir to path
+_SELF_DIR = str(Path(__file__).resolve().parent)
+if _SELF_DIR not in sys.path:
+    sys.path.insert(0, _SELF_DIR)
+
+from director import DirectorAI
 
 print("--- PIPELINE SCRIPT STARTED ---", file=sys.stderr) # DEBUG
 
@@ -231,9 +235,7 @@ class Pipeline:
         
         final_audio_cmd = ["ffmpeg", "-y", "-i", str(concat_path), "-i", str(self.video_path), "-c:v", "copy", "-c:a", "aac", "-map", "0:v:0", "-map", "1:a:0", str(self.output_path)]
         run_cmd(final_audio_cmd, "Rendering final output...")
-        
-# ... (argparse and main call)
-\n
+
 def main():
     parser = argparse.ArgumentParser(description="GANYIQ Speaker Hybrid Pipeline")
     parser.add_argument("--video", required=True, help="Path to input video")

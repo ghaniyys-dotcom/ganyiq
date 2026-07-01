@@ -42,7 +42,16 @@ from split.split_decision_engine import SplitDecisionEngine
 from asd import compute_lip_energy
 
 # This should work now that pipeline.py adds the root path
-from speaker_hybrid.director import DirectorAI
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+# director.py is in a sibling directory (speaker-hybrid/)
+_DIRECTOR_DIR = str(_PROJECT_ROOT / "speaker-hybrid")
+if _DIRECTOR_DIR not in sys.path:
+    sys.path.insert(0, _DIRECTOR_DIR)
+
+from director import DirectorAI
 
 
 # =============================================================================
