@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import platform
 from pathlib import Path
 
 
@@ -62,7 +63,17 @@ class Pipeline:
         self.work_dir.mkdir(parents=True, exist_ok=True)
         self.vertical = vertical
         self.debug_mode = debug_mode
+        self.debug_log_path = self.work_dir / "debug.log" if debug_mode else None
 
+        # Windows: explicit fontfile for ffmpeg drawtext (no fontconfig)
+        self.debug_fontfile = ""
+        if debug_mode and platform.system() == "Windows":
+            for cand in ["C:/Windows/Fonts/arial.ttf",
+                         "C:/Windows/Fonts/segoeui.ttf",
+                         "C:/Windows/Fonts/calibri.ttf"]:
+                if os.path.exists(cand):
+                    self.debug_fontfile = cand
+                    break
         # Temp files
         self.audio_path = self.work_dir / "audio.wav"
         self.diarization_path = self.work_dir / "diarization.json"
@@ -358,8 +369,14 @@ class Pipeline:
     def _build_debug_overlay(bbox: dict | None, bbox_secondary: dict | None,
                              crop_x: float, crop_y: float, crop_w: float, crop_h: float,
                              frame_w: int, frame_h: int,
-                             scene_num: int, layout: str, speaker_id: str = "") -> str:
-        """Build ffmpeg drawbox/drawtext overlay for debug visualization."""
+                             scene_num: int, layout: str, speaker_id: str = "",
+                             fontfile: str = "") -> str:
+        """Build ffmpeg drawbox/drawtext overlay for debug visualization.
+        On Windows, pass fontfile='C\\:/Windows/Fonts/arial.ttf' to avoid
+        Fontconfig error.
+        """
+        # Inject :fontfile= if provided (Windows compatibility)
+        ff_arg = f":fontfile='{fontfile}'" if fontfile else ""
         overlays = []
         
         # YELLOW: Crop window
@@ -403,21 +420,21 @@ class Pipeline:
         text_y = 30
         scene_text = f"Scene {scene_num} | {layout}"
         overlays.append(
-            f"drawtext=text='{scene_text}':x=20:y={text_y}:"
+            f"drawtext=text='{scene_text}':x=20:y={text_y}{ff_arg}:"
             f"fontsize=24:fontcolor=white:box=1:boxcolor=black@0.7"
         )
         if speaker_id:
             text_y += 35
             sp_text = f"Speaker {speaker_id}".replace(":", "\\:")
             overlays.append(
-                f"drawtext=text='{sp_text}':x=20:y={text_y}:"
+                f"drawtext=text='{sp_text}':x=20:y={text_y}{ff_arg}:"
                 f"fontsize=20:fontcolor=yellow:box=1:boxcolor=black@0.7"
             )
         if bbox:
             text_y += 35
             tgt_text = f"Target cx={int(bbox['cx'])} cy={int(bbox['cy'])}".replace(":", "\\:")
             overlays.append(
-                f"drawtext=text='{tgt_text}':x=20:y={text_y}:"
+                f"drawtext=text='{tgt_text}':x=20:y={text_y}{ff_arg}:"
                 f"fontsize=18:fontcolor=green:box=1:boxcolor=black@0.7"
             )
         
@@ -759,7 +776,8 @@ class Pipeline:
                         debug_ov = self._build_debug_overlay(
                             bbox_primary, bbox_secondary,
                             vx_primary, 0, crop_w_split, frame_h,
-                            frame_w, frame_h, i + 1, layout, target_sid or "unknown"
+                            frame_w, frame_h, i + 1, layout, target_sid or "unknown",
+                            fontfile=self.debug_fontfile
                         )
                         vf = f"[0:v]{debug_ov}[debug];[debug]{vf[5:]}"
                     
@@ -802,7 +820,8 @@ class Pipeline:
                                 cy_debug = max(0.0, bbox["cy"] - ch * 0.275)
                             debug_ov = self._build_debug_overlay(
                                 bbox, None, cx, cy_debug, cw, ch,
-                                frame_w, frame_h, i + 1, layout, target_sid or "unknown"
+                                frame_w, frame_h, i + 1, layout, target_sid or "unknown",
+                                fontfile=self.debug_fontfile
                             )
                             vf = f"{debug_ov},{vf}"
                     else:
@@ -837,7 +856,8 @@ class Pipeline:
                         cy_debug = 0 if self.vertical else max(0.0, bbox["cy"] - ch * 0.275)
                         debug_ov = self._build_debug_overlay(
                             bbox, None, cx_debug, cy_debug, cw, ch,
-                            frame_w, frame_h, i + 1, layout, target_sid or "unknown"
+                            frame_w, frame_h, i + 1, layout, target_sid or "unknown",
+                            fontfile=self.debug_fontfile
                         )
                         vf = f"{debug_ov},{vf}"
                 else:
