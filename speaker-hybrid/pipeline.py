@@ -127,13 +127,25 @@ class Pipeline:
             with open(face_path) as f: return json.load(f)
         return None
 
-    def _get_speaker_bbox(self, face_data: dict, speaker_id: str, start: float, end: float, frame_w: int, frame_h: int) -> dict | None:
-        if not speaker_id: return None
+    def _get_speaker_bbox(self, face_data: dict, target_id: str, start: float, end: float, frame_w: int, frame_h: int) -> dict | None:
+        """Finds a target's face BBox, supporting both 'speaker_X' and 'track_Y' IDs."""
+        if not target_id: return None
+        
+        is_track_id = target_id.startswith("track_")
+        search_val = int(target_id.split('_')[1]) if is_track_id else target_id
+
         clusters = self._get_face_clusters(face_data, start, end, frame_w)
         if not clusters: return None
+
         for c in clusters:
-            if speaker_id in c["speaker_ids"]:
-                return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
+            if is_track_id:
+                if search_val in c.get("track_ids", []):
+                    return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
+            else: # is speaker_id
+                if search_val in c.get("speaker_ids", {}):
+                    return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
+        
+        log(f"  [BBOX-WARN] Target '{target_id}' not found in any cluster for shot {start:.1f}s-{end:.1f}s")
         return None
 
     def _get_face_clusters(self, face_data: dict, start: float, end: float, frame_w: int, merge_dist: float = 150) -> list[dict]:
@@ -153,7 +165,8 @@ class Pipeline:
             clusters.append({
                 "cx": sum(f["cx"] for f in faces) / n, "cy": sum(f["cy"] for f in faces) / n,
                 "w": sum(f["w"] for f in faces) / n, "h": sum(f["h"] for f in faces) / n,
-                "count": n, "speaker_ids": dict(bin_sids[key].most_common(3))
+                "count": n, "speaker_ids": dict(bin_sids[key].most_common(3)),
+                "track_ids": [f.get("track_id") for f in faces]
             })
         clusters.sort(key=lambda c: c["count"], reverse=True)
         # ── Merge logic: clusters <merge_dist apart AND same/both-unlabeled speaker → one face ──
@@ -171,13 +184,11 @@ class Pipeline:
                     m["cx"] = (m["cx"] * m["count"] + c["cx"] * c["count"]) / total
                     m["cy"] = (m["cy"] * m["count"] + c["cy"] * c["count"]) / total
                     m["w"] = (m["w"] * m["count"] + c["w"] * c["count"]) / total
-                    m["h"] = (m["h"] * m["count"] + c["h"] * c["count"]) / total
                     m["count"] = total
-                    merged_sids = dict(m["speaker_ids"])
+                    # Merge speaker_ids and track_ids
                     for sid, cnt in c["speaker_ids"].items():
-                        merged_sids[sid] = merged_sids.get(sid, 0) + cnt
-                    m["speaker_ids"] = dict(
-                        sorted(merged_sids.items(), key=lambda x: x[1], reverse=True)[:3])
+                        m["speaker_ids"][sid] = m["speaker_ids"].get(sid, 0) + cnt
+                    m["track_ids"].extend(c.get("track_ids", []))
                     found = True
                     break
             if not found:
