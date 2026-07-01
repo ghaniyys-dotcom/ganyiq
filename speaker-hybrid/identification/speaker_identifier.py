@@ -35,7 +35,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 # Now we can import using absolute module names
-from hybrid_face_detector import process_video as run_face_detection
+from .hybrid_face_detector import process_video as run_face_detection
 from identification.audio_visual_matcher import AudioVisualMatcher, AudioSegment, VisualFrame
 from reaction.reaction_detector import analyze_reactions
 from split.split_decision_engine import SplitDecisionEngine
