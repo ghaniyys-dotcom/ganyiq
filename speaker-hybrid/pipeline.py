@@ -79,7 +79,7 @@ class Pipeline:
         run_cmd(["ffmpeg", "-y", "-i", str(self.video_path), "-vn", "-ar", "16000", "-ac", "1", str(self.audio_path)], "Extracting audio...")
 
         log("Running diarization...")
-        diarize_script = Path(__file__).parent / "diarize.py"
+        diarize_script = Path(__file__).resolve().parent.parent / "diarize.py"
         run_cmd([sys.executable, str(diarize_script), str(self.audio_path), str(self.diarization_path)], "Running diarization...")
         
         log("Running speaker identification...")
