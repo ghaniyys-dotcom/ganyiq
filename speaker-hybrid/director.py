@@ -136,16 +136,13 @@ class DirectorAI:
 
         # Score and pick the best listener from remaining faces
         if other_faces:
-            candidates = []
-            for face in other_faces:
-                centrality = 1.0 / (1.0 + abs(face.get('cx', 640) - 640))
-                reaction = face.get('reaction_intensity', 0.0)
-                score = centrality * (1 + reaction)
-                candidates.append((score, face))
+            # Sort by distance to center (ascending)
+            other_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
+            best_listener = other_faces[0]
             
-            candidates.sort(key=lambda x: x[0], reverse=True)
-            best_listener = candidates[0][1]
-            return speaker_id, best_listener.get('speaker_id')
+            # Use track_id for people who haven't spoken yet
+            listener_id = best_listener.get('speaker_id') or f"track_{best_listener.get('track_id')}"
+            return speaker_id, listener_id
 
         return speaker_id, None
 
