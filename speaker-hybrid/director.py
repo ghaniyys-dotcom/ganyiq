@@ -178,8 +178,7 @@ class DirectorAI:
             lip = float(face.get("lip_motion", 0.0))
             lip_score = min(1.0, lip * 500.0) if lip > 0 else 0.0
             score = centrality * 0.6 + lip_score * 0.4
-            if score > 0.3:
-                candidates.append((score, face))
+            candidates.append((score, face))
         candidates.sort(key=lambda x: x[0], reverse=True)
         return candidates[0][1] if candidates else None
 
