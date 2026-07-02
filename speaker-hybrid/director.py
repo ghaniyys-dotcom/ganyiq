@@ -80,20 +80,22 @@ class DirectorAI:
             # Convert faces to target ID strings
             primary = self._face_to_target_id(speaker_face) or speaker_id
             secondary = self._face_to_target_id(reactor_face)
-            # Debug
-            import sys
-            if t < 5 or t % 30 == 0:
-                print(f"[DIRECTOR] t={t} | speaker={speaker_id} | sface={'Y' if speaker_face else 'N'} | reactor={'Y' if reactor_face else 'N'} | nfaces={len(all_faces)} | layout={ideal_layout}", file=sys.stderr)
 
             # === Logic kamera pinter ===
             if speaker_id and secondary:
                 ideal_layout = "split_screen"
             elif speaker_id:
                 ideal_layout = "fullscreen"
+                secondary = None
             else:
                 ideal_layout = "wide_shot"
                 primary = None
                 secondary = None
+
+            # Debug log
+            import sys
+            if t < 5 or t % 30 == 0:
+                print(f"[DIRECTOR] t={t} | speaker={speaker_id} | sface={'Y' if speaker_face else 'N'} | reactor={'Y' if reactor_face else 'N'} | nfaces={len(all_faces)} | layout={ideal_layout} | primary={primary}", file=sys.stderr)
 
             # === Cut decision ===
             layout_changed = ideal_layout != current_layout
@@ -176,8 +178,8 @@ class DirectorAI:
             lip = float(face.get("lip_motion", 0.0))
             lip_score = min(1.0, lip * 500.0) if lip > 0 else 0.0
             score = centrality * 0.6 + lip_score * 0.4
-            # ANY non-speaker face qualifies — score used only for ranking
-            candidates.append((score, face))
+            if score > 0.3:
+                candidates.append((score, face))
         candidates.sort(key=lambda x: x[0], reverse=True)
         return candidates[0][1] if candidates else None
 
@@ -188,12 +190,12 @@ class DirectorAI:
         pid = face.get("person_id")
         if pid is not None and pid > 0:
             return f"person_{pid}"
-        tid = face.get("track_id")
-        if tid is not None:
-            return f"track_{tid}"
         sid = face.get("speaker_id")
         if sid:
             return sid
+        tid = face.get("track_id")
+        if tid is not None:
+            return f"track_{tid}"
         return None
 
     # ── Merge adjacent same shots, absorb micro-shots ──
