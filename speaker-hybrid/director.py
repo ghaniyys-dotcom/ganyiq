@@ -19,17 +19,21 @@ class Shot:
 
 
 def _is_same_person(a, b):
-    """Compare by person_id > speaker_id > track_id."""
+    """Compare by person_id > (speaker_id + track_id) > track_id."""
     ap = a.get("person_id")
     bp = b.get("person_id")
     if ap is not None and bp is not None and ap > 0 and bp > 0:
         return ap == bp
     asid = a.get("speaker_id", "").upper()
     bsid = b.get("speaker_id", "").upper()
-    if asid and bsid and asid != "UNKNOWN" and bsid != "UNKNOWN":
-        if asid == bsid:
-            return True
-    return a.get("track_id") == b.get("track_id")
+    atid = a.get("track_id")
+    btid = b.get("track_id")
+    # Same speaker_id AND same track_id = same person
+    if asid and bsid and asid != "UNKNOWN" and bsid != "UNKNOWN" and asid == bsid:
+        if atid is not None and btid is not None:
+            return atid == btid  # different track = different person even same speaker
+        return True
+    return atid is not None and btid is not None and atid == btid
 
 
 class DirectorAI:
