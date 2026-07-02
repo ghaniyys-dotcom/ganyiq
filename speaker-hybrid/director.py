@@ -1,7 +1,5 @@
 from dataclasses import dataclass, field
 from collections import defaultdict
-import math
-
 
 @dataclass
 class Shot:
@@ -17,7 +15,6 @@ class Shot:
     def duration(self) -> float:
         return self.end_time - self.start_time
 
-
 def _is_same_person(a, b):
     """Compare by person_id > (speaker_id + track_id) > track_id."""
     ap = a.get("person_id")
@@ -28,195 +25,224 @@ def _is_same_person(a, b):
     bsid = b.get("speaker_id", "").upper()
     atid = a.get("track_id")
     btid = b.get("track_id")
-    # Same speaker_id AND same track_id = same person
     if asid and bsid and asid != "UNKNOWN" and bsid != "UNKNOWN" and asid == bsid:
         if atid is not None and btid is not None:
-            return atid == btid  # different track = different person even same speaker
+            return atid == btid
         return True
     return atid is not None and btid is not None and atid == btid
 
 
 class DirectorAI:
-    """Analyzes face+audio data to create an intelligent shot list."""
-
-    def __init__(self, face_data: dict, diarization: list, video_duration: float,
-                 min_shot_duration: float = 2.0,
-                 frame_w: int = 1280, frame_h: int = 720):
+    """
+    Analyzes the entire video's worth of data (audio diarization, face tracks)
+    to create a stateful, intelligent shot list, mimicking a human director.
+    """
+    def __init__(self, face_data: dict, diarization: list, video_duration: float, 
+                 min_shot_duration: float = 2.5, speaker_dominance_threshold: float = 4.0):
         self.face_data = face_data
         self.diarization = diarization
         self.video_duration = video_duration
         self.min_shot_duration = min_shot_duration
-        self.frame_w = frame_w
-        self.frame_h = frame_h
+        self.speaker_dominance_threshold = speaker_dominance_threshold
+
+        # Pre-process data for quick lookups
         self.speech_timeline = self._build_speech_timeline()
 
     def _build_speech_timeline(self) -> defaultdict[float, list[str]]:
-        """Map each second to active speaker IDs."""
-        tl: defaultdict[float, list[str]] = defaultdict(list)
-        for seg in self.diarization:
-            start = float(seg.get("start", 0))
-            end = float(seg.get("end", 0))
-            speaker = seg.get("speaker")
-            if not speaker:
-                continue
-            for t in range(math.floor(start), math.ceil(end) + 1):
-                if start <= t < end:
-                    tl[t].append(speaker)
-        return tl
+        """Creates a per-second lookup of active speaker IDs with anticipation offset."""
+        timeline = defaultdict(list)
+        anticipation_offset = 0.6  # Shift cuts 0.6s earlier than audio to anticipate speaking
+        for segment in self.diarization:
+            speaker_id = segment['speaker']
+            start = max(0.0, segment['start'] - anticipation_offset)
+            end = max(0.0, segment['end'] - anticipation_offset)
+            for t in range(int(start), int(end) + 1):
+                if speaker_id not in timeline[float(t)]:
+                    timeline[float(t)].append(speaker_id)
+        return timeline
 
     def create_shot_list(self) -> list[Shot]:
-        """Stateful shot creation with per-second evaluation."""
+        """
+        The main directorial logic. Iterates through the video timeline and
+        makes stateful decisions about camera shots.
+        """
         raw_shots = []
-        current_layout: str | None = None
-        current_primary: str | None = None
-        current_secondary: str | None = None
+        
+        # State variables
+        current_layout = None
+        current_primary = None
+        current_secondary = None
         last_cut_time = 0.0
 
+        # Loop through time, second by second
         for t in range(int(self.video_duration)):
-            tf = float(t)
-            all_faces = self._get_faces_at_time(tf)
-            speaker_id = self._get_active_speaker(tf)
-            speaker_face = self._find_speaker_face(speaker_id, all_faces)
-
-            # Find main reactor (non-speaker with best centrality + lip_motion)
-            reactor_face = self._find_main_reactor(speaker_face, all_faces) if speaker_face else None
-
-            # Convert faces to target ID strings
-            primary = self._face_to_target_id(speaker_face) or speaker_id
-            secondary = self._face_to_target_id(reactor_face)
-
-            # === Logic kamera pinter ===
-            if speaker_id and secondary:
-                ideal_layout = "split_screen"
-            elif speaker_id:
-                ideal_layout = "fullscreen"
-                secondary = None
-            else:
-                ideal_layout = "wide_shot"
-                primary = None
-                secondary = None
-
-            # Debug log
-            import sys
-            if t < 5 or t % 30 == 0:
-                print(f"[DIRECTOR] t={t} | speaker={speaker_id} | sface={'Y' if speaker_face else 'N'} | reactor={'Y' if reactor_face else 'N'} | nfaces={len(all_faces)} | layout={ideal_layout} | primary={primary}", file=sys.stderr)
-
-            # === Cut decision ===
-            layout_changed = ideal_layout != current_layout
-            primary_changed = primary != current_primary
-            time_since_cut = tf - last_cut_time
-
-            if (layout_changed or primary_changed) and time_since_cut >= self.min_shot_duration:
-                # Close previous shot
+            # 1. Who is active at this second?
+            speaker, listener, is_close = self._get_scene_actors(float(t))
+            
+            # 2. What's the best layout for them?
+            ideal_layout = self._determine_layout(speaker, listener, is_close)
+            
+            # 3. Time to cut? (Layout changed AND min duration passed)
+            if (ideal_layout != current_layout or speaker != current_primary) and (t - last_cut_time > self.min_shot_duration):
+                # Finalize the previous shot
                 if current_layout is not None:
                     raw_shots.append(Shot(
-                        start_time=last_cut_time, end_time=tf,
+                        start_time=last_cut_time,
+                        end_time=float(t),
                         layout=current_layout,
                         primary_target_id=current_primary,
                         secondary_target_id=current_secondary,
-                        debug_info={"cut_reason":
-                            "layout" if layout_changed else "primary_change"}
                     ))
-                # Start new shot
+                
+                # Start a new shot
                 current_layout = ideal_layout
-                current_primary = primary
-                current_secondary = secondary
-                last_cut_time = tf
+                current_primary = speaker
+                current_secondary = listener
+                last_cut_time = float(t)
 
-        # Final shot
-        if current_layout is not None and last_cut_time < self.video_duration:
+        # Add the final shot
+        if current_layout is not None:
             raw_shots.append(Shot(
-                start_time=last_cut_time, end_time=self.video_duration,
+                start_time=last_cut_time,
+                end_time=self.video_duration,
                 layout=current_layout,
                 primary_target_id=current_primary,
-                secondary_target_id=current_secondary,
-                debug_info={"cut_reason": "end"}
+                secondary_target_id=current_secondary
             ))
 
+        # Post-processing: merge consecutive identical shots
         return self._merge_consecutive_shots(raw_shots)
 
-    # ── Helper: get faces at time ──
-    def _get_faces_at_time(self, time_sec: float) -> list[dict]:
+    def _get_scene_actors(self, time_sec: float) -> tuple[str | None, str | None, bool]:
+        """
+        Find the primary speaker, best listener, and whether they sit close to each other.
+        THIS IS THE CORE INTELLECT OF THE DIRECTOR.
+        """
+        active_speakers = self.speech_timeline.get(time_sec, [])
+        if not active_speakers:
+            return None, None, False
+        
+        speaker_id = active_speakers[0]
+        
+        # Get all faces visible at this specific time
+        all_faces_now = []
         for entry in self.face_data.get("timeline", []):
             if abs(entry.get("time", 0) - time_sec) < 0.5:
-                return entry.get("faces", [])
-        return []
+                all_faces_now = entry.get("faces", [])
+                break
 
-    # ── Helper: active speaker ──
-    def _get_active_speaker(self, time_sec: float) -> str | None:
-        active = self.speech_timeline.get(int(time_sec), [])
-        return active[0] if active else None
+        # If no faces at all, speaker is off-screen → wide/audio-only shot
+        if not all_faces_now:
+            return speaker_id, None, False
 
-    # ── Helper: find speaker face ──
-    def _find_speaker_face(self, speaker_id: str | None, faces: list[dict]) -> dict | None:
-        if not speaker_id or not faces:
-            return None
+        # Try to find speaker's face by matching speaker_id (case-insensitive)
+        speaker_face = None
         speaker_upper = speaker_id.upper()
-        for face in faces:
-            if face.get("speaker_id", "").upper() == speaker_upper:
-                return face
-        # Fallback: most central face
-        valid = [f for f in faces if f.get("w", 0) >= 40 and f.get("h", 0) >= 40]
-        if valid:
-            valid.sort(key=lambda f: abs(f.get("cx", 640) - 640))
-            return valid[0]
-        return None
+        for face in all_faces_now:
+            if face.get('speaker_id', '').upper() == speaker_upper:
+                speaker_face = face
+                break
 
-    # ── Helper: find main reactor (non-speaker with best score) ──
-    def _find_main_reactor(self, speaker_face: dict | None, all_faces: list[dict]) -> dict | None:
-        if not speaker_face or not all_faces:
-            return None
-        candidates = []
-        for face in all_faces:
+        # If speaker not found by id, pick the most central face as primary
+        if not speaker_face:
+            valid_faces = [f for f in all_faces_now if f.get('w', 0) >= 40 and f.get('h', 0) >= 40]
+            if valid_faces:
+                valid_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
+                speaker_face = valid_faces[0]
+
+        if not speaker_face:
+            return speaker_id, None, False
+
+        # Collect other faces (listeners) that are NOT the speaker
+        other_faces = []
+        for face in all_faces_now:
+            # Skip if it's the same person as the speaker (robust multi-method)
             if _is_same_person(face, speaker_face):
                 continue
-            if face.get("w", 0) < 40 or face.get("h", 0) < 40:
-                continue
-            # Proximity filter: too close = tracking artifact
+            # Skip if face too close to speaker (same person, tracking artifact)
             dx = abs(face.get("cx", 0) - speaker_face.get("cx", 0))
             if dx < 150.0:
                 continue
-            # Score: centrality + lip_motion
-            cx = face.get("cx", 640)
-            centrality = max(0.0, 1.0 - abs(cx - 640) / 640)
-            lip = float(face.get("lip_motion", 0.0))
-            lip_score = min(1.0, lip * 500.0) if lip > 0 else 0.0
-            score = centrality * 0.6 + lip_score * 0.4
-            candidates.append((score, face))
-        candidates.sort(key=lambda x: x[0], reverse=True)
-        return candidates[0][1] if candidates else None
+            # Apply size filter to filter out hands/noise
+            if face.get('w', 0) >= 40 and face.get('h', 0) >= 40:
+                other_faces.append(face)
 
-    # ── Helper: face dict -> target ID string ──
-    def _face_to_target_id(self, face: dict | None) -> str | None:
-        if not face:
-            return None
-        pid = face.get("person_id")
-        if pid is not None and pid > 0:
-            return f"person_{pid}"
-        sid = face.get("speaker_id")
-        if sid:
-            return sid
-        tid = face.get("track_id")
-        if tid is not None:
-            return f"track_{tid}"
-        return None
+        # Score and pick the best listener from remaining faces
+        if other_faces:
+            # Score each candidate by centrality + lip_motion (FASE 16)
+            _CENTER = 640  # frame center x for 1280-wide
+            def _score_candidate(f):
+                cx = f.get('cx', _CENTER)
+                centrality = 1.0 - abs(cx - _CENTER) / _CENTER
+                lip = float(f.get('lip_motion', 0.0))
+                lip_score = min(1.0, lip * 500.0) if lip > 0 else 0.0
+                return centrality * 0.6 + lip_score * 0.4
+            other_faces.sort(key=_score_candidate, reverse=True)
+            best_listener = other_faces[0]
+            
+            # Use person_id if available, then speaker_id, then track_id
+            _pid = best_listener.get('person_id')
+            if _pid is not None and _pid > 0:
+                listener_id = f"person_{_pid}"
+            else:
+                listener_id = best_listener.get('speaker_id') or f"track_{best_listener.get('track_id')}"
+            
+            # Check if they are sitting very close (threshold: 300px horizontally)
+            dist_x = abs(speaker_face.get('cx', 0) - best_listener.get('cx', 0))
+            is_close = dist_x < 300.0
+            
+            return speaker_id, listener_id, is_close
 
-    # ── Merge adjacent same shots, absorb micro-shots ──
+        return speaker_id, None, False
+
+    def _determine_layout(self, speaker_id: str | None, listener_id: str | None, is_close: bool) -> str:
+        """Determines the layout based on who is present."""
+        if speaker_id and listener_id:
+            if is_close:
+                return "two_shot_wide"
+            return "split_screen"
+        elif speaker_id:
+            return "fullscreen"
+        else:
+            return "wide_shot" # Fallback if no one is active
+
     def _merge_consecutive_shots(self, shots: list[Shot]) -> list[Shot]:
+        """Merge consecutive shots with the same layout.
+        
+        This is more aggressive than exact-match merging. Since the DirectorAI
+        creates shots second-by-second, the speaker IDs can fluctuate even
+        when the scene is the same. We merge by layout to produce longer,
+        more natural segments.
+        
+        Minimum shot duration is enforced: if a segment is <2.5s, it gets
+        absorbed into the previous segment (merged by layout).
+        """
         if not shots:
             return []
-        merged = [shots[0]]
-        for s in shots[1:]:
-            last = merged[-1]
-            # Same layout + same primary target -> merge
-            if last.layout == s.layout and last.primary_target_id == s.primary_target_id:
-                last.end_time = s.end_time
-                if s.secondary_target_id:
-                    last.secondary_target_id = s.secondary_target_id
-                continue
-            # Micro-shot (< half min_duration) -> absorb
-            if s.duration < self.min_shot_duration * 0.5:
-                last.end_time = s.end_time
-                continue
-            merged.append(s)
-        return merged
+        
+        # First pass: merge by layout only (ignore primary/secondary changes)
+        layout_merged = [shots[0]]
+        for next_shot in shots[1:]:
+            last_shot = layout_merged[-1]
+            if last_shot.layout == next_shot.layout:
+                # Same layout → merge (even if targets changed)
+                last_shot.end_time = next_shot.end_time
+                # Keep primary target from the longer segment
+                if next_shot.end_time - next_shot.start_time > last_shot.end_time - last_shot.start_time:
+                    last_shot.primary_target_id = next_shot.primary_target_id
+                    last_shot.secondary_target_id = next_shot.secondary_target_id
+            else:
+                layout_merged.append(next_shot)
+        
+        # Second pass: absorb micro-shots (<2.5s) into previous shot
+        final = [layout_merged[0]]
+        for next_shot in layout_merged[1:]:
+            last_shot = final[-1]
+            if next_shot.duration < 2.5:
+                # Absorb into previous shot (keep that layout)
+                last_shot.end_time = next_shot.end_time
+            else:
+                final.append(next_shot)
+        
+        return final
+
