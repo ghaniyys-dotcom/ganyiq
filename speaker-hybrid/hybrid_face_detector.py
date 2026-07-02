@@ -488,6 +488,31 @@ def process_video(
     clusterer = SpeakerClusterer()
     face_db = FaceDB("face_identities.db") if 'FaceDB' in dir() else None
     face_db_cache: dict[int, int] = {}  # track_id -> person_id
+
+    # ── FaceDB warm-up: pre-populate with early frames ──
+    if face_db is not None and use_yolo and fps > 0:
+        warm_count = 0
+        warm_cap = cv2.VideoCapture(video_path)
+        warm_frames = min(30, int(total_frames))
+        for _ in range(warm_frames):
+            wr, wf = warm_cap.read()
+            if not wr or wf is None:
+                break
+            wboxes = yolo_detect_faces(session, input_name, wf, conf_threshold)
+            for wb in wboxes:
+                x1 = max(0, int(wb["cx"] - wb["w"] / 2))
+                y1 = max(0, int(wb["cy"] - wb["h"] / 2))
+                x2 = min(wf.shape[1], int(wb["cx"] + wb["w"] / 2))
+                y2 = min(wf.shape[0], int(wb["cy"] + wb["h"] / 2))
+                wcrop = wf[y1:y2, x1:x2]
+                if wcrop.size > 0:
+                    rcrop = cv2.cvtColor(wcrop, cv2.COLOR_BGR2RGB)
+                    face_db.identify(rcrop, min_size=40)
+                    warm_count += 1
+        warm_cap.release()
+        if warm_count > 0:
+            print(f"[FaceDB] Warm-up: {warm_count} face samples registered", file=sys.stderr)
+
     results = []
     frame_idx = start_frame
 

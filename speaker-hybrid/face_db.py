@@ -85,7 +85,7 @@ class FaceDB:
         return None
 
     # ── DB matching ────────────────────────────────────────────────
-    def _match(self, embedding: list, threshold: float = 0.40) -> int | None:
+    def _match(self, embedding: list, threshold: float = 0.50) -> int | None:
         """Find closest match in DB within threshold. Returns person_id or None."""
         query_emb = np.array(embedding, dtype=np.float32)
         rows = self._conn.execute("SELECT person_id, embedding FROM faces").fetchall()
