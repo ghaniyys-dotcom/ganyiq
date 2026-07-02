@@ -16,20 +16,24 @@ class Shot:
         return self.end_time - self.start_time
 
 def _is_same_person(a, b):
-    """Compare by person_id > (speaker_id + track_id) > track_id."""
-    ap = a.get("person_id")
-    bp = b.get("person_id")
-    if ap is not None and bp is not None and ap > 0 and bp > 0:
-        return ap == bp
-    asid = a.get("speaker_id", "").upper()
-    bsid = b.get("speaker_id", "").upper()
-    atid = a.get("track_id")
-    btid = b.get("track_id")
-    if asid and bsid and asid != "UNKNOWN" and bsid != "UNKNOWN" and asid == bsid:
-        if atid is not None and btid is not None:
-            return atid == btid
+    """Compare faces to determine if they are the same person. FINAL LOGIC."""
+    # Priority 1: person_id from FaceDB. Most reliable.
+    if a.get("person_id") and b.get("person_id"):
+        if a["person_id"] > 0 and b["person_id"] > 0: # 0 is unknown
+            return a["person_id"] == b["person_id"]
+
+    # Priority 2: Different track_id = ALWAYS different people.
+    # This is the key to preventing same-person splits.
+    if a.get("track_id") != b.get("track_id"):
+        return False
+
+    # Priority 3: Same track_id = ALWAYS same person.
+    # Fallback if person_id is not available.
+    if a.get("track_id") is not None and a.get("track_id") == b.get("track_id"):
         return True
-    return atid is not None and btid is not None and atid == btid
+
+    # Default: If no reliable IDs, assume they are different to be safe.
+    return False
 
 
 class DirectorAI:
