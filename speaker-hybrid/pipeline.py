@@ -389,6 +389,21 @@ class Pipeline:
                 layout = 'fullscreen'
                 log(f"  [RENDER-WARN] Shot {i+1} fallback to fullscreen (missing target for two-shot)")
 
+            # FASE-19: Overlap safety — if both bboxes overlap >60%, skip split
+            if layout == 'split_screen' and bbox_primary and bbox_secondary:
+                _a = bbox_primary; _b = bbox_secondary
+                _ax1, _ax2 = _a['cx'] - _a['w']/2, _a['cx'] + _a['w']/2
+                _ay1, _ay2 = _a['cy'] - _a['h']/2, _a['cy'] + _a['h']/2
+                _bx1, _bx2 = _b['cx'] - _b['w']/2, _b['cx'] + _b['w']/2
+                _by1, _by2 = _b['cy'] - _b['h']/2, _b['cy'] + _b['h']/2
+                _ix1 = max(_ax1, _bx1); _ix2 = min(_ax2, _bx2)
+                _iy1 = max(_ay1, _by1); _iy2 = min(_ay2, _by2)
+                _inter = max(0.0, _ix2 - _ix1) * max(0.0, _iy2 - _iy1)
+                _min_area = min(_a['w'] * _a['h'], _b['w'] * _b['h'])
+                if _min_area > 0 and (_inter / _min_area) > 0.6:
+                    layout = 'fullscreen'
+                    log(f"  [RENDER-WARN] Shot {i+1} fallback to fullscreen (bbox overlap {_inter/_min_area:.0%})")
+
             vf = ""
             if self.vertical:
                 if layout == 'split_screen':
