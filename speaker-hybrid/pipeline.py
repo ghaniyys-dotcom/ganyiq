@@ -144,123 +144,113 @@ class Pipeline:
             with open(face_path) as f: return json.load(f)
         return None
 
-    def _get_speaker_bbox(self, face_data: dict, target_id: str, start: float, end: float, frame_w: int, frame_h: int) -> dict | None:
-        """Finds a target's face BBox, with case-insensitive speaker_id + person_id matching."""
-        if not target_id: return None
-        
-        is_track_id = target_id.startswith("track_")
-        is_person_id = target_id.startswith("person_")
-        search_val = target_id  # Keep as string for comparison
-        
-        clusters = self._get_face_clusters(face_data, start, end, frame_w)
-        if not clusters: return None
+    def _build_id_bridge(self, face_data: dict) -> dict:
+        """Create a mapping from any ID (track, person, speaker) to a canonical ID."""
+        if not face_data or "timeline" not in face_data:
+            return {}
+            
+        id_map = {} # From any ID to a canonical ID
+        person_to_canonical = {} # Map person_id to a canonical ID
 
-        # Normalize target_id to uppercase for case-insensitive matching
+        for entry in face_data.get("timeline", []):
+            for face in entry.get("faces", []):
+                
+                # Use speaker_id as the most reliable canonical ID if present
+                canonical_id = face.get("speaker_id")
+                
+                # Fallback to person_id if no speaker_id
+                if not canonical_id and face.get("person_id"):
+                    pid = face.get("person_id")
+                    if pid in person_to_canonical:
+                        canonical_id = person_to_canonical[pid]
+                    else:
+                        # Create a new canonical from person_id
+                        canonical_id = f"person_{pid}"
+                        person_to_canonical[pid] = canonical_id
+                
+                # Fallback to track_id if neither is present
+                if not canonical_id and face.get("track_id"):
+                    canonical_id = f"track_{face.get('track_id')}"
+
+                if canonical_id:
+                    # Map all available IDs for this face to the canonical ID
+                    if face.get("speaker_id"):
+                        id_map[face.get("speaker_id").upper()] = canonical_id
+                    if face.get("person_id"):
+                        pid = face.get("person_id")
+                        id_map[f"person_{pid}"] = canonical_id
+                        person_to_canonical[pid] = canonical_id  # Ensure ANY later face with same person_id bridges here
+                    if face.get("track_id"):
+                        id_map[f"track_{face.get('track_id')}"] = canonical_id
+        
+        # Second pass to ensure all aliases point to the final canonical
+        for alias, canon in id_map.items():
+            if canon in id_map and id_map[canon] != canon:
+                id_map[alias] = id_map[canon]
+
+        return id_map
+
+    def _get_speaker_bbox(self, face_data: dict, id_bridge: dict, target_id: str, start: float, end: float, frame_w: int, frame_h: int) -> dict | None:
+        """Finds a target's face BBox using the ID bridge."""
+        if not target_id or not face_data: return None
+        
+        canonical_id = id_bridge.get(target_id.upper())
+        if not canonical_id:
+            # Fallback for IDs that might not be in the bridge (e.g. old formats)
+            canonical_id = target_id
+
+        # 1. Direct search using canonical ID
+        for entry in face_data.get("timeline", []):
+            t = entry.get("time", 0)
+            if not (start - 0.2 <= t <= end + 0.2): continue
+            
+            for face in entry.get("faces", []):
+                # Check all possible IDs against the canonical ID
+                face_sid = face.get("speaker_id")
+                face_pid = f"person_{face.get('person_id')}" if face.get("person_id") else None
+                face_tid = f"track_{face.get('track_id')}" if face.get("track_id") else None
+                
+                current_face_canon = None
+                if face_sid: current_face_canon = id_bridge.get(face_sid.upper())
+                elif face_pid: current_face_canon = id_bridge.get(face_pid)
+                elif face_tid: current_face_canon = id_bridge.get(face_tid)
+
+                if current_face_canon == canonical_id:
+                    cx, cy, w, h = face.get("cx"), face.get("cy"), face.get("w"), face.get("h")
+                    if cx and cy and w and h:
+                        return {"cx": cx, "cy": cy, "w": w, "h": h}
+
+        # 2. Fallback: search for the raw target_id case-insensitively
         target_upper = target_id.upper()
-        is_speaker_match = not (is_track_id or is_person_id)
+        for entry in face_data.get("timeline", []):
+            t = entry.get("time", 0)
+            if not (start - 0.2 <= t <= end + 0.2): continue
+            for face in entry.get("faces", []):
+                if face.get("speaker_id", "").upper() == target_upper:
+                    cx, cy, w, h = face.get("cx"), face.get("cy"), face.get("w"), face.get("h")
+                    if cx and cy and w and h:
+                        log(f"  [BBOX-FALLBACK-1] Found '{target_id}' via raw uppercase match.")
+                        return {"cx": cx, "cy": cy, "w": w, "h": h}
 
-        for c in clusters:
-            if is_track_id:
-                # track_Y: numeric match
-                try:
-                    search_num = int(search_val.split('_')[1])
-                    if search_num in c.get("track_ids", []):
-                        return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
-                except (ValueError, IndexError):
-                    pass
-            elif is_person_id:
-                # person_Y: match against cluster person_ids
-                try:
-                    search_pid = int(search_val.split('_')[1])
-                    if search_pid in c.get("person_ids", set()):
-                        return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
-                except (ValueError, IndexError):
-                    pass
-            else:
-                # speaker_X: case-insensitive dict key match
-                for sid in c.get("speaker_ids", {}):
-                    if sid.upper() == target_upper:
-                        return {"cx": c["cx"], "cy": c["cy"], "w": c["w"], "h": c["h"]}
-        
-        # Fallback: try to find any face in the shot range with matching speaker_id
-        if not is_track_id:
-            for entry in face_data.get("timeline", []):
-                t = entry.get("time", 0)
-                if t < start - 0.2 or t > end + 0.2: continue
-                for face in entry.get("faces", []):
-                    if face.get("speaker_id", "").upper() == target_upper:
-                        cx, cy, w, h = face.get("cx"), face.get("cy"), face.get("w"), face.get("h")
-                        if cx and cy and w and h:
-                            return {"cx": cx, "cy": cy, "w": w, "h": h}
-        
-        # Last resort: use the best (largest) face in the shot range
+        # 3. Last resort: use the best (largest) face in the shot range
         candidates = []
         for entry in face_data.get("timeline", []):
             t = entry.get("time", 0)
-            if t < start - 0.2 or t > end + 0.2: continue
+            if not (start - 0.2 <= t <= end + 0.2): continue
             for face in entry.get("faces", []):
                 cx, cy, w, h = face.get("cx"), face.get("cy"), face.get("w"), face.get("h")
                 if cx and cy and w and h and w >= 15 and h >= 15:
                     candidates.append((w * h, cx, cy, w, h))
+        
         if candidates:
             best = max(candidates, key=lambda x: x[0])
-            log(f"  [BBOX-LAST] Target '{target_id}' not found — using largest face in shot")
+            log(f"  [BBOX-FALLBACK-2] Target '{target_id}' not found — using largest face in shot.")
             return {"cx": best[1], "cy": best[2], "w": best[3], "h": best[4]}
         
         log(f"  [BBOX-WARN] Target '{target_id}' not found in any cluster for {start:.1f}s-{end:.1f}s")
         return None
 
-    def _get_face_clusters(self, face_data: dict, start: float, end: float, frame_w: int, merge_dist: float = 150) -> list[dict]:
-        from collections import defaultdict, Counter
-        raw_bins = defaultdict(list)
-        bin_sids = defaultdict(Counter)
-        for entry in face_data.get("timeline", []):
-            if start - 0.2 <= entry.get("time", 0) <= end + 0.2:
-                for face in entry.get("faces", []):
-                    if face.get("w", 0) > 15 and face.get("h", 0) > 15:
-                        key = round(face.get("cx", 0) / 50) * 50
-                        raw_bins[key].append(face)
-                        bin_sids[key][face.get("speaker_id", "?")] += 1
-        clusters = []
-        for key, faces in raw_bins.items():
-            n = len(faces)
-            clusters.append({
-                "cx": sum(f["cx"] for f in faces) / n, "cy": sum(f["cy"] for f in faces) / n,
-                "w": sum(f["w"] for f in faces) / n, "h": sum(f["h"] for f in faces) / n,
-                "count": n, "speaker_ids": dict(bin_sids[key].most_common(3)),
-                "track_ids": list(set(f.get("track_id") for f in faces if f.get("track_id") is not None)),
-                "person_ids": set(f.get("person_id") for f in faces if f.get("person_id") is not None and f.get("person_id") > 0)
-            })
-        clusters.sort(key=lambda c: c["count"], reverse=True)
-        # ── Merge logic: clusters <merge_dist apart AND same/both-unlabeled speaker → one face ──
-        merged = []
-        for c in clusters:
-            c_top_sid = next(iter(c["speaker_ids"]), None)
-            found = False
-            for m in merged:
-                m_top_sid = next(iter(m["speaker_ids"]), None)
-                both_unlabeled = (c_top_sid is None and m_top_sid is None)
-                same_person = (both_unlabeled or
-                              (c_top_sid and m_top_sid and c_top_sid == m_top_sid) or
-                              (c.get("person_ids") and m.get("person_ids") and c["person_ids"] & m["person_ids"]))
-                if same_person and abs(m["cx"] - c["cx"]) < merge_dist:
-                    total = m["count"] + c["count"]
-                    m["cx"] = (m["cx"] * m["count"] + c["cx"] * c["count"]) / total
-                    m["cy"] = (m["cy"] * m["count"] + c["cy"] * c["count"]) / total
-                    m["w"] = (m["w"] * m["count"] + c["w"] * c["count"]) / total
-                    m["h"] = (m["h"] * m["count"] + c["h"] * c["count"]) / total
-                    m["count"] = total
-                    # Merge speaker_ids, track_ids, person_ids
-                    for sid, cnt in c["speaker_ids"].items():
-                        m["speaker_ids"][sid] = m["speaker_ids"].get(sid, 0) + cnt
-                    m["track_ids"] = list(set(m["track_ids"] + c.get("track_ids", [])))
-                    m["person_ids"] = m.get("person_ids", set()) | c.get("person_ids", set())
-                    found = True
-                    break
-            if not found:
-                merged.append(dict(c))
-        merged.sort(key=lambda c: c["count"], reverse=True)
-        return merged
+
 
     def _build_crop_filter(self, bbox, frame_w, frame_h, out_w, out_h, vertical, layout):
         """Build ffmpeg crop filter: vertical=9:16 strip, landscape=head-and-shoulders."""
@@ -363,6 +353,7 @@ class Pipeline:
         log(f"Output: {out_w}x{out_h}")
 
         face_data = self._load_face_data(result)
+        id_bridge = self._build_id_bridge(face_data)
         
         segment_files = []
         for i, shot in enumerate(shot_list):
@@ -377,8 +368,8 @@ class Pipeline:
             primary_id = shot['primary_target_id']
             secondary_id = shot['secondary_target_id']
 
-            bbox_primary = self._get_speaker_bbox(face_data, primary_id, start, start + dur, frame_w, frame_h) if face_data and primary_id else None
-            bbox_secondary = self._get_speaker_bbox(face_data, secondary_id, start, start + dur, frame_w, frame_h) if face_data and secondary_id else None
+            bbox_primary = self._get_speaker_bbox(face_data, id_bridge, primary_id, start, start + dur, frame_w, frame_h) if face_data and primary_id else None
+            bbox_secondary = self._get_speaker_bbox(face_data, id_bridge, secondary_id, start, start + dur, frame_w, frame_h) if face_data and secondary_id else None
             
             # Anti-Nyangsang Safety Net
             if layout == 'split_screen' and not (bbox_primary and bbox_secondary):
