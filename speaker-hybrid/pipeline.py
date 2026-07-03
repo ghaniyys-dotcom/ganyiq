@@ -413,15 +413,15 @@ class Pipeline:
                 # ... debug overlay logic
                 pass
             
-            cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", str(self.video_path), "-t", str(dur)]
+            cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", str(self.video_path), "-t", str(dur), "-sws_flags", "lanczos"]
             # Split screen → filter_complex (need [v] output mapping)
             if layout == 'split_screen':
                 cmd += ["-filter_complex", vf,
                         "-map", "[v]", "-map", "0:a",
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "22"]
+                        "-c:v", "libx264", "-preset", "medium", "-crf", "18"]
             else:
                 cmd += ["-vf", vf,
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
                         "-map", "0:v", "-map", "0:a"]
             cmd += ["-c:a", "aac", "-b:a", "128k",
                     "-avoid_negative_ts", "make_zero",

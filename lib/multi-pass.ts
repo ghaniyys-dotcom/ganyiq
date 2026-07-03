@@ -46,11 +46,11 @@ const MAX_CLIP_DURATION = 120;
 
 /** Per-pass model priority. Hook pass uses deepseek_v4-flash primary for JSON compliance. */
 const PASS_MODELS: Record<string, string[]> = {
-  hook: ['deepseek_v4-flash', 'groq/qwen/qwen3-32b', 'groq/llama-3.3-70b-versatile'],
-  storytelling: ['deepseek_v4-flash', 'groq/qwen/qwen3-32b', 'groq/llama-3.3-70b-versatile'],
-  educational: ['deepseek_v4-flash', 'groq/qwen/qwen3-32b', 'groq/llama-3.3-70b-versatile'],
-  controversy: ['deepseek_v4-flash', 'groq/qwen/qwen3-32b', 'groq/llama-3.3-70b-versatile'],
-  emotion: ['deepseek_v4-flash', 'groq/qwen/qwen3-32b', 'groq/llama-3.3-70b-versatile'],
+  hook: ['gc/gemini-2.5-pro', 'gc/gemini-2.5-flash'],
+  storytelling: ['gc/gemini-2.5-pro', 'gc/gemini-2.5-flash'],
+  educational: ['gc/gemini-2.5-pro', 'gc/gemini-2.5-flash'],
+  controversy: ['gc/gemini-2.5-pro', 'gc/gemini-2.5-flash'],
+  emotion: ['gc/gemini-2.5-pro', 'gc/gemini-2.5-flash'],
 };
 
 const VALID_DNA_TAGS = new Set([
@@ -312,6 +312,7 @@ async function callLLMMultiPass(model: string, system: string, user: string, tim
       ],
       temperature: 0.3,
       max_tokens: 32768,
+      stream: false,
     }),
     signal: AbortSignal.timeout(timeoutMs ?? 500_000),
   });

@@ -566,7 +566,7 @@ async function handleSceneVideo(job: SceneVideoJob, env: EnvConfig): Promise<voi
   try {
     // Step 1: Download video (up to 720p, ~200MB max)
     log('SCENE', 'Downloading video...');
-    const dlCmd = `yt-dlp -f "bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=720]" -o "${videoPath}" "${job.youtubeUrl}" --no-playlist --quiet`;
+    const dlCmd = `yt-dlp -f "bestvideo[height<=720]+bestaudio[ext=m4a]/best[height<=720]" -o "${videoPath}" "${job.youtubeUrl}" --no-playlist --quiet`;
     execSync(dlCmd, { ...EXEC_OPTS, timeout: 600_000 });
     log('SCENE', `Video downloaded: ${videoPath}`);
 
@@ -868,7 +868,7 @@ async function handleClipWithPython(job: Job, env: EnvConfig): Promise<void> {
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     const cookiesFlag = existsSync(join(WORKER_DIR, 'cookies.txt')) ? '--cookies "cookies.txt"' : '';
     execSync(
-      `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} ${cookiesFlag} -f "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=1080]" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
+      `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} ${cookiesFlag} -f "bestvideo[height<=1080]+bestaudio[ext=m4a]/best[height<=1080]" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
       EXEC_OPTS,
     );
     log('CACHE', `Cached ${videoId}`);

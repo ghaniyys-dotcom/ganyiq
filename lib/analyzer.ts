@@ -602,6 +602,7 @@ async function callLLM(model: string, system: string, user: string): Promise<str
         ],
         temperature: 0.3,
         max_tokens: 32768,
+        stream: false,
       }),
       signal: AbortSignal.timeout(500_000),
     });

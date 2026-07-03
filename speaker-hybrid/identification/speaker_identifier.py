@@ -437,7 +437,7 @@ class SpeakerIdentifier:
         timeline = visual_data.get("timeline", [])
         return [VisualFrame(float(e["time"]), e.get("faces", [])) for e in timeline if e]
 
-    def _consolidate_by_position(self, visual_data: dict, cx_threshold: float = 100.0):
+    def _consolidate_by_position(self, visual_data: dict, cx_threshold: float = 350.0):
         """Merge fragmented LISTENER_*/SPEAKER_* IDs whose faces are spatially close.
         
         ByteTrack creates new track IDs per re-detection → each track gets a

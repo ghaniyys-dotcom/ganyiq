@@ -421,17 +421,15 @@ export const PROMPT_VERSION = 'v2-candidate-scoring';
  * The LLM model this prompt is designed for.
  * DeepSeek V4 Flash via OpenCode Go API.
  */
-export const TARGET_MODEL = 'deepseek-v4-flash';
+export const TARGET_MODEL = 'gc/gemini-2.5-pro';
 
 /**
  * Fallback model priority order.
  * Routes through local 9router proxy (port 20128).
  */
 export const MODELS: readonly string[] = [
-  'deepseek-v4-flash',                 // PRIMARY: SiliconFlow via 9router
-  'groq/qwen/qwen3-32b',               // FALLBACK #1: Groq (free tier, 20 req/min)
-  'groq/meta-llama/llama-4-maverick-17b-128e-instruct',  // FALLBACK #2: Groq Llama
-  'gc/gemini-2.5-flash',               // FALLBACK #3: Gemini via Chrome AI
+  'gc/gemini-2.5-pro',                 // PRIMARY: Gemini via 9router (confirmed working)
+  'gc/gemini-2.5-flash',               // FALLBACK #1: Gemini Flash (cheaper)
 ];
 
 // ---------------------------------------------------------------------------

@@ -17,22 +17,20 @@ class Shot:
 
 def _is_same_person(a, b):
     """Compare faces to determine if they are the same person. FINAL LOGIC."""
-    # Priority 1: person_id from FaceDB. Most reliable.
-    if a.get("person_id") and b.get("person_id"):
-        if a["person_id"] > 0 and b["person_id"] > 0: # 0 is unknown
-            return a["person_id"] == b["person_id"]
-
-    # Priority 2: Different track_id = ALWAYS different people.
-    # This is the key to preventing same-person splits.
-    if a.get("track_id") != b.get("track_id"):
+    # Priority 1: Same track_id → same person (most reliable per-frame).
+    # ByteTrack maintains stable IDs within a continuous detection.
+    # Different track_ids at the SAME time = different people.
+    if a.get("track_id") is not None and b.get("track_id") is not None:
+        if a["track_id"] == b["track_id"]:
+            return True
         return False
 
-    # Priority 3: Same track_id = ALWAYS same person.
-    # Fallback if person_id is not available.
-    if a.get("track_id") is not None and a.get("track_id") == b.get("track_id"):
-        return True
+    # Priority 2: person_id (fallback when track_id absent/unavailable).
+    if a.get("person_id") and b.get("person_id"):
+        if a["person_id"] > 0 and b["person_id"] > 0:
+            return a["person_id"] == b["person_id"]
 
-    # Default: If no reliable IDs, assume they are different to be safe.
+    # Default: assume different people to be safe.
     return False
 
 
