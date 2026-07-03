@@ -425,13 +425,13 @@ export const TARGET_MODEL = 'deepseek-v4-flash';
 
 /**
  * Fallback model priority order.
- * Last fallback is OpenRouter owl-alpha (free).
+ * Routes through local 9router proxy (port 20128).
  */
 export const MODELS: readonly string[] = [
-  'deepseek-v4-flash',      // PRIMARY
-  'mimo-v2.5',              // FALLBACK #1
-  'qwen3.7-plus',           // FALLBACK #2
-  'openrouter/owl-alpha',   // FALLBACK #3 - OpenRouter (owl-alpha)
+  'deepseek-v4-flash',                 // PRIMARY: SiliconFlow via 9router
+  'groq/qwen/qwen3-32b',               // FALLBACK #1: Groq (free tier, 20 req/min)
+  'groq/meta-llama/llama-4-maverick-17b-128e-instruct',  // FALLBACK #2: Groq Llama
+  'gc/gemini-2.5-flash',               // FALLBACK #3: Gemini via Chrome AI
 ];
 
 // ---------------------------------------------------------------------------

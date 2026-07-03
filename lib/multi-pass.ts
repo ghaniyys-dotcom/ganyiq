@@ -40,17 +40,17 @@ import type { GenreProfile } from '@/lib/genre-detector';
 // Constants
 // ---------------------------------------------------------------------------
 
-const LLM_API_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
+const LLM_API_URL = 'http://localhost:20128/v1/chat/completions';
 const CANDIDATES_PER_BATCH = 20;
 const MAX_CLIP_DURATION = 120;
 
-/** Per-pass model priority. Hook pass uses deepseek-v4-flash primary for JSON compliance. */
-const PASS_MODELS: Record<string, readonly string[]> = {
-  hook: ['deepseek-v4-flash', 'mimo-v2.5', 'qwen3.7-plus'],
-  storytelling: ['deepseek-v4-flash', 'mimo-v2.5', 'qwen3.7-plus'],
-  educational: ['deepseek-v4-flash', 'mimo-v2.5', 'qwen3.7-plus'],
-  controversy: ['deepseek-v4-flash', 'mimo-v2.5', 'qwen3.7-plus'],
-  emotion: ['deepseek-v4-flash', 'mimo-v2.5', 'qwen3.7-plus'],
+/** Per-pass model priority. Hook pass uses deepseek_v4-flash primary for JSON compliance. */
+const PASS_MODELS: Record<string, string[]> = {
+  hook: ['deepseek_v4-flash', 'groq/qwen/qwen3-32b', 'groq/llama-3.3-70b-versatile'],
+  storytelling: ['deepseek_v4-flash', 'groq/qwen/qwen3-32b', 'groq/llama-3.3-70b-versatile'],
+  educational: ['deepseek_v4-flash', 'groq/qwen/qwen3-32b', 'groq/llama-3.3-70b-versatile'],
+  controversy: ['deepseek_v4-flash', 'groq/qwen/qwen3-32b', 'groq/llama-3.3-70b-versatile'],
+  emotion: ['deepseek_v4-flash', 'groq/qwen/qwen3-32b', 'groq/llama-3.3-70b-versatile'],
 };
 
 const VALID_DNA_TAGS = new Set([

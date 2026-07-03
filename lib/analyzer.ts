@@ -98,7 +98,7 @@ const MIN_SCORE = 0;
 const MAX_SCORE = 100;
 
 /** OpenCode Go API endpoint (OpenAI-compatible chat completions). */
-const LLM_API_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
+const LLM_API_URL = 'http://localhost:20128/v1/chat/completions';
 
 /**
  * Phase 5A: Dynamic candidate cap scaling.
