@@ -104,7 +104,7 @@ export async function POST(
     }
 
     // ── Ensure clips directory exists ─────────────────────────────────────
-    const clipsDir = join(process.cwd(), 'public', 'clips');
+    const clipsDir = '/var/www/ganyiq/public/clips';
     if (!existsSync(clipsDir)) {
       mkdirSync(clipsDir, { recursive: true });
     }
