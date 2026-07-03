@@ -251,6 +251,8 @@ class ByteTrack:
         for det_idx, track_id in all_matches.items():
             det = detections[det_idx]
             state = self.tracks[track_id].get_state() if track_id in self.tracks else boxes_map[det_idx]
+            lip_motion_val = det.get('lip_motion', 0.0) or 0.0
+            raw_cy_val = det.get('_raw_cy', 0.0) or 0.0
             output.append({
                 "id": track_id,
                 "cx": round(float(state[0]), 1),
@@ -259,6 +261,8 @@ class ByteTrack:
                 "h": int(round(float(state[3]))),
                 "confidence": det.get('confidence', 0.5),
                 "landmarks": det.get('landmarks', {}),
+                "lip_motion": round(lip_motion_val, 4),
+                "_raw_cy": round(raw_cy_val, 1),
             })
 
         return output

@@ -76,8 +76,8 @@ def transcribe_whisper(audio_path: str) -> dict:
         import whisper
         import numpy as np
 
-        model = whisper.load_model("small")  # ~2GB RAM, ~3x real-time on CPU
-        print(f"[INFO] Whisper model loaded (small)", file=sys.stderr)
+        model = whisper.load_model("tiny")  # ~400MB RAM, ~0.5x real-time on CPU
+        print(f"[INFO] Whisper model loaded (tiny)", file=sys.stderr)
 
         result = model.transcribe(
             audio_path,

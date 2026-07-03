@@ -50,7 +50,6 @@ interface Job {
     videoId: string;
     startTime: number;
     endTime: number;
-    renderMode?: string;
   };
 }
 
@@ -69,6 +68,7 @@ interface DeepgramResult {
 
 /** Shared exec options for yt-dlp/ffmpeg calls. */
 import { platform } from 'os';
+import { renderClipV2 } from './python-clip-renderer';
 
 /** Path to the system shell — cmd.exe on Windows, /bin/sh on Unix. */
 const SHELL = platform() === 'win32' ? (process.env.COMSPEC || 'cmd.exe') : '/bin/sh';
@@ -416,11 +416,15 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
   // Branch by job type
   if (job.jobType === 'clip') {
     try {
-      await handleClipWithPython(job, env);
+      await renderClipV2(job, env, () => sendHeartbeat(env));
     } catch (err) {
       const execErr = err as any;
       const errorMsg = (execErr.message || String(err)).slice(0, 2000);
+      const stderrStr = execErr.stderr ? execErr.stderr.toString().slice(0, 3000) : '';
       log('CLIP', `❌ Failed: ${errorMsg}`);
+      if (stderrStr) log('CLIP', `ffmpeg stderr:\n${stderrStr}`);
+
+      // Report failure
       await apiPost(
         `/api/workers/jobs/${job.id}/fail`,
         {
@@ -428,7 +432,7 @@ async function pollAndProcessJob(env: EnvConfig): Promise<void> {
           error_message: errorMsg,
         },
         env.WORKER_API_KEY,
-      ).catch(() => {});
+      ).catch(() => {}); // fail-report failure is non-fatal
     }
     return;
   }
@@ -566,7 +570,7 @@ async function handleSceneVideo(job: SceneVideoJob, env: EnvConfig): Promise<voi
   try {
     // Step 1: Download video (up to 720p, ~200MB max)
     log('SCENE', 'Downloading video...');
-    const dlCmd = `yt-dlp -f "bestvideo[height<=720]+bestaudio[ext=m4a]/best[height<=720]" -o "${videoPath}" "${job.youtubeUrl}" --no-playlist --quiet`;
+    const dlCmd = `yt-dlp -f "bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=720]" -o "${videoPath}" "${job.youtubeUrl}" --no-playlist --quiet`;
     execSync(dlCmd, { ...EXEC_OPTS, timeout: 600_000 });
     log('SCENE', `Video downloaded: ${videoPath}`);
 
@@ -843,140 +847,8 @@ function debug(...args: unknown[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// Clip job handler — uses Python speaker-hybrid pipeline
+// Main Loop
 // ---------------------------------------------------------------------------
-
-async function handleClipWithPython(job: Job, env: EnvConfig): Promise<void> {
-  const params = job.clipParams;
-  if (!params) throw new Error('clip_params missing from job');
-
-  const { videoId, startTime, endTime, renderMode } = params;
-  const videoUrl = job.youtubeUrl;
-  const WORKER_DIR = resolve(__dirname || '.');
-  const CACHE_DIR = join(WORKER_DIR, 'cache');
-
-  log('CLIP', `Python pipeline: ${videoId} ${startTime}s-${endTime}s`);
-
-  // Ensure cache & temp dirs
-  if (!existsSync(CACHE_DIR)) execSync(`mkdir "${CACHE_DIR}"`, EXEC_OPTS);
-  if (!existsSync(TEMP_DIR)) execSync(`mkdir "${TEMP_DIR}"`, EXEC_OPTS);
-
-  // 1. Download video (cached)
-  let videoPath = join(CACHE_DIR, `${videoId}.mp4`);
-  if (!existsSync(videoPath)) {
-    log('YTDLP', `Downloading video: ${videoUrl}`);
-    const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
-    const cookiesFlag = existsSync(join(WORKER_DIR, 'cookies.txt')) ? '--cookies "cookies.txt"' : '';
-    execSync(
-      `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} ${cookiesFlag} -f "bestvideo[height<=1080]+bestaudio[ext=m4a]/best[height<=1080]" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
-      EXEC_OPTS,
-    );
-    log('CACHE', `Cached ${videoId}`);
-  } else {
-    log('CACHE', `Cache HIT for ${videoId}`);
-  }
-
-  // 2. Cut segment from full video (so pipeline doesn't process 1hr for a 30s clip)
-  const segmentPath = join(TEMP_DIR, `${videoId}_segment_${Date.now()}.mp4`);
-  const ffmpegBin = env.FFMPEG_LOCATION ? `"${env.FFMPEG_LOCATION}\\ffmpeg"` : 'ffmpeg';
-  log('FFMPEG', `Cutting ${startTime}s-${endTime}s from full video`);
-  execSync(
-    `${ffmpegBin} -y -ss ${startTime} -i "${videoPath}" -to ${endTime - startTime} -c copy -avoid_negative_ts make_zero "${segmentPath}"`,
-    { ...EXEC_OPTS, timeout: 120_000 },
-  );
-  log('FFMPEG', `Segment ready: ${segmentPath}`);
-
-  // 3. Run Python pipeline on the cut segment
-  const outputPath = join(TEMP_DIR, `${videoId}_pipeline_${Date.now()}.mp4`);
-  const runPyPath = join(WORKER_DIR, 'run.py');
-  const vertical = renderMode === 'vertical' ? '--vertical' : '';
-
-  log('PIPELINE', `Running: python3 "${runPyPath}" --video "${segmentPath}" --output "${outputPath}" ${vertical}`);
-
-  execSync(
-    `python3 "${runPyPath}" --video "${segmentPath}" --output "${outputPath}" ${vertical}`,
-    { ...EXEC_OPTS, timeout: 600_000 },
-  );
-
-  log('PIPELINE', `Pipeline completed: ${outputPath}`);
-
-  // 3. Read output file
-  const fileBuffer = readFileSync(outputPath);
-  const outputFilename = `clip_${videoId}_${renderMode || 'landscape'}.mp4`;
-
-  // Get duration from ffprobe
-  let durationSec = endTime - startTime;
-  try {
-    const probeOut = execSync(
-      `ffprobe -v quiet -print_format json -show_format "${outputPath}"`,
-      { ...EXEC_OPTS, timeout: 15_000 },
-    );
-    const probe = JSON.parse(probeOut);
-    if (probe?.format?.duration) {
-      durationSec = parseFloat(probe.format.duration);
-    }
-  } catch {}
-
-  // 4. Upload to VPS
-  const uploadUrl = `${env.GANYIQ_API_URL}/api/workers/jobs/${job.id}/upload`;
-  const boundary = `----FormBoundary${Date.now()}`;
-  const crlf = '\r\n';
-
-  let body = '';
-  body += `--${boundary}${crlf}`;
-  body += `Content-Disposition: form-data; name="worker_id"${crlf}${crlf}${env.WORKER_ID}${crlf}`;
-  body += `--${boundary}${crlf}`;
-  body += `Content-Disposition: form-data; name="start_time"${crlf}${crlf}${startTime}${crlf}`;
-  body += `--${boundary}${crlf}`;
-  body += `Content-Disposition: form-data; name="end_time"${crlf}${crlf}${endTime}${crlf}`;
-  body += `--${boundary}${crlf}`;
-  body += `Content-Disposition: form-data; name="duration_seconds"${crlf}${crlf}${durationSec}${crlf}`;
-  body += `--${boundary}${crlf}`;
-  body += `Content-Disposition: form-data; name="has_subtitles"${crlf}${crlf}0${crlf}`;
-  body += `--${boundary}${crlf}`;
-  body += `Content-Disposition: form-data; name="file"; filename="${outputFilename}"${crlf}`;
-  body += `Content-Type: video/mp4${crlf}${crlf}`;
-
-  const encoder = new TextEncoder();
-  const bodyPrefix = encoder.encode(body);
-  const bodySuffix = encoder.encode(`${crlf}--${boundary}--${crlf}`);
-  const totalLength = bodyPrefix.length + fileBuffer.length + bodySuffix.length;
-
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 300_000);
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.WORKER_API_KEY}`,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          'Content-Length': String(totalLength),
-        },
-        signal: controller.signal,
-        body: new Blob([bodyPrefix, fileBuffer, bodySuffix]),
-      });
-      clearTimeout(timeout);
-
-      if (uploadResponse.ok) {
-        const data = await uploadResponse.json();
-        log('CLIP', `✅ Clip uploaded: ${data.url}`);
-        break;
-      } else {
-        const errText = await uploadResponse.text();
-        throw new Error(`Upload failed (${uploadResponse.status}): ${errText.slice(0, 200)}`);
-      }
-    } catch (e: any) {
-      if (attempt === 2) throw new Error(`Upload failed after 2 attempts: ${e.message?.slice(0, 100)}`);
-      log('WARN', `Upload attempt ${attempt}/2 failed: ${e.message?.slice(0, 100)}`);
-      await new Promise(r => setTimeout(r, 3000));
-    }
-  }
-
-  // Cleanup
-  try { execSync(`del /f "${outputPath}"`, EXEC_OPTS); } catch { try { execSync(`rm -f "${outputPath}"`, { ...EXEC_OPTS, shell: '/bin/sh' }); } catch {} }
-  try { execSync(`del /f "${segmentPath}"`, EXEC_OPTS); } catch { try { execSync(`rm -f "${segmentPath}"`, { ...EXEC_OPTS, shell: '/bin/sh' }); } catch {} }
-}
 
 async function main(): Promise<void> {
   console.log('');
