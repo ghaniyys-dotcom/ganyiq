@@ -1,2 +1,8 @@
-
 python-dotenv
+opencv-python
+numpy
+onnxruntime
+scipy
+# Optional for diarization:
+# torch torchaudio pyannote.audio
+# openai-whisper
