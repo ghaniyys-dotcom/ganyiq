@@ -1,0 +1,13 @@
+{
+  "name": "ganyiq-worker",
+  "version": "1.1.0",
+  "private": true,
+  "scripts": {
+    "start": "npx tsx index.ts"
+  },
+  "dependencies": {
+    "typescript": "^5.8.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0"
+  }
+}
