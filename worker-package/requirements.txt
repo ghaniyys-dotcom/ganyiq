@@ -1,9 +1,0 @@
-# GANYIQ Worker — Python dependencies
-# Install: pip install -r requirements.txt
-
-# Visual quality scoring (blur, brightness, exposure, face visibility)
-opencv-python>=4.8.0
-numpy>=1.24.0
-
-# Local CPU transcription fallback
-faster-whisper>=1.0.0

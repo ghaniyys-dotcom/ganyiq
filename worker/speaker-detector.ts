@@ -893,7 +893,7 @@ async function runReactionDetection(
 
   try {
     const cmd = `${pythonBin} "${script}" "${videoPath}" "${outputPath}"`;
-    await execAsync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
+    await execAsync(cmd, { ...EXEC_OPTS, timeout: 900_000 });
     log('REACT', `Python reaction detection completed`);
 
     if (!existsSync(outputPath)) {
@@ -1294,7 +1294,7 @@ async function runTranscription(
     if (clipStart !== undefined && clipEnd !== undefined) {
       cmd += ` --clip-start ${clipStart} --clip-end ${clipEnd}`;
     }
-    await execAsync(cmd, { ...EXEC_OPTS, timeout: 600_000 });
+    await execAsync(cmd, { ...EXEC_OPTS, timeout: 900_000 });
     log('TRANSCRIBE', `Python transcription completed`);
 
     if (!existsSync(outputPath)) return [];
