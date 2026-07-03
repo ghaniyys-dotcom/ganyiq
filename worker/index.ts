@@ -876,15 +876,25 @@ async function handleClipWithPython(job: Job, env: EnvConfig): Promise<void> {
     log('CACHE', `Cache HIT for ${videoId}`);
   }
 
-  // 2. Run Python pipeline
+  // 2. Cut segment from full video (so pipeline doesn't process 1hr for a 30s clip)
+  const segmentPath = join(TEMP_DIR, `${videoId}_segment_${Date.now()}.mp4`);
+  const ffmpegBin = env.FFMPEG_LOCATION ? `"${env.FFMPEG_LOCATION}\\ffmpeg"` : 'ffmpeg';
+  log('FFMPEG', `Cutting ${startTime}s-${endTime}s from full video`);
+  execSync(
+    `${ffmpegBin} -y -ss ${startTime} -i "${videoPath}" -to ${endTime - startTime} -c copy -avoid_negative_ts make_zero "${segmentPath}"`,
+    { ...EXEC_OPTS, timeout: 120_000 },
+  );
+  log('FFMPEG', `Segment ready: ${segmentPath}`);
+
+  // 3. Run Python pipeline on the cut segment
   const outputPath = join(TEMP_DIR, `${videoId}_pipeline_${Date.now()}.mp4`);
   const runPyPath = join(WORKER_DIR, 'run.py');
   const vertical = renderMode === 'vertical' ? '--vertical' : '';
 
-  log('PIPELINE', `Running: python3 "${runPyPath}" --video "${videoPath}" --output "${outputPath}" ${vertical}`);
+  log('PIPELINE', `Running: python3 "${runPyPath}" --video "${segmentPath}" --output "${outputPath}" ${vertical}`);
 
   execSync(
-    `python3 "${runPyPath}" --video "${videoPath}" --output "${outputPath}" ${vertical}`,
+    `python3 "${runPyPath}" --video "${segmentPath}" --output "${outputPath}" ${vertical}`,
     { ...EXEC_OPTS, timeout: 600_000 },
   );
 
@@ -965,6 +975,7 @@ async function handleClipWithPython(job: Job, env: EnvConfig): Promise<void> {
 
   // Cleanup
   try { execSync(`del /f "${outputPath}"`, EXEC_OPTS); } catch { try { execSync(`rm -f "${outputPath}"`, { ...EXEC_OPTS, shell: '/bin/sh' }); } catch {} }
+  try { execSync(`del /f "${segmentPath}"`, EXEC_OPTS); } catch { try { execSync(`rm -f "${segmentPath}"`, { ...EXEC_OPTS, shell: '/bin/sh' }); } catch {} }
 }
 
 async function main(): Promise<void> {
