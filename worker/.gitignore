@@ -1,3 +1,7 @@
-
-# Environment variables
-.env
+node_modules/
+cache/
+temp/
+__pycache__/
+*.pyc
+.env.local
+*.mp4
