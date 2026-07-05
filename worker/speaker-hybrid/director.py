@@ -22,8 +22,15 @@ def _is_same_person(a, b):
         if a["person_id"] > 0 and b["person_id"] > 0: # 0 is unknown
             return a["person_id"] == b["person_id"]
 
-    # Priority 2: Different track_id = ALWAYS different people.
-    # This is the key to preventing same-person splits.
+    # Priority 1b: Same spatial position (< 80px apart) = same person
+    # ByteTrack fragments one person into multiple track_ids, so track_id
+    # alone is unreliable. Check cx first.
+    dx = abs(float(a.get("cx", 0)) - float(b.get("cx", 0)))
+    dy = abs(float(a.get("cy", 0)) - float(b.get("cy", 0)))
+    if dx < 80 and dy < 80:
+        return True
+
+    # Priority 2: Different track_id = likely different people (only if far apart)
     if a.get("track_id") != b.get("track_id"):
         return False
 
