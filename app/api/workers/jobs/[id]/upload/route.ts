@@ -184,6 +184,21 @@ export async function POST(
       );
     }
 
+    // ── Send Telegram notification ─────────────────────────────────────────
+    try {
+      const telegramTarget = process.env.GANYIQ_TELEGRAM_TARGET;
+      if (telegramTarget) {
+        const { execSync } = require('child_process');
+        const clipDuration = durationSeconds.toFixed(1);
+        execSync(
+          `hermes send -t "${telegramTarget}" "🎬 Clip done — ${filename} (${clipDuration}s)"`,
+          { timeout: 10000, stdio: 'ignore' },
+        );
+      }
+    } catch {
+      // Non-fatal
+    }
+
     // ── Increment worker's completed count ────────────────────────────────
     await query(
       'UPDATE workers SET jobs_completed = jobs_completed + 1, updated_at = NOW() WHERE id = $1',
