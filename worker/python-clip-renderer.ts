@@ -286,6 +286,7 @@ export async function renderClipV2(
     try {
       execSync(pyCmd, {
         ...EXEC_OPTS,
+        stdio: 'inherit',
         timeout: 600_000, // 10 minutes max
         env: {
           ...process.env,
