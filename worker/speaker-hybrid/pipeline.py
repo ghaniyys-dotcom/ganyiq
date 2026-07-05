@@ -439,13 +439,13 @@ class Pipeline:
                 elif layout == 'two_shot_wide':
                     # Use smooth crop for two-shot via trajectory
                     if traj and traj.frames:
-                        vf = self.camera_planner.to_smooth_crop_filter(traj, fps=30.0)
+                        vf = self.camera_planner.to_crop_keyframes(traj, fps=30.0)
                     else:
                         vf = self._build_two_shot_filter(bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h)
                 else:
                     # Fullscreen/close-up: use smooth zoompan-based crop
                     if traj and traj.frames:
-                        vf = self.camera_planner.to_smooth_crop_filter(traj, fps=30.0)
+                        vf = self.camera_planner.to_crop_keyframes(traj, fps=30.0)
                     else:
                         bbox_to_track = bbox_primary or bbox_secondary
                         vf = self._build_crop_filter(bbox_to_track, frame_w, frame_h, out_w, out_h, self.vertical, "fullscreen")
@@ -459,6 +459,7 @@ class Pipeline:
                 pass
             
             cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", str(self.video_path), "-t", str(dur)]
+            cmd += ["-vsync", "cfr", "-r", "30"]
             # Split screen → filter_complex (need [v] output mapping)
             if layout == 'split_screen':
                 cmd += ["-filter_complex", vf,
