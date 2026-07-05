@@ -153,6 +153,10 @@ class DirectorAI:
             if valid_faces:
                 valid_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
                 speaker_face = valid_faces[0]
+                # Use the face's actual speaker_id so render can find it
+                face_sid = speaker_face.get('speaker_id')
+                if face_sid:
+                    speaker_id = face_sid
 
         if not speaker_face:
             return speaker_id, None, False
