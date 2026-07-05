@@ -415,7 +415,7 @@ def _get_f11_validator():
 def process_video(
     video_path: str,
     output_path: str,
-    sample_rate: float = 3.0,
+    sample_rate: float = 5.0,
     conf_threshold: float = 0.4,
     start_time: float | None = None,
     end_time: float | None = None,
@@ -540,10 +540,14 @@ def process_video(
                         validated_yolo = list(yolo_faces)
                     else:
                         for face in yolo_faces:
-                            x = int(face.get("x", 0))
-                            y = int(face.get("y", 0))
-                            w = int(face.get("w", 0))
-                            h = int(face.get("h", 0))
+                            # FASE-11 FIX: YOLO outputs cx/cy (center), not x/y (top-left).
+                            # Compute top-left from center coordinates for crop.
+                            _fw = int(face.get("w", 0))
+                            _fh = int(face.get("h", 0))
+                            x = int(face.get("cx", 0) - _fw / 2)
+                            y = int(face.get("cy", 0) - _fh / 2)
+                            w = _fw
+                            h = _fh
                             if w < 20 or h < 20:
                                 continue
                             x1, y1 = max(0, x), max(0, y)
@@ -582,8 +586,6 @@ def process_video(
             # ── End FASE 11 ──
 
             # Save raw YOLO position before ByteTrack (for ASD fallback)
-            for face in yolo_faces:
-                face["_raw_cy"] = face.get("cy", 0.0)
             for face in yolo_faces:
                 face["_raw_cy"] = face.get("cy", 0.0)
 

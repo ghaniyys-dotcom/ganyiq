@@ -28,6 +28,7 @@ if _SELF_DIR not in sys.path:
     sys.path.insert(0, _SELF_DIR)
 
 from director import DirectorAI
+from camera_planner import CameraPlanner, CameraTrajectory
 
 print("--- PIPELINE SCRIPT STARTED ---", file=sys.stderr) # DEBUG
 
@@ -85,7 +86,10 @@ class Pipeline:
         self.audio_path = self.work_dir / "audio.wav"
         self.diarization_path = self.work_dir / "diarization.json"
         self.result_path = self.work_dir / "analysis_result.json"
-        self.cam = CameraSmoother(alpha=0.2)
+        # Camera planner replaces the old CameraSmoother (which was never
+        # actually used in ffmpeg commands — it computed EMA but the output
+        # was discarded). CameraPlanner feeds directly into zoompan filters.
+        self.camera_planner: CameraPlanner | None = None  # initialized after probing video dims
 
     def run(self):
         """Execute the full pipeline."""
@@ -354,6 +358,32 @@ class Pipeline:
 
         face_data = self._load_face_data(result)
         id_bridge = self._build_id_bridge(face_data)
+
+        # Initialize camera planner with actual video dimensions
+        self.camera_planner = CameraPlanner(
+            frame_w=frame_w, frame_h=frame_h,
+            out_w=out_w, out_h=out_h,
+            vertical=self.vertical,
+            ema_alpha=0.12,  # Smooth pan (lower = smoother, ~0.1-0.15 is cinematic)
+            transition_duration=0.5,  # Ease-in-out for shot transitions
+        )
+
+        # Pre-compute camera trajectories for ALL shots before rendering
+        # This allows each shot to smoothly transition from the previous one
+        log(f"Planning camera trajectories for {len(shot_list)} shots...")
+        trajectories = []
+        prev_traj = None
+        for i, shot in enumerate(shot_list):
+            traj = self.camera_planner.plan_shot(
+                shot=shot,
+                face_data=face_data,
+                id_bridge=id_bridge,
+                fps=30.0,
+                prev_trajectory=prev_traj,
+            )
+            trajectories.append(traj)
+            prev_traj = traj
+        log(f"Camera trajectories planned.")
         
         segment_files = []
         for i, shot in enumerate(shot_list):
@@ -395,15 +425,30 @@ class Pipeline:
                     layout = 'fullscreen'
                     log(f"  [RENDER-WARN] Shot {i+1} fallback to fullscreen (bbox overlap {_inter/_min_area:.0%})")
 
+            # Get pre-computed trajectory for this shot
+            traj = trajectories[i] if i < len(trajectories) else None
+
             vf = ""
             if self.vertical:
                 if layout == 'split_screen':
-                    vf = self._build_split_filter(bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h)
+                    # Use camera planner's smooth split filter if trajectory available
+                    if traj and (traj.top_frames or traj.bottom_frames):
+                        vf = self.camera_planner.to_split_filter(traj, fps=30.0)
+                    else:
+                        vf = self._build_split_filter(bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h)
                 elif layout == 'two_shot_wide':
-                    vf = self._build_two_shot_filter(bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h)
+                    # Use smooth crop for two-shot via trajectory
+                    if traj and traj.frames:
+                        vf = self.camera_planner.to_smooth_crop_filter(traj, fps=30.0)
+                    else:
+                        vf = self._build_two_shot_filter(bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h)
                 else:
-                    bbox_to_track = bbox_primary or bbox_secondary
-                    vf = self._build_crop_filter(bbox_to_track, frame_w, frame_h, out_w, out_h, self.vertical, "fullscreen")
+                    # Fullscreen/close-up: use smooth zoompan-based crop
+                    if traj and traj.frames:
+                        vf = self.camera_planner.to_smooth_crop_filter(traj, fps=30.0)
+                    else:
+                        bbox_to_track = bbox_primary or bbox_secondary
+                        vf = self._build_crop_filter(bbox_to_track, frame_w, frame_h, out_w, out_h, self.vertical, "fullscreen")
             else:
                 bbox_to_track = bbox_primary or bbox_secondary
                 vf = self._build_crop_filter(bbox_to_track, frame_w, frame_h, out_w, out_h, self.vertical)

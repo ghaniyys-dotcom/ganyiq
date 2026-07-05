@@ -181,6 +181,12 @@ class AudioVisualMatcher:
         # ── Step 1: audio → visual correlation by RATIO (with ASD boost) ──
         track_speaker_counts: dict[str, Counter] = defaultdict(Counter)
 
+        # Index asd_timeline by timestamp for O(1) lookup
+        asd_by_time = {}
+        if asd_timeline:
+            for entry in asd_timeline:
+                asd_by_time[round(entry.get("time", 0.0), 2)] = entry
+
         for seg in audio_segments:
             overlapping = self._find_overlapping_frames(seg, visual_frames)
             for vf in overlapping:
@@ -189,15 +195,15 @@ class AudioVisualMatcher:
                     # Base weight = 1.0
                     weight = 1.0
                     # Boost weight if ASD says this track is lip-active at this time
-                    if asd_timeline:
-                        for asd_entry in asd_timeline:
-                            if abs(asd_entry["time"] - vf.time) < 0.2:
-                                if str(asd_entry.get("active_track_id")) == tid:
-                                    weight = 2.0
-                                elif asd_entry.get("active_track_id", -1) >= 0:
-                                    # Track is visible but NOT the active speaker
-                                    weight = 0.5
-                                break
+                    if asd_by_time:
+                        t_key = round(vf.time, 2)
+                        asd_entry = asd_by_time.get(t_key)
+                        if asd_entry:
+                            if str(asd_entry.get("active_track_id")) == tid:
+                                weight = 2.0
+                            elif asd_entry.get("active_track_id", -1) >= 0:
+                                # Track is visible but NOT the active speaker
+                                weight = 0.5
                     track_speaker_counts[tid][seg.speaker_id] += weight
 
         # Map each track to the speaker it's MOST EXCLUSIVELY associated with
@@ -209,12 +215,13 @@ class AudioVisualMatcher:
             best_speaker = max(speaker_counts, key=speaker_counts.get)
             best_count = speaker_counts[best_speaker]
             best_ratio = best_count / total
-            if best_ratio >= 0.55:
+            if best_ratio >= 0.45:
                 track_to_audio[tid] = best_speaker
 
         # ── Step 2: detect LISTENER tracks ──
         speaker_tids: set[str] = set(track_to_audio.keys())
         listener_counter = 0
+        listener_positions: dict[str, float] = {}  # listener_id -> average_cx
 
         for vf in visual_frames:
             frame_tids: set[str] = set()
@@ -239,8 +246,22 @@ class AudioVisualMatcher:
                             is_different = False
                             break
                     if is_different:
-                        track_to_audio[utid] = f"LISTENER_{listener_counter}"
-                        listener_counter += 1
+                        # Check if we already have a listener at a similar horizontal position
+                        matched_listener = None
+                        for l_id, l_cx in listener_positions.items():
+                            if abs(l_cx - ut_cx) < 100:
+                                matched_listener = l_id
+                                break
+                        
+                        if matched_listener:
+                            track_to_audio[utid] = matched_listener
+                            # Update average position (running average)
+                            listener_positions[matched_listener] = (listener_positions[matched_listener] + ut_cx) / 2
+                        else:
+                            new_listener = f"LISTENER_{listener_counter}"
+                            track_to_audio[utid] = new_listener
+                            listener_positions[new_listener] = ut_cx
+                            listener_counter += 1
 
         if listener_counter:
             print(f"[AVM] Detected {listener_counter} listener track(s)",

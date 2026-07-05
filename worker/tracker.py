@@ -104,9 +104,9 @@ class ByteTrack:
 
     def __init__(
         self,
-        iou_threshold_high: float = 0.2,
+        iou_threshold_high: float = 0.15,
         iou_threshold_low: float = 0.2,
-        max_lost: int = 20,
+        max_lost: int = 45,
         conf_threshold: float = 0.15,
     ):
         self.iou_threshold_high = iou_threshold_high
@@ -268,13 +268,100 @@ class ByteTrack:
         return output
 
 
+def merge_duplicate_tracks(output_data: list[dict], cx_threshold: float = 80.0) -> list[dict]:
+    """Post-tracking merge: consolidate track IDs that belong to the same person.
+
+    ByteTrack can lose a face and re-detect it with a new track_id.
+    This function merges tracks that:
+    1. Have similar average cx/cy positions (< cx_threshold pixels apart)
+    2. NEVER appear in the same frame simultaneously
+
+    This dramatically reduces the track fragmentation that causes
+    downstream identity confusion.
+    """
+    if not output_data:
+        return output_data
+
+    # Collect per-track statistics
+    track_stats: dict[int, dict] = {}  # track_id -> {sum_cx, sum_cy, count, frames}
+    for sample in output_data:
+        frame_tracks = set()
+        for face in sample.get("faces", []):
+            tid = face.get("id", -1)
+            if tid < 0:
+                continue
+            frame_tracks.add(tid)
+            if tid not in track_stats:
+                track_stats[tid] = {"sum_cx": 0.0, "sum_cy": 0.0, "count": 0, "frames": set()}
+            track_stats[tid]["sum_cx"] += float(face.get("cx", 0))
+            track_stats[tid]["sum_cy"] += float(face.get("cy", 0))
+            track_stats[tid]["count"] += 1
+            track_stats[tid]["frames"].add(sample.get("time", 0))
+
+    if len(track_stats) <= 1:
+        return output_data
+
+    # Compute average positions
+    track_avg: dict[int, tuple[float, float]] = {}
+    for tid, stats in track_stats.items():
+        if stats["count"] > 0:
+            track_avg[tid] = (
+                stats["sum_cx"] / stats["count"],
+                stats["sum_cy"] / stats["count"],
+            )
+
+    # Build merge map: merge shorter tracks into longer ones with similar position
+    sorted_tracks = sorted(track_stats.keys(), key=lambda t: track_stats[t]["count"], reverse=True)
+    merge_map: dict[int, int] = {}
+
+    for i, tid_a in enumerate(sorted_tracks):
+        if tid_a in merge_map:
+            continue
+        for tid_b in sorted_tracks[i + 1:]:
+            if tid_b in merge_map:
+                continue
+            # Check spatial proximity
+            ax, ay = track_avg.get(tid_a, (0, 0))
+            bx, by = track_avg.get(tid_b, (0, 0))
+            dist = ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+            if dist > cx_threshold:
+                continue
+            # Check temporal co-occurrence (must NEVER appear in same frame)
+            overlap = track_stats[tid_a]["frames"] & track_stats[tid_b]["frames"]
+            if len(overlap) > 0:
+                continue  # Co-occur = different people
+            # Merge tid_b into tid_a (tid_a has more detections)
+            merge_map[tid_b] = tid_a
+
+    if not merge_map:
+        return output_data
+
+    # Apply merge
+    merges = 0
+    for sample in output_data:
+        for face in sample.get("faces", []):
+            old_id = face.get("id", -1)
+            if old_id in merge_map:
+                face["id"] = merge_map[old_id]
+                merges += 1
+
+    remaining = set()
+    for sample in output_data:
+        for face in sample.get("faces", []):
+            remaining.add(face.get("id", -1))
+
+    print(f"[TRACKER] Merged {len(merge_map)} duplicate tracks ({merges} face relabels), "
+          f"{len(remaining)} unique tracks remaining", file=sys.stderr)
+
+    return output_data
+
 def main():
     parser = argparse.ArgumentParser(description='Track faces across frames')
     parser.add_argument('input_json', help='Face detection data JSON')
     parser.add_argument('output_json', help='Output tracked faces JSON')
     parser.add_argument('--conf-threshold', type=float, default=0.15,
                         help='Detection confidence threshold')
-    parser.add_argument('--max-lost', type=int, default=25,
+    parser.add_argument('--max-lost', type=int, default=45,
                         help='Max frames to keep a lost track')
 
     args = parser.parse_args()
@@ -378,6 +465,12 @@ def main():
     print(f"[DONE] ByteTrack: {len(output)} frames, {total_faces} faces, "
           f"{len(unique_ids)} unique IDs, {active_tracks} active tracks",
           file=sys.stderr)
+
+    # Post-tracking: merge duplicate tracks from re-detection
+    output = merge_duplicate_tracks(output, cx_threshold=80.0)
+
+    with open(args.output_json, 'w') as f:
+        json.dump(output, f)
 
 
 if __name__ == '__main__':

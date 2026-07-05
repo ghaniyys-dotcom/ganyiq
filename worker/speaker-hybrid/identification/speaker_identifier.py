@@ -173,6 +173,7 @@ class SpeakerIdentifier:
         # STEP 2: Audio-Visual Matching
         # ──────────────────────────────────────────
         matched_timeline = None
+        asd_timeline = None
 
         if visual_only or not diarization_path:
             self.log("Visual-only mode — skipping audio-visual matching")
@@ -189,6 +190,17 @@ class SpeakerIdentifier:
 
             # Parse audio segments
             audio_segments_raw = diarization_raw.get("segments", diarization_raw.get("speakers", []))
+            
+            # Postprocess raw diarization segments to clean up speaker segments
+            if isinstance(audio_segments_raw, list) and len(audio_segments_raw) > 0:
+                from diarization_postprocess import postprocess as diarize_postprocess
+                audio_segments_raw = diarize_postprocess(
+                    audio_segments_raw,
+                    max_speakers=6,
+                    min_segment_duration=0.5,
+                    max_silence_gap=1.5
+                )
+
             audio_segments: list[AudioSegment] = []
             if isinstance(audio_segments_raw, list) and len(audio_segments_raw) > 0:
                 for seg in audio_segments_raw:
@@ -359,9 +371,9 @@ class SpeakerIdentifier:
             },
             'asd': {
                 'tracker': 'bytetrack_kalman',
-                'total_frames': len(asd_timeline) if 'asd_timeline' in dir() and asd_timeline else 0,
+                'total_frames': len(asd_timeline) if asd_timeline else 0,
                 'active_frames': sum(
-                    1 for e in (asd_timeline if 'asd_timeline' in dir() and asd_timeline else [])
+                    1 for e in (asd_timeline if asd_timeline else [])
                     if e.get('active_track_id', -1) >= 0
                 ),
             },
@@ -467,30 +479,40 @@ class SpeakerIdentifier:
         if not avg:
             return
 
-        # 2. cluster by average cx proximity
-        sids = list(avg.keys())
-        groups = []  # list of [canonical_id, set[member_ids]]
-        for sid in sids:
-            cx_s = avg[sid][0]
-            placed = False
-            for g in groups:
-                g_cx = avg[g[0]][0]
-                if abs(g_cx - cx_s) < cx_threshold:
-                    g[1].add(sid)
-                    placed = True
-                    break
-            if not placed:
-                groups.append([sid, {sid}])
+        # 2. cluster by average cx proximity using centroid-linkage agglomerative clustering
+        groups = [[sid, {sid}] for sid in avg.keys()]
 
-        # 3. pick canonical ID per group — prefer SPEAKER_ over LISTENER_
+        while True:
+            # Find closest pair of groups
+            closest_pair = None
+            min_dist = float('inf')
+            
+            for i in range(len(groups)):
+                for j in range(i + 1, len(groups)):
+                    # Compute group average cx
+                    cx_i = sum(avg[s][0] for s in groups[i][1]) / len(groups[i][1])
+                    cx_j = sum(avg[s][0] for s in groups[j][1]) / len(groups[j][1])
+                    dist = abs(cx_i - cx_j)
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest_pair = (i, j)
+            
+            if min_dist < cx_threshold and closest_pair is not None:
+                i, j = closest_pair
+                # Merge group j into group i
+                groups[i][1].update(groups[j][1])
+                # Prefer speaker_id that doesn't start with LISTENER_ as canonical
+                if groups[i][0].startswith("LISTENER_") and not groups[j][0].startswith("LISTENER_"):
+                    groups[i][0] = groups[j][0]
+                # Remove group j
+                groups.pop(j)
+            else:
+                break
+
+        # 3. build id_map
         id_map = {}
-        for g in groups:
-            canonical = g[0]
-            for member in g[1]:
-                if not member.startswith("LISTENER_"):
-                    canonical = member
-                    break
-            for member in g[1]:
+        for canonical, member_set in groups:
+            for member in member_set:
                 id_map[member] = canonical
 
         # 4. rewrite timeline & visual_speakers

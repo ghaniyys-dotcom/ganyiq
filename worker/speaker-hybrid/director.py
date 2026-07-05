@@ -1,3 +1,4 @@
+import sys
 from dataclasses import dataclass, field
 from collections import defaultdict
 
@@ -9,6 +10,7 @@ class Shot:
     layout: str = "fullscreen"
     primary_target_id: int | None = None
     secondary_target_id: int | None = None
+    per_frame_targets: list[dict] = field(default_factory=list)  # [{time, primary_bbox, secondary_bbox}]
     debug_info: dict = field(default_factory=dict)
 
     @property
@@ -122,7 +124,16 @@ class DirectorAI:
             ))
 
         # Post-processing: merge consecutive identical shots
-        return self._merge_consecutive_shots(raw_shots)
+        merged = self._merge_consecutive_shots(raw_shots)
+
+        # Enforce shot variety (no >3 consecutive same-layout shots)
+        varied = self._enforce_shot_variety(merged)
+
+        # Compute per-frame targets for camera_planner integration
+        for shot in varied:
+            shot.per_frame_targets = self._compute_frame_targets(shot)
+
+        return varied
 
     def _get_scene_actors(self, time_sec: float) -> tuple[str | None, str | None, bool]:
         """
@@ -261,3 +272,138 @@ class DirectorAI:
         
         return final
 
+    def _enforce_shot_variety(self, shots: list[Shot]) -> list[Shot]:
+        """Prevent visual monotony by breaking up long runs of the same layout.
+
+        Rules:
+        - If >3 consecutive fullscreen shots, insert a wide_shot break
+        - If split_screen > 10s, switch to close-up of active speaker
+        - If two_shot_wide > 10s, consider cutting to split_screen
+        """
+        if not shots:
+            return []
+
+        result = []
+        consecutive_same = 0
+        prev_layout = None
+
+        for shot in shots:
+            if shot.layout == prev_layout:
+                consecutive_same += 1
+            else:
+                consecutive_same = 0
+
+            # Rule: Break up long split_screen (>10s) into close-up
+            if shot.layout == "split_screen" and shot.duration > 10.0:
+                mid = shot.start_time + shot.duration / 2
+                result.append(Shot(
+                    start_time=shot.start_time,
+                    end_time=mid,
+                    layout="split_screen",
+                    primary_target_id=shot.primary_target_id,
+                    secondary_target_id=shot.secondary_target_id,
+                ))
+                result.append(Shot(
+                    start_time=mid,
+                    end_time=shot.end_time,
+                    layout="fullscreen",
+                    primary_target_id=shot.primary_target_id,
+                ))
+                consecutive_same = 0
+                prev_layout = "fullscreen"
+                continue
+
+            # Rule: Insert wide_shot break after 4+ consecutive fullscreen
+            if shot.layout == "fullscreen" and consecutive_same >= 4 and shot.duration > 3.0:
+                mid = shot.start_time + min(2.5, shot.duration / 2)
+                result.append(Shot(
+                    start_time=shot.start_time,
+                    end_time=mid,
+                    layout="wide_shot",
+                    primary_target_id=shot.primary_target_id,
+                ))
+                result.append(Shot(
+                    start_time=mid,
+                    end_time=shot.end_time,
+                    layout="fullscreen",
+                    primary_target_id=shot.primary_target_id,
+                ))
+                consecutive_same = 0
+                prev_layout = "fullscreen"
+                continue
+
+            result.append(shot)
+            prev_layout = shot.layout
+
+        return result
+
+    def _compute_frame_targets(self, shot: Shot) -> list[dict]:
+        """Compute per-second face bounding boxes for a shot.
+
+        This provides camera_planner with the raw data it needs to
+        compute smooth trajectories. Collects actual face positions
+        from the face_data timeline for each second within the shot.
+        """
+        targets = []
+        for t in range(int(shot.start_time), int(shot.end_time) + 1):
+            # Find the closest face data entry
+            best_entry = None
+            best_dist = float("inf")
+            for entry in self.face_data.get("timeline", []):
+                dist = abs(entry.get("time", 0) - float(t))
+                if dist < best_dist and dist < 1.0:
+                    best_dist = dist
+                    best_entry = entry
+
+            if not best_entry:
+                targets.append({"time": float(t), "primary_bbox": None, "secondary_bbox": None})
+                continue
+
+            # Find primary speaker's face
+            primary_bbox = None
+            secondary_bbox = None
+
+            for face in best_entry.get("faces", []):
+                sid = face.get("speaker_id", "")
+                pid = face.get("person_id")
+                tid = face.get("track_id")
+
+                # Match primary
+                if (shot.primary_target_id is not None and
+                    (sid == str(shot.primary_target_id) or
+                     (pid and f"person_{pid}" == str(shot.primary_target_id)) or
+                     (tid is not None and f"track_{tid}" == str(shot.primary_target_id)))):
+                    primary_bbox = {
+                        "cx": face.get("cx", 0), "cy": face.get("cy", 0),
+                        "w": face.get("w", 0), "h": face.get("h", 0),
+                    }
+
+                # Match secondary
+                if (shot.secondary_target_id is not None and
+                    (sid == str(shot.secondary_target_id) or
+                     (pid and f"person_{pid}" == str(shot.secondary_target_id)) or
+                     (tid is not None and f"track_{tid}" == str(shot.secondary_target_id)))):
+                    secondary_bbox = {
+                        "cx": face.get("cx", 0), "cy": face.get("cy", 0),
+                        "w": face.get("w", 0), "h": face.get("h", 0),
+                    }
+
+            # Fallback: if no primary found, use the most central large face
+            if not primary_bbox:
+                valid_faces = [f for f in best_entry.get("faces", [])
+                               if f.get("w", 0) >= 40 and f.get("h", 0) >= 40]
+                if valid_faces:
+                    valid_faces.sort(key=lambda f: abs(f.get("cx", 640) - 640))
+                    fb = valid_faces[0]
+                    primary_bbox = {
+                        "cx": fb.get("cx", 0), "cy": fb.get("cy", 0),
+                        "w": fb.get("w", 0), "h": fb.get("h", 0),
+                    }
+
+            targets.append({
+                "time": float(t),
+                "primary_bbox": primary_bbox,
+                "secondary_bbox": secondary_bbox,
+            })
+
+        return targets
