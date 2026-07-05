@@ -30,14 +30,16 @@ import time
 from pathlib import Path
 
 # ── Add project root to sys.path so sibling packages resolve ──
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# speaker_identifier.py is at worker/speaker-hybrid/identification/
+# We need worker/ root to find diarization_postprocess.py
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-# director.py is in a sibling directory (speaker-hybrid/)
-_DIRECTOR_DIR = str(_PROJECT_ROOT / "speaker-hybrid")
-if _DIRECTOR_DIR not in sys.path:
-    sys.path.insert(0, _DIRECTOR_DIR)
+# speaker-hybrid dir for director.py, hybrid_face_detector.py, etc.
+_HYBRID_DIR = str(_PROJECT_ROOT / "speaker-hybrid")
+if _HYBRID_DIR not in sys.path:
+    sys.path.insert(0, _HYBRID_DIR)
 
 from director import DirectorAI
 from hybrid_face_detector import process_video as run_face_detection
