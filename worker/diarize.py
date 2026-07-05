@@ -5,9 +5,10 @@ diarize.py — Speaker diarization for GANYIQ worker V4.
 Produces speaker segments with unique speaker labels.
 
 Strategies (tried in order, with EXPLICIT logging):
-  1. Deepgram Nova-2 API (most reliable, requires API key)
-  2. PyAnnote speaker-diarization-3.1 (with num_speakers hint)
-  3. Single-speaker fallback (assumes 1 speaker if all else fails)
+  1. Groq (whisper-large-v3-turbo) — rotate 10 API keys
+  2. Deepgram Nova-2 API
+  3. PyAnnote speaker-diarization-3.1 (with num_speakers hint)
+  4. Single-speaker fallback (assumes 1 speaker if all else fails)
 
 All strategies are post-processed by diarization_postprocess.py to
 clean overlaps, merge fragments, and cap speaker count.
@@ -22,6 +23,7 @@ import os
 import argparse
 import subprocess
 import tempfile
+import random
 from pathlib import Path
 from diarization_postprocess import postprocess as diarize_postprocess
 def load_env_vars(filename=".env.local"):
@@ -104,7 +106,107 @@ def extract_audio(video_path: str, audio_path: str) -> bool:
         return False
 
 
-# ── Strategy 1: Deepgram Diarization ──────────────────────────────────────────
+# ── Strategy 1: Groq (whisper-large-v3-turbo) ────────────────────────────────────
+
+def diarize_groq(audio_path: str) -> list:
+    """Diarize using Groq whisper-large-v3-turbo with API key rotation (10 keys)."""
+    import urllib.request
+    import urllib.parse
+    # Collect Groq API keys from environment (GROQ_API_KEY_1 .. GROQ_API_KEY_10)
+    groq_keys = []
+    for i in range(1, 11):
+        key = os.getenv(f"GROQ_API_KEY_{i}")
+        if key:
+            groq_keys.append(key)
+
+    if not groq_keys:
+        log("strategy=groq: no GROQ_API_KEY_1..10 found, skipping")
+        return []
+
+    # Try each key in random order until one works
+    random.shuffle(groq_keys)
+    for idx, api_key in enumerate(groq_keys):
+        try:
+            log(f"strategy=groq attempting with key index {idx+1}/{len(groq_keys)}...")
+            with open(audio_path, 'rb') as f:
+                audio_data = f.read()
+
+            ext = Path(audio_path).suffix.lower()
+            content_type = {
+                '.wav': 'audio/wav',
+                '.mp3': 'audio/mp3',
+                '.m4a': 'audio/mp4',
+                '.mp4': 'audio/mp4',
+                '.webm': 'audio/webm',
+            }.get(ext, 'audio/wav')
+
+            # Build multipart form-data manually for Groq API
+            boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+
+            body_parts = []
+            # model parameter
+            body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-large-v3-turbo")
+            # language parameter
+            body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\nid")
+            # response_format
+            body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\nverbose_json")
+            # temperature
+            body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"temperature\"\r\n\r\n0")
+            # file
+            filename = os.path.basename(audio_path)
+            body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n")
+            body = "\r\n".join(body_parts).encode('utf-8') + b"\r\n" + audio_data + f"\r\n--{boundary}--\r\n".encode('utf-8')
+
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                data=body,
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': f'multipart/form-data; boundary={boundary}',
+                },
+                method='POST',
+            )
+
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                response_data = json.loads(resp.read().decode('utf-8'))
+
+            # Parse segments from Groq response
+            segments_raw = response_data.get("segments", [])
+            if not segments_raw:
+                # No segments — use whole duration as single speaker
+                duration = response_data.get("duration", 0)
+                if duration > 0:
+                    segments = [{"speaker": "SPEAKER_00", "start": 0.0, "end": round(duration, 2)}]
+                    log(f"strategy=groq: no segments, using single speaker {duration:.1f}s")
+                else:
+                    log("strategy=groq failed — no duration in response")
+                    continue
+            else:
+                segments = []
+                for seg in segments_raw:
+                    # Try to get speaker from Groq (if diarization is provided)
+                    speaker_label = seg.get("speaker")
+                    if not speaker_label:
+                        speaker_label = "SPEAKER_00"
+                    segments.append({
+                        "speaker": speaker_label,
+                        "start": round(seg["start"], 2),
+                        "end": round(seg["end"], 2),
+                    })
+
+            unique_speakers = set(s['speaker'] for s in segments)
+            log(f"strategy=groq segments={len(segments)} speakers={len(unique_speakers)}")
+            return segments
+
+        except Exception as e:
+            log(f"strategy=groq key {idx+1} FAILED — {type(e).__name__}: {e}")
+            continue
+
+    log("strategy=groq: all 10 keys exhausted, falling through")
+    return []
+
+
+# ── Strategy 2: Deepgram Diarization ──────────────────────────────────────────
 
 def diarize_deepgram(audio_path: str, api_key: str) -> list:
     """Diarize using Deepgram Nova-2 API with speaker detection."""
@@ -340,20 +442,25 @@ def main():
     segments = []
     strategy_used = "none"
 
-    # Strategy 1: Deepgram (most reliable)
-    deepgram_key = args.deepgram_key or os.getenv("DEEPGRAM_API_KEY")
-    if deepgram_key:
-        segments = diarize_deepgram(audio_path, deepgram_key)
-        if segments: strategy_used = "deepgram"
+    # Strategy 1: Groq (whisper-large-v3-turbo) with 10-key rotation
+    segments = diarize_groq(audio_path)
+    if segments: strategy_used = "groq"
 
-    # Strategy 2: PyAnnote (with speaker count hints)
+    # Strategy 2: Deepgram
+    if not segments:
+        deepgram_key = args.deepgram_key or os.getenv("DEEPGRAM_API_KEY")
+        if deepgram_key:
+            segments = diarize_deepgram(audio_path, deepgram_key)
+            if segments: strategy_used = "deepgram"
+
+    # Strategy 3: PyAnnote (with speaker count hints)
     if not segments:
         hf_token = args.hf_token or os.getenv("HF_TOKEN")
         if hf_token:
             segments = diarize_pyannote(audio_path, hf_token, num_speakers=args.num_speakers)
             if segments: strategy_used = "pyannote"
 
-    # Strategy 3: Single speaker fallback (honest minimal output)
+    # Strategy 4: Single speaker fallback (honest minimal output)
     if not segments:
         segments = diarize_single_speaker(audio_path)
         if segments: strategy_used = "single_speaker_fallback"
