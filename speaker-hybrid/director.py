@@ -163,10 +163,6 @@ class DirectorAI:
             # Skip if it's the same person as the speaker (robust multi-method)
             if _is_same_person(face, speaker_face):
                 continue
-            # Skip if face too close to speaker (same person, tracking artifact)
-            dx = abs(face.get("cx", 0) - speaker_face.get("cx", 0))
-            if dx < 150.0:
-                continue
             # Apply size filter to filter out hands/noise
             if face.get('w', 0) >= 40 and face.get('h', 0) >= 40:
                 other_faces.append(face)

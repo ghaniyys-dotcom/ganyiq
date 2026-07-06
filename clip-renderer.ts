@@ -221,8 +221,9 @@ async function renderClipViaPython(
   log('PIPELINE', `Python pipeline: ${pipelinePy}`);
   if (heartbeatFn) await heartbeatFn();
 
-  // Trim segment (fast copy, no re-encode)
-  execSync(`${ffmpegBin} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -c copy -avoid_negative_ts make_zero "${trimmedPath}"`, EXEC_OPTS);
+  // Trim segment (fast copy, no re-encode) — use -t for exact duration, not -to which drifts to next keyframe
+  const trimDuration = endTime - startTime;
+  execSync(`${ffmpegBin} -y -ss ${startTime} -i "${videoPath}" -t ${trimDuration} -c copy -avoid_negative_ts make_zero "${trimmedPath}"`, EXEC_OPTS);
   log('PIPELINE', `Trimmed: ${trimmedPath}`);
 
   if (heartbeatFn) await heartbeatFn();
