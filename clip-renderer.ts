@@ -131,7 +131,13 @@ function getCachedVideoPath(videoId: string): string | null {
   const entry = manifest[videoId];
   if (!entry) return null;
 
-  const cachedPath = entry.path && existsSync(entry.path) ? entry.path : join(CACHE_DIR, `${videoId}.mkv`);
+  const cachedPath = entry.path && existsSync(entry.path) ? entry.path : join(CACHE_DIR, `${videoId}.webm`);
+  // Kalo cache-nya fallback 360p, anggap cache miss biar coba download HD lagi.
+  if (cachedPath.includes('_fallback')) {
+    delete manifest[videoId];
+    saveCacheManifest(manifest);
+    return null;
+  }
   if (!existsSync(cachedPath)) {
     // File missing — remove from manifest
     delete manifest[videoId];
@@ -164,6 +170,16 @@ function addToCache(videoId: string, filePath: string): void {
   const sizeMatch = stats.match(/\d+/);
   const sizeBytes = sizeMatch ? parseInt(sizeMatch[0], 10) : 0;
 
+  const isFallback = filePath.includes('_fallback');
+  const existingEntry = manifest[videoId];
+  // Jangan timpa cache HD dengan fallback 360p.
+  // Strategi 1 (HD) gagal → simpan fallback tapi jangan timpa entry HD yg udah ada.
+  // Next run, getCachedVideoPath cek entry.path → kalo nemu HD path yg valid → pake itu.
+  // Kalo HD path ilang/kedaluwarsa → download ulang → coba HD lagi.
+  if (isFallback && existingEntry && !existingEntry.path.includes('_fallback')) {
+    // Existing HD cache tetap di manifest. Fallback disimpan tanpa merusak entry.
+    return;
+  }
   manifest[videoId] = {
     cachedAt: new Date().toISOString(),
     sizeBytes,
@@ -273,17 +289,17 @@ export async function renderClip(
   // 1. Get video (cached or download) — try 3 format strategies
   let videoPath = getCachedVideoPath(videoId);
   if (!videoPath) {
-    videoPath = join(CACHE_DIR, `${videoId}.mkv`);
     log('YTDLP', `Downloading video: ${videoUrl}`);
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     if (heartbeatFn) await heartbeatFn();
 
-    // Strategy 1: bestvideo+bestaudio, any codec → merge to mkv
-    // YouTube biasanya 720p+ pake VP9 (webm) + Opus. MKV handle semua codec.
+    // Strategy 1: bestvideo[height<=1080]+bestaudio → simpan sebagai .webm
+    // YouTube VP9 stream native di webm container, jadi gak perlu remux.
     const formatStr1 = 'bestvideo[height<=1080]+bestaudio';
+    videoPath = join(CACHE_DIR, `${videoId}.webm`);
     try {
       execSync(
-        `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "${formatStr1}" --merge-output-format mkv -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
+        `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "${formatStr1}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
         EXEC_OPTS,
       );
     } catch (e) {
