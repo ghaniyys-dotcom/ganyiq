@@ -20,8 +20,9 @@ from pathlib import Path
 from core.logger import log
 from core.render_utils import CameraSmoother, build_crop_filter, build_split_filter, build_two_shot_filter
 from core.id_bridge import load_face_data, build_id_bridge, get_speaker_bbox
+from core.speaker_tracker import SpeakerTracker
 from utils.env_utils import load_env_vars
-from config import audio as AUDIO, render as RENDER
+from config import audio as AUDIO, render as RENDER, fusion as FUSION
 
 # Load .env.local
 load_env_vars(Path(__file__).resolve().parent.parent / ".env.local")
@@ -117,6 +118,32 @@ class Pipeline:
 
         log("PIPELINE", f"Analysis complete: {len(result.get('speakers', []))} speakers, {len(result.get('split_plan', {}).get('scenes', []))} scenes")
 
+        # Phase A: Build active speaker timeline (data plumbing only, no render change)
+        if FUSION.ENABLED:
+            log("PIPELINE", "Building active speaker timeline (Fusion enabled)...")
+            tracker = SpeakerTracker(grace_period=FUSION.GRACE_PERIOD, confidence_threshold=FUSION.CONFIDENCE_THRESHOLD)
+            
+            # Load face data for timeline building
+            face_data = load_face_data(result) if result.get("face_data_path") else []
+            id_bridge = build_id_bridge(face_data) if face_data else {}
+            
+            active_timeline = tracker.build_active_speaker_timeline(
+                diarization=result.get("speakers", []),
+                asd_timeline=result.get("asd_timeline", []),
+                id_bridge=id_bridge,
+                face_detections=face_data,
+            )
+            
+            result["active_speaker_timeline"] = active_timeline.to_dict()
+            
+            # Save enriched result.json
+            with open(self.result_path, "w") as f:
+                json.dump(result, f, indent=2)
+            
+            log("PIPELINE", f"Active speaker timeline built: {len(active_timeline.frames)} frames")
+        else:
+            log("PIPELINE", "Speaker-Face Fusion disabled (FUSION.ENABLED=False)")
+
         # Step 4: Render from shot list
         log("PIPELINE", "Rendering output video...")
         self._render_from_shot_list(result)
@@ -151,6 +178,77 @@ class Pipeline:
         # ... (same as before)
         return ""
 
+    def _split_shot_by_active_speaker(self, shot: dict, active_timeline, face_data: list, id_bridge: dict, frame_w: int, frame_h: int) -> list[dict]:
+        """
+        Split a DirectorAI shot into SubShots based on active speaker changes.
+        
+        Args:
+            shot: DirectorAI shot dict
+            active_timeline: ActiveSpeakerTimeline instance
+            face_data: list of face detections
+            id_bridge: speaker_id -> track_id mapping
+            frame_w, frame_h: video dimensions
+            
+        Returns:
+            list of SubShot dicts (same schema as DirectorAI shots + 'fusion_bbox')
+        """
+        start = float(shot['start_time'])
+        end = float(shot['end_time'])
+        layout = shot['layout']
+        primary_id = shot['primary_target_id']
+        secondary_id = shot['secondary_target_id']
+        
+        # Fullscreen shots: track active speaker changes
+        if layout == 'fullscreen':
+            sub_shots = []
+            current_track_id = None
+            sub_start = start
+            
+            # Sample timeline at 10 fps
+            t = start
+            while t <= end:
+                frame = active_timeline.get_active_at(t)
+                track_id = frame.track_id if frame else None
+                
+                # Detect speaker change
+                if track_id != current_track_id and (t - sub_start) >= FUSION.GRACE_PERIOD:
+                    if current_track_id is not None:
+                        # Get bbox for the current track at sub_start
+                        snap_frame = active_timeline.get_active_at(sub_start)
+                        # Close previous sub-shot
+                        sub_shots.append({
+                            'start_time': sub_start,
+                            'end_time': t,
+                            'layout': 'fullscreen',
+                            'primary_target_id': primary_id,
+                            'secondary_target_id': None,
+                            'fusion_track_id': current_track_id,
+                            'fusion_bbox': snap_frame.bbox if snap_frame else None,
+                        })
+                    sub_start = t
+                    current_track_id = track_id
+                
+                t += 0.1  # 10 fps sampling
+            
+            # Close final sub-shot
+            if end - sub_start >= 0.1:
+                snap_frame = active_timeline.get_active_at(sub_start)
+                sub_shots.append({
+                    'start_time': sub_start,
+                    'end_time': end,
+                    'layout': 'fullscreen',
+                    'primary_target_id': primary_id,
+                    'secondary_target_id': None,
+                    'fusion_track_id': current_track_id,
+                    'fusion_bbox': snap_frame.bbox if snap_frame else None,
+                })
+            
+            return sub_shots if sub_shots else [shot]  # fallback to original shot
+        
+        # Split-screen & two-shot: no splitting (already have both speakers visible)
+        else:
+            return [shot]
+
     def _render_from_shot_list(self, result: dict) -> None:
         """Renders video from a DirectorAI shot list."""
         shot_list = result.get("split_plan", {}).get("scenes", [])
@@ -168,8 +266,25 @@ class Pipeline:
         face_data = load_face_data(result)
         id_bridge = build_id_bridge(face_data)
         
+        # Phase B: Load active speaker timeline if Fusion enabled
+        active_timeline = None
+        if FUSION.ENABLED and "active_speaker_timeline" in result:
+            from core.speaker_tracker import ActiveSpeakerTimeline
+            active_timeline = ActiveSpeakerTimeline.from_dict(result["active_speaker_timeline"])
+            log("PIPELINE", f"Speaker-Face Fusion enabled: {len(active_timeline.frames)} timeline frames loaded")
+        
+        # Split shots into SubShots if Fusion enabled
+        render_shots = []
+        if FUSION.ENABLED and active_timeline:
+            for shot in shot_list:
+                sub_shots = self._split_shot_by_active_speaker(shot, active_timeline, face_data, id_bridge, frame_w, frame_h)
+                render_shots.extend(sub_shots)
+            log("PIPELINE", f"Shot splitting: {len(shot_list)} DirectorAI shots → {len(render_shots)} SubShots")
+        else:
+            render_shots = shot_list  # Legacy path — no splitting
+        
         segment_files = []
-        for i, shot in enumerate(shot_list):
+        for i, shot in enumerate(render_shots):
             seg_out = self.work_dir / f"seg_{i:04d}.mp4"
             segment_files.append(str(seg_out))
 
@@ -181,8 +296,15 @@ class Pipeline:
             primary_id = shot['primary_target_id']
             secondary_id = shot['secondary_target_id']
 
-            bbox_primary = get_speaker_bbox(face_data, id_bridge, primary_id, start, start + dur, frame_w, frame_h) if face_data and primary_id else None
-            bbox_secondary = get_speaker_bbox(face_data, id_bridge, secondary_id, start, start + dur, frame_w, frame_h) if face_data and secondary_id else None
+            # Phase B: Use fusion bbox from SubShot splitting if present
+            fusion_bbox = shot.get('fusion_bbox')
+            if fusion_bbox is not None:
+                bbox_primary = fusion_bbox
+                bbox_secondary = None
+            else:
+                # Legacy path: use id_bridge lookup
+                bbox_primary = get_speaker_bbox(face_data, id_bridge, primary_id, start, start + dur, frame_w, frame_h) if face_data and primary_id else None
+                bbox_secondary = get_speaker_bbox(face_data, id_bridge, secondary_id, start, start + dur, frame_w, frame_h) if face_data and secondary_id else None
             
             # Anti-Nyangsang Safety Net
             if layout == 'split_screen' and not (bbox_primary and bbox_secondary):

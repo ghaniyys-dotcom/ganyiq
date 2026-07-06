@@ -126,11 +126,11 @@ def diarize_deepgram(audio_path: str, api_key: str) -> list:
             })
 
         unique_speakers = set(s['speaker'] for s in segments)
-        log(f"strategy=deepgram segments={len(segments)} speakers={len(unique_speakers)}")
+        log("DIARIZE", f"strategy=deepgram segments={len(segments)} speakers={len(unique_speakers)}")
         return segments
 
     except Exception as e:
-        log(f"strategy=deepgram FAILED — {type(e).__name__}: {e}")
+        log("DIARIZE", f"strategy=deepgram FAILED — {type(e).__name__}: {e}")
         return []
 
 
@@ -156,9 +156,9 @@ def diarize_pyannote(audio_path: str, hf_token: str) -> list:
             log("DIARIZE", "CUDA not available — moving pipeline to CPU")
             pipeline.to(torch.device("cpu"))
         else:
-            log(f"CUDA available: {torch.cuda.get_device_name(0)}")
+            log("DIARIZE", f"CUDA available: {torch.cuda.get_device_name(0)}")
 
-        log(f"running diarization on {audio_path}...")
+        log("DIARIZE", f"running diarization on {audio_path}...")
         diarization = pipeline(audio_path)
 
         segments = []
@@ -171,14 +171,14 @@ def diarize_pyannote(audio_path: str, hf_token: str) -> list:
             })
             speaker_set.add(speaker)
 
-        log(f"strategy=pyannote segments={len(segments)} speakers={len(speaker_set)}")
+        log("DIARIZE", f"strategy=pyannote segments={len(segments)} speakers={len(speaker_set)}")
         return segments
 
     except ImportError as e:
-        log(f"strategy=pyannote SKIPPED — import failed: {e}")
+        log("DIARIZE", f"strategy=pyannote SKIPPED — import failed: {e}")
         return []
     except Exception as e:
-        log(f"strategy=pyannote FAILED — {type(e).__name__}: {e}")
+        log("DIARIZE", f"strategy=pyannote FAILED — {type(e).__name__}: {e}")
         # Write error detail to a sidecar file for post-mortem
         try:
             error_path = os.path.join(os.path.dirname(audio_path), 'pyannote_error.json')
@@ -201,12 +201,12 @@ def diarize_clustering(audio_path: str, num_speakers: int = 0) -> list:
     Requires: scikit-learn, scipy, numpy (all available on PC-GANY)
     """
     try:
-        log(f"strategy=clustering num_speakers={num_speakers}")
+        log("DIARIZE", f"strategy=clustering num_speakers={num_speakers}")
         import numpy as np
         import scipy.io.wavfile as wav
         from sklearn.cluster import KMeans
     except ImportError as e:
-        log(f"strategy=clustering SKIPPED — import failed: {e}")
+        log("DIARIZE", f"strategy=clustering SKIPPED — import failed: {e}")
         return []
 
     try:
@@ -214,7 +214,7 @@ def diarize_clustering(audio_path: str, num_speakers: int = 0) -> list:
         if len(audio.shape) > 1:
             audio = audio[:, 0]  # mono
         audio = audio.astype(np.float64)
-        log(f"audio loaded: {sample_rate}Hz, {len(audio)} samples ({len(audio)/sample_rate:.1f}s)")
+        log("DIARIZE", f"audio loaded: {sample_rate}Hz, {len(audio)} samples ({len(audio)/sample_rate:.1f}s)")
 
         # ── Extract MFCC features ──
         frame_length = int(0.025 * sample_rate)  # 25ms
@@ -293,7 +293,7 @@ def diarize_clustering(audio_path: str, num_speakers: int = 0) -> list:
         energy_threshold = np.percentile(energies, 15) + 0.005
         is_speech = energies > energy_threshold
         speech_ratio = np.mean(is_speech)
-        log(f"speech frames: {speech_ratio*100:.0f}% ({np.sum(is_speech)}/{num_frames})")
+        log("DIARIZE", f"speech frames: {speech_ratio*100:.0f}% ({np.sum(is_speech)}/{num_frames})")
 
         if np.sum(is_speech) < 5:
             log("DIARIZE", "strategy=clustering FAILED — too few speech frames")
@@ -308,13 +308,13 @@ def diarize_clustering(audio_path: str, num_speakers: int = 0) -> list:
             # Estimate: max(2, min(6, speech_duration / 30))
             speech_duration = len(speech_indices) * hop_length / sample_rate
             num_speakers = max(2, min(6, int(speech_duration / 25)))
-            log(f"auto-estimated speakers: {num_speakers} (speech_dur={speech_duration:.0f}s)")
+            log("DIARIZE", f"auto-estimated speakers: {num_speakers} (speech_dur={speech_duration:.0f}s)")
 
         # KMeans clustering
         n_clusters = max(2, min(num_speakers, 8))
         if len(speech_features) < n_clusters * 3:
             n_clusters = max(2, len(speech_features) // 3)
-            log(f"reducing clusters to {n_clusters} (insufficient speech frames)")
+            log("DIARIZE", f"reducing clusters to {n_clusters} (insufficient speech frames)")
 
         if n_clusters < 2:
             log("DIARIZE", "strategy=clustering FAILED — only 1 cluster possible")
@@ -322,7 +322,7 @@ def diarize_clustering(audio_path: str, num_speakers: int = 0) -> list:
 
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=3)
         labels = kmeans.fit_predict(speech_features)
-        log(f"clustering done: {n_clusters} clusters, inertia={kmeans.inertia_:.2f}")
+        log("DIARIZE", f"clustering done: {n_clusters} clusters, inertia={kmeans.inertia_:.2f}")
 
         # ── Build segments ──
         # Merge contiguous frames with same label
@@ -361,11 +361,11 @@ def diarize_clustering(audio_path: str, num_speakers: int = 0) -> list:
 
         unique_speakers = set(s['speaker'] for s in segments)
         total_dur = sum(s['end'] - s['start'] for s in segments)
-        log(f"strategy=clustering segments={len(segments)} speakers={len(unique_speakers)} duration={total_dur:.1f}s")
+        log("DIARIZE", f"strategy=clustering segments={len(segments)} speakers={len(unique_speakers)} duration={total_dur:.1f}s")
         return segments
 
     except Exception as e:
-        log(f"strategy=clustering FAILED — {type(e).__name__}: {e}")
+        log("DIARIZE", f"strategy=clustering FAILED — {type(e).__name__}: {e}")
         return []
 
 
@@ -424,11 +424,11 @@ def diarize_energy_fallback(audio_path: str) -> list:
                 })
 
         total_dur = sum(s['end'] - s['start'] for s in segments)
-        log(f"strategy=energy_fallback segments={len(segments)} all=single_speaker duration={total_dur:.1f}s")
+        log("DIARIZE", f"strategy=energy_fallback segments={len(segments)} all=single_speaker duration={total_dur:.1f}s")
         return segments
 
     except Exception as e:
-        log(f"strategy=energy_fallback FAILED — {e}")
+        log("DIARIZE", f"strategy=energy_fallback FAILED — {e}")
         return []
 
 
@@ -479,7 +479,7 @@ def main() -> None:
     num_speakers_found = len(set(s['speaker'] for s in segments))
     total_speech_dur = sum(s['end'] - s['start'] for s in segments)
     
-    log(f"[DONE] {len(segments)} segments, {num_speakers_found} speakers, "
+    log("DIARIZE", f"[DONE] {len(segments)} segments, {num_speakers_found} speakers, "
         f"strategy={strategy_used}, {total_speech_dur:.1f}s total speech")
 
     output_data = {
@@ -494,7 +494,7 @@ def main() -> None:
             os.remove(cleanup_audio_path)
             os.rmdir(os.path.dirname(cleanup_audio_path))
         except OSError as e:
-            log(f"Failed to cleanup temp audio: {e}")
+            log("DIARIZE", f"Failed to cleanup temp audio: {e}")
 
 if __name__ == "__main__":
     main()

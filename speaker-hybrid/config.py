@@ -149,6 +149,19 @@ class MiscConfig:
     CONSOLIDATE_CX_THRESHOLD: float = 100.0
 
 
+# ── Speaker-Face Fusion ───────────────────────────────────────────
+
+@dataclass
+class FusionConfig:
+    """
+    Speaker-Face Fusion configuration.
+    When ENABLED=False, pipeline behaves exactly as before (backward compatible).
+    """
+    ENABLED: bool = False  # Master switch — OFF by default
+    GRACE_PERIOD: float = 0.3  # seconds to wait before switching away from disappeared speaker
+    CONFIDENCE_THRESHOLD: float = 0.5  # minimum confidence to trust ASD lip motion
+
+
 # ── Singleton instances (importable) ──────────────────────────────
 
 audio = AudioConfig()
@@ -160,3 +173,4 @@ avm = AVMConfig()
 reaction = ReactionConfig()
 render = RenderConfig()
 misc = MiscConfig()
+fusion = FusionConfig()

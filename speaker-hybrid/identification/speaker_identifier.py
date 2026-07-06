@@ -29,13 +29,13 @@ import sys
 import time
 from pathlib import Path
 
-from core.logger import log
-from config import misc as MISC_CFG
-
-# ── Add project root to sys.path so sibling packages resolve ──
+# ── Add project root to sys.path BEFORE any local imports ──
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
+
+from core.logger import log
+from config import misc as MISC_CFG
 
 # director.py is in a sibling directory (speaker-hybrid/)
 _DIRECTOR_DIR = str(_PROJECT_ROOT / "speaker-hybrid")
