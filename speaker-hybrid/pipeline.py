@@ -349,7 +349,7 @@ class Pipeline:
         probe = run_cmd(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(self.video_path)])
         dims = probe.strip().split(',')
         frame_w, frame_h = (int(dims[0]), int(dims[1])) if len(dims) == 2 else (1280, 720)
-        out_w, out_h = (720, 1280) if self.vertical else (frame_w, frame_h)
+        out_w, out_h = (1080, 1920) if self.vertical else (frame_w, frame_h)
         log(f"Output: {out_w}x{out_h}")
 
         face_data = self._load_face_data(result)

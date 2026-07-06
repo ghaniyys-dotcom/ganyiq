@@ -568,9 +568,9 @@ async function handleSceneVideo(job: SceneVideoJob, env: EnvConfig): Promise<voi
   const resultsPath = join(tmpDir, `${youtubeId}-results.json`);
 
   try {
-    // Step 1: Download video (up to 720p, ~200MB max)
+    // Step 1: Download video (up to 1080p, ~200MB max)
     log('SCENE', 'Downloading video...');
-    const dlCmd = `yt-dlp -f "bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=720]" -o "${videoPath}" "${job.youtubeUrl}" --no-playlist --quiet`;
+    const dlCmd = `yt-dlp -f "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=1080]" -o "${videoPath}" "${job.youtubeUrl}" --no-playlist --quiet`;
     execSync(dlCmd, { ...EXEC_OPTS, timeout: 600_000 });
     log('SCENE', `Video downloaded: ${videoPath}`);
 
