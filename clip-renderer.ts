@@ -37,13 +37,9 @@ import { isEnabled, logFeatureFlags } from './features';
 function resolveFfmpegLocation(location: string | undefined, binary: string): string {
   if (!location) return binary;
   const norm = location.replace(/[/\\]+$/, ''); // strip trailing slashes
-  // Check if location is actually a full path to the binary
   const baseName = platform() === 'win32' ? `${binary}.exe` : binary;
-  if (norm.endsWith(`/${baseName}`) || norm.endsWith(`\\${baseName}`) || norm.endsWith(`/${binary}`) || norm.endsWith(`\\${binary}`)) {
-    return `"${norm}"`;
-  }
-  // Location is a directory — append binary name
-  return `"${norm}/${baseName}"`;
+  if (norm.endsWith(baseName) || norm.endsWith(`/${binary}`) || norm.endsWith(`\\${binary}`)) return norm;
+  return `${norm}\\${baseName}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +222,7 @@ async function renderClipViaPython(
   if (heartbeatFn) await heartbeatFn();
 
   // Trim segment (fast copy, no re-encode)
-  execSync(`"${ffmpegBin}" -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -c copy -avoid_negative_ts make_zero "${trimmedPath}"`, EXEC_OPTS);
+  execSync(`${ffmpegBin} -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -c copy -avoid_negative_ts make_zero "${trimmedPath}"`, EXEC_OPTS);
   log('PIPELINE', `Trimmed: ${trimmedPath}`);
 
   if (heartbeatFn) await heartbeatFn();
