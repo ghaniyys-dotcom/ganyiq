@@ -282,19 +282,20 @@ class Pipeline:
 
     def _build_crop_filter(self, bbox, frame_w, frame_h, out_w, out_h, vertical, layout):
         """Build ffmpeg crop filter: vertical=9:16 strip, landscape=head-and-shoulders."""
+        _fscale = f"scale={out_w}:{out_h}:flags=lanczos,unsharp=3:3:0.5:3:3:0.0"
         if not bbox:
             vx = (frame_w - frame_h * 9 / 16) / 2 if vertical else 0
-            return f"crop={frame_h*9/16:.0f}:{frame_h}:{vx:.0f}:0,scale={out_w}:{out_h}" if vertical else f"scale={out_w}:{out_h}"
+            return f"crop={frame_h*9/16:.0f}:{frame_h}:{vx:.0f}:0,{_fscale}" if vertical else _fscale
         if vertical:
             vw = frame_h * 9 / 16
             vx = max(0.0, min(bbox["cx"] - vw / 2, frame_w - vw))
             vy = max(0.0, min(bbox["cy"] - frame_h * 0.35, frame_h - frame_h * 0.15))
-            return f"crop={vw:.0f}:{frame_h}:{vx:.0f}:0,scale={out_w}:{out_h}"
+            return f"crop={vw:.0f}:{frame_h}:{vx:.0f}:0,{_fscale}"
         cw = min(frame_w, max(100, bbox["w"] * 4))
         ch = min(frame_h, max(100, bbox["h"] * 4))
         cx = max(0.0, min(bbox["cx"] - cw / 2, frame_w - cw))
         cy = max(0.0, min(bbox["cy"] - ch * 0.35, frame_h - ch))
-        return f"crop={cw:.0f}:{ch:.0f}:{cx:.0f}:{cy:.0f},scale={out_w}:{out_h}"
+        return f"crop={cw:.0f}:{ch:.0f}:{cx:.0f}:{cy:.0f},{_fscale}"
 
     @staticmethod
     def _build_split_filter(bbox_top, bbox_bottom, frame_w, frame_h, out_w, out_h):
@@ -335,15 +336,16 @@ class Pipeline:
     def _build_debug_overlay(self, bbox, bbox_secondary, crop_x, crop_y, crop_w, crop_h, frame_w, frame_h, scene_num, layout, speaker_id):
         # ... (same as before)
         return ""
-
-    def _build_two_shot_filter(self, bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h):
+    @staticmethod
+    def _build_two_shot_filter(bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h):
         """Build ffmpeg crop filter for two_shot_wide (9:16 aspect ratio).
         Frames both speakers in a single wide vertical shot by calculating
         a bounding box that spans both speakers.
         """
+        _fscale = f"scale={out_w}:{out_h}:flags=lanczos,unsharp=3:3:0.5:3:3:0.0"
         if not bbox_primary and not bbox_secondary:
             vx = (frame_w - frame_h * 9 / 16) / 2
-            return f"crop={frame_h*9/16:.0f}:{frame_h}:{vx:.0f}:0,scale={out_w}:{out_h}"
+            return f"crop={frame_h*9/16:.0f}:{frame_h}:{vx:.0f}:0,{_fscale}"
             
         bbox1 = bbox_primary or bbox_secondary
         bbox2 = bbox_secondary or bbox_primary
@@ -364,7 +366,7 @@ class Pipeline:
         mid_cy = (bbox1["cy"] + bbox2["cy"]) / 2
         vy = max(0.0, min(mid_cy - target_h * 0.35, frame_h - target_h))
         
-        return f"crop={target_w:.0f}:{target_h:.0f}:{vx:.0f}:{vy:.0f},scale={out_w}:{out_h}"
+        return f"crop={target_w:.0f}:{target_h:.0f}:{vx:.0f}:{vy:.0f},{_fscale}"
 
     def _render_from_shot_list(self, result: dict):
         """Renders video from a DirectorAI shot list."""

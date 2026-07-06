@@ -221,12 +221,12 @@ async function renderClipViaPython(
   log('PIPELINE', `Python pipeline: ${pipelinePy}`);
   if (heartbeatFn) await heartbeatFn();
 
-  // Trim segment using re-encode for frame-accurate cut.
-  // -c copy seeks to nearest keyframe -> can add 2+ extra seconds -> face tracking
-  // sees different frames -> different AVM/consolidation -> different shots.
-  // Re-encode 60s of 360p is fast (~5s). Acceptable tradeoff.
+  // Trim segment with stream copy — no re-encode, keeps original quality.
+  // -c copy seeks to nearest keyframe so clip may be 1-3s longer on each end.
+  // Python pipeline handles this fine (extra frames are just silence/black).
+  // Re-encode would cause double-encode quality loss (CRF22 trim → CRF18 render = blurry).
   const trimDuration = endTime - startTime;
-  execSync(ffmpegBin + ' -y -ss ' + startTime + ' -i "' + videoPath + '" -t ' + trimDuration + ' -c:v libx264 -preset fast -crf 22 -c:a aac -avoid_negative_ts make_zero "' + trimmedPath + '"', EXEC_OPTS);
+  execSync(ffmpegBin + ' -y -ss ' + startTime + ' -i "' + videoPath + '" -t ' + trimDuration + ' -c copy -avoid_negative_ts make_zero "' + trimmedPath + '"', EXEC_OPTS);
   log('PIPELINE', `Trimmed: ${trimmedPath}`);
 
   if (heartbeatFn) await heartbeatFn();
