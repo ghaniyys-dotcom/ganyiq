@@ -25,6 +25,8 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional
 from pathlib import Path
 
+from core.logger import log, warn
+
 
 # ---------------------------------------------------------------------------
 # Output types
@@ -110,8 +112,8 @@ class SplitDecisionEngine:
         self,
         speakers: list[dict],
         reactions: list[dict],
-        video_duration: Optional[float] = None,
-    ) -> SplitResult:
+        video_duration: float | None = None,
+    ) -> "SplitResult":
         """
         Main entry point.
 
@@ -195,10 +197,6 @@ class SplitDecisionEngine:
     def _build_segments(
         self, speakers: list[dict], reactions: dict[str, list[dict]]
     ) -> list[dict]:
-        """
-        Chop timeline into atomic candidate segments.
-        Each segment has a single set of active speakers.
-        """
         # Collect all unique time boundaries from speaker segments + reactions
         boundaries = {0.0}
 
@@ -268,7 +266,6 @@ class SplitDecisionEngine:
         speakers: list[dict],
         reactions_all: dict[str, list[dict]],
     ) -> list[dict]:
-        """Assign optimal layout and confidence score to each segment."""
         speaker_lookup = {s['speaker_id']: s for s in speakers}
 
         for seg in segments:
@@ -444,7 +441,7 @@ class SplitDecisionEngine:
 # CLI
 # ---------------------------------------------------------------------------
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description='Split Decision Engine for GANYIQ')
     parser.add_argument('--speakers', help='Path to speakers JSON (TrackedSpeaker[])')
     parser.add_argument('--reactions', help='Path to reactions JSON (ReactionTimeline[])')
@@ -466,7 +463,7 @@ def main():
             visual_only=True,
         )
         if "error" in pipeline_result:
-            print(json.dumps(pipeline_result), file=sys.stderr)
+            warn("SPLIT", json.dumps(pipeline_result))
             sys.exit(1)
 
         # Extract just the split plan

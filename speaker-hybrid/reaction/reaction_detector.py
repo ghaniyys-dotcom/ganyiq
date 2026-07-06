@@ -19,13 +19,15 @@ import os
 import argparse
 from collections import defaultdict
 
+from core.logger import log
+
 
 # =============================================================================
 # Reaction Detection Functions
 # =============================================================================
 
 
-def detect_lip_movement(face, prev_face=None):
+def detect_lip_movement(face: dict, prev_face: dict | None = None) -> float:
     """
     Detect speaking activity from lip landmarks.
     Uses YOLOv8 5-point landmarks (lm = left mouth, rm = right mouth).
@@ -66,7 +68,7 @@ def detect_lip_movement(face, prev_face=None):
     return round(openness, 3)
 
 
-def detect_smile(landmarks):
+def detect_smile(landmarks: dict) -> float:
     """
     Detect smile from mouth curvature.
     Smile = mouth corners raised relative to nose.
@@ -91,7 +93,7 @@ def detect_smile(landmarks):
     return round(smile, 3)
 
 
-def detect_eye_closure(landmarks):
+def detect_eye_closure(landmarks: dict) -> float:
     """
     Detect eye blink from eye landmarks.
     Uses YOLO landmarks: le (left eye), re (right eye).
@@ -118,7 +120,7 @@ def detect_eye_closure(landmarks):
     return round(1.0 - openness, 3)  # 1 = closed, 0 = open
 
 
-def detect_head_movement(current_face, prev_face):
+def detect_head_movement(current_face: dict, prev_face: dict | None) -> float:
     """
     Detect nodding (head up/down oscillation).
     Uses change in nose y-position.
@@ -139,7 +141,7 @@ def detect_head_movement(current_face, prev_face):
     return round(normalized, 4)
 
 
-def detect_surprise(face, landmarks):
+def detect_surprise(face: dict, landmarks: dict) -> float:
     """
     Detect surprise: raised eyebrows + open mouth.
     Approximation using face geometry changes.
@@ -158,7 +160,7 @@ def detect_surprise(face, landmarks):
 # =============================================================================
 
 
-def analyze_reactions(visual_data, fps=1.0):
+def analyze_reactions(visual_data, fps: float = 1.0) -> dict:
     """
     Analyze reactions from hybrid face detector output.
     Processes timeline frames and produces reaction timeline.
@@ -259,7 +261,7 @@ def analyze_reactions(visual_data, fps=1.0):
 # =============================================================================
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="GANYIQ Reaction Detection from Hybrid Face Detector output"
     )
@@ -268,13 +270,13 @@ def main():
     args = parser.parse_args()
 
     if not os.path.exists(args.visual_data_path):
-        print(f"Error: visual data not found: {args.visual_data_path}", file=sys.stderr)
+        warn("REACTION", f"Visual data not found: {args.visual_data_path}")
         sys.exit(1)
 
     with open(args.visual_data_path) as f:
         visual_data = json.load(f)
 
-    print(f"[INFO] Analyzing {len(visual_data.get('timeline', []))} frames...", file=sys.stderr)
+    log("REACTION", f"Analyzing {len(visual_data.get('timeline', []))} frames...")
     result = analyze_reactions(visual_data)
 
     with open(args.output_path, "w") as f:
@@ -282,14 +284,8 @@ def main():
 
     summary = result["summary"]
     for speaker, stats in summary.items():
-        print(
-            f"  {speaker}: speaking={stats['speaking_pct']}%, "
-            f"smile={stats['smile_pct']}%, "
-            f"surprise={stats['surprise_pct']}%, "
-            f"nod={stats['nod_pct']}%",
-            file=sys.stderr,
-        )
-    print(f"[DONE] Saved to {args.output_path}", file=sys.stderr)
+        log("REACTION", f"{speaker}: speaking={stats['speaking_pct']}%, smile={stats['smile_pct']}%, surprise={stats['surprise_pct']}%, nod={stats['nod_pct']}%")
+    log("REACTION", f"Saved to {args.output_path}")
 
 
 if __name__ == "__main__":

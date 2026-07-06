@@ -25,6 +25,9 @@ import urllib.request
 from pathlib import Path
 from face_db import FaceDB
 
+from core.logger import log, warn
+from config import face as FACE_CFG
+
 # =============================================================================
 # YOLOv8-face (from face-detect-v2.py)
 # =============================================================================
@@ -43,18 +46,18 @@ def download_model(model_dir: str, url: str, filename: str, min_size=1_000_000) 
     """Download model file if not present."""
     model_path = os.path.join(model_dir, filename)
     if os.path.exists(model_path) and os.path.getsize(model_path) > min_size:
-        print(f"[INFO] Model found: {model_path}", file=sys.stderr)
+        log("FACEDETECT", f"Model found: {model_path}")
         return model_path
-    print(f"[INFO] Downloading {filename}...", file=sys.stderr)
+    log("FACEDETECT", f"Downloading {filename}...")
     try:
         urllib.request.urlretrieve(url, model_path)
         return model_path
     except Exception as e:
-        print(f"[WARN] Download failed: {e}", file=sys.stderr)
+        warn("FACEDETECT", f"Download failed: {e}")
         return ""
 
 
-def load_yolo_session(model_path: str):
+def load_yolo_session(model_path: str) -> tuple:
     """Load YOLOv8-face ONNX model. Prefers CUDA if available."""
     try:
         import onnxruntime
@@ -63,7 +66,7 @@ def load_yolo_session(model_path: str):
         try:
             if "CUDAExecutionProvider" in onnxruntime.get_available_providers():
                 providers.append("CUDAExecutionProvider")
-                print("[INFO] Using CUDA for ONNX inference", file=sys.stderr)
+                log("FACEDETECT", "Using CUDA for ONNX inference")
         except Exception:
             pass
         providers.append("CPUExecutionProvider")  # fallback
@@ -71,18 +74,18 @@ def load_yolo_session(model_path: str):
             model_path, providers=providers
         )
         input_name = session.get_inputs()[0].name
-        print(
-            f"[INFO] YOLO loaded: input={input_name}, "
+        log(
+            "FACEDETECT",
+            f"YOLO loaded: input={input_name}, "
             f"shape={session.get_inputs()[0].shape}",
-            file=sys.stderr,
         )
         return session, input_name
     except Exception as e:
-        print(f"[WARN] YOLO load failed: {e}", file=sys.stderr)
+        warn("FACEDETECT", f"YOLO load failed: {e}")
         return None, None
 
 
-def yolo_detect_faces(session, input_name, frame, conf_threshold=0.25):
+def yolo_detect_faces(session, input_name, frame, conf_threshold: float = 0.25) -> list[dict]:
     """
     Run YOLO face ONNX inference on a frame.
     Auto-detects output format: YOLOv8 [84, N] or YOLOv10 [N, 6].
@@ -209,7 +212,9 @@ def yolo_detect_faces(session, input_name, frame, conf_threshold=0.25):
 # =============================================================================
 
 def load_mediapipe():
-    """Initialize MediaPipe Face Landmarker."""
+    """Initialize MediaPipe Face Landmarker.
+    Returns landmarker or None on failure.
+    """
     try:
         import mediapipe as mp
         from mediapipe.tasks import python
@@ -225,16 +230,16 @@ def load_mediapipe():
                 "https://storage.googleapis.com/mediapipe-models/"
                 "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
             )
-            print(f"[INFO] Downloading MediaPipe model ({MP_FACE_MODEL})...", file=sys.stderr)
+            log("FACEDETECT", f"Downloading MediaPipe model ({MP_FACE_MODEL})...")
             try:
                 urllib.request.urlretrieve(mp_url, model_path)
-                print(f"[INFO] MediaPipe model saved to {model_path}", file=sys.stderr)
+                log("FACEDETECT", f"MediaPipe model saved to {model_path}")
             except Exception as e:
-                print(f"[WARN] MediaPipe model download failed: {e}", file=sys.stderr)
+                warn("FACEDETECT", f"MediaPipe model download failed: {e}")
                 return None
 
         if not os.path.exists(model_path):
-            print("[WARN] MediaPipe model not found, skipping landmarks", file=sys.stderr)
+            warn("FACEDETECT", "MediaPipe model not found, skipping landmarks")
             return None
 
         options = vision.FaceLandmarkerOptions(
@@ -244,17 +249,17 @@ def load_mediapipe():
             result_callback=None,
         )
         landmarker = vision.FaceLandmarker.create_from_options(options)
-        print("[INFO] MediaPipe Face Landmarker loaded", file=sys.stderr)
+        log("FACEDETECT", "MediaPipe Face Landmarker loaded")
         return landmarker
     except ImportError:
-        print("[WARN] mediapipe not installed, skipping landmarks", file=sys.stderr)
+        warn("FACEDETECT", "mediapipe not installed, skipping landmarks")
         return None
     except Exception as e:
-        print(f"[WARN] MediaPipe init failed: {e}", file=sys.stderr)
+        warn("FACEDETECT", f"MediaPipe init failed: {e}")
         return None
 
 
-def extract_mp_faces(landmarker, frame, timestamp_ms):
+def extract_mp_faces(landmarker, frame, timestamp_ms: int) -> tuple[list[dict], list]:
     """Extract MediaPipe face detections + landmarks from a frame.
 
     Returns (face_list, landmarks_list):
@@ -364,7 +369,7 @@ class SpeakerClusterer:
         self.next_speaker = 0
         self.iou_threshold = iou_threshold
 
-    def assign(self, face):
+    def assign(self, face: dict) -> str:
         """Assign a face detection to a speaker based on track_id and position."""
         track_id = face.get("track_id", -1)
 
@@ -379,7 +384,7 @@ class SpeakerClusterer:
             self.next_speaker += 1
         return f"speaker_{tid}"
 
-    def get_results(self):
+    def get_results(self) -> list[dict]:
         """Return all clustered speakers."""
         results = []
         for sid, detections in self.speakers.items():
@@ -420,7 +425,7 @@ def process_video(
     start_time: float | None = None,
     end_time: float | None = None,
     enable_mediapipe: bool = True,
-):
+) -> None:
     """
     Main hybrid face detection pipeline:
     1. Initialize YOLOv8-face + MediaPipe
@@ -433,7 +438,7 @@ def process_video(
     import numpy as np
 
     if not os.path.exists(video_path):
-        print(f"Error: video not found: {video_path}", file=sys.stderr)
+        warn("FACEDETECT", f"Error: video not found: {video_path}")
         sys.exit(1)
 
     # Load YOLO
@@ -442,7 +447,7 @@ def process_video(
     session, input_name = load_yolo_session(yolo_path) if yolo_path else (None, None)
 
     use_yolo = session is not None
-    print(f"[INFO] Using YOLO: {use_yolo}", file=sys.stderr)
+    log("FACEDETECT", f"Using YOLO: {use_yolo}")
 
     # Load MediaPipe
     mp_landmarker = None
@@ -450,22 +455,22 @@ def process_video(
         try:
             mp_landmarker = load_mediapipe()
         except Exception as e:
-            print(f"[WARN] MediaPipe unavailable: {e}", file=sys.stderr)
+            warn("FACEDETECT", f"MediaPipe unavailable: {e}")
 
     # Open video
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print(f"Error: cannot open video: {video_path}", file=sys.stderr)
+        warn("FACEDETECT", f"Error: cannot open video: {video_path}")
         sys.exit(4)
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     duration = total_frames / fps if fps > 0 else 0
 
-    print(f"[INFO] Video: {total_frames} frames, {fps:.2f} fps, {duration:.1f}s", file=sys.stderr)
-    print(f"[INFO] MediaPipe: {'loaded' if mp_landmarker else 'NOT LOADED'}", file=sys.stderr)
-    print(f"[INFO] YOLO: {'loaded' if use_yolo else 'NOT LOADED'}", file=sys.stderr)
-    print(f"[INFO] ByteTrack: {'loaded' if HAS_BYTE_TRACK else 'NOT LOADED'}", file=sys.stderr)
+    log("FACEDETECT", f"Video: {total_frames} frames, {fps:.2f} fps, {duration:.1f}s")
+    log("FACEDETECT", f"MediaPipe: {'loaded' if mp_landmarker else 'NOT LOADED'}")
+    log("FACEDETECT", f"YOLO: {'loaded' if use_yolo else 'NOT LOADED'}")
+    log("FACEDETECT", f"ByteTrack: {'loaded' if HAS_BYTE_TRACK else 'NOT LOADED'}")
 
     # Time range
     if start_time is not None and end_time is not None:
@@ -481,7 +486,7 @@ def process_video(
     frame_interval = max(1, int(fps / sample_rate))
     if HAS_BYTE_TRACK:
         tracker = ByteTrack(conf_threshold=conf_threshold, max_lost=25)
-        print(f"[INFO] Using ByteTrack (Kalman + Hungarian) tracker", file=sys.stderr)
+        log("FACEDETECT", f"Using ByteTrack (Kalman + Hungarian) tracker")
     else:
         from tracker import ByteTrack as _BT
         tracker = _BT(conf_threshold=conf_threshold, max_lost=25)
@@ -511,7 +516,7 @@ def process_video(
                     warm_count += 1
         warm_cap.release()
         if warm_count > 0:
-            print(f"[FaceDB] Warm-up: {warm_count} face samples registered", file=sys.stderr)
+            log("FaceDB", f"Warm-up: {warm_count} face samples registered")
 
     results = []
     frame_idx = start_frame
@@ -575,10 +580,10 @@ def process_video(
                                 pass
                     rejected = len(yolo_faces) - len(validated_yolo)
                     if rejected > 0:
-                        print(f"[FASE-11] Rejected {rejected}/{len(yolo_faces)} false positives (no valid face landmarks)", file=sys.stderr)
+                        log("FACEDETECT", f"FASE-11: Rejected {rejected}/{len(yolo_faces)} false positives (no valid face landmarks)")
                     yolo_faces = validated_yolo if validated_yolo else yolo_faces
                 except Exception as e:
-                    print(f"[FASE-11] Validation error (non-fatal): {e}", file=sys.stderr)
+                    log("FACEDETECT", f"FASE-11: Validation error (non-fatal): {e}")
             # ── End FASE 11 ──
 
             # Save raw YOLO position before ByteTrack (for ASD fallback)
@@ -699,7 +704,7 @@ def process_video(
         total_to_process = end_frame - start_frame
         if total_to_process > 0 and (frame_idx - start_frame) % 300 == 0:
             pct = int((frame_idx - start_frame) / total_to_process * 100)
-            print(f"[PROGRESS] {pct}%", file=sys.stderr)
+            log("FACEDETECT", f"PROGRESS: {pct}%")
 
     cap.release()
 
@@ -721,17 +726,14 @@ def process_video(
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2, default=str)
 
-    print(
-        f"[DONE] {len(results)} frames, {len(speakers)} speakers logged",
-        file=sys.stderr,
-    )
+    log("FACEDETECT", f"{len(results)} frames, {len(speakers)} speakers logged")
 
 
 # =============================================================================
 # CLI
 # =============================================================================
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="GANYIQ Hybrid Face Detector (YOLOv8-face + MediaPipe)"
     )

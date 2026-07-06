@@ -21,53 +21,13 @@ import argparse
 import subprocess
 from pathlib import Path
 
+# Allow import from speaker-hybrid package
+_SELF_PARENT = str(Path(__file__).resolve().parent / "speaker-hybrid")
+if _SELF_PARENT not in sys.path:
+    sys.path.insert(0, _SELF_PARENT)
 
-def resolve_ffmpeg() -> str:
-    """Return the full path to ffmpeg, checking FFMPEG_LOCATION env var first.
-
-    FFMPEG_LOCATION can contain either:
-      - A DIRECTORY (e.g., "C:\\ffmpeg\\bin") → appends "ffmpeg.exe"
-      - A FULL PATH to ffmpeg.exe → uses directly
-    """
-    ffmpeg_location = os.environ.get('FFMPEG_LOCATION')
-    if ffmpeg_location:
-        ffmpeg_location = ffmpeg_location.rstrip('/\\')
-        for exe_name in ['ffmpeg.exe', 'ffmpeg']:
-            if ffmpeg_location.endswith(exe_name):
-                if os.path.exists(ffmpeg_location):
-                    return ffmpeg_location
-        for exe_name in ['ffmpeg.exe', 'ffmpeg']:
-            candidate = os.path.join(ffmpeg_location, exe_name)
-            if os.path.exists(candidate):
-                return candidate
-    if sys.platform == 'win32':
-        home = os.environ.get('LOCALAPPDATA', '')
-        if home:
-            candidate = os.path.join(home, 'Microsoft', 'WinGet', 'Packages',
-                                     'Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe',
-                                     'ffmpeg-8.1.1-full_build', 'bin', 'ffmpeg.exe')
-            if os.path.exists(candidate):
-                return candidate
-    # ffmpeg not found via FFMPEG_LOCATION or WinGet — will use PATH default
-    return 'ffmpeg'
-
-
-def extract_audio(video_path: str, audio_path: str, clip_start: float = None, clip_end: float = None) -> bool:
-    """Extract audio from video file using ffmpeg. Optionally trim to clip window."""
-    ffmpeg_bin = resolve_ffmpeg()
-    try:
-        cmd = [ffmpeg_bin, '-y']
-        if clip_start is not None:
-            cmd.extend(['-ss', str(clip_start)])
-        cmd.extend(['-i', video_path])
-        if clip_end is not None:
-            cmd.extend(['-to', str(clip_end)])
-        cmd.extend(['-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', audio_path])
-        subprocess.run(cmd, capture_output=True, timeout=120)
-        return os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000
-    except Exception as e:
-        print(f"[WARN] Audio extraction failed: {e}", file=sys.stderr)
-        return False
+from core.logger import log
+from utils.ffmpeg_utils import resolve_ffmpeg, extract_audio
 
 
 def transcribe_whisper(audio_path: str) -> dict:
@@ -77,7 +37,7 @@ def transcribe_whisper(audio_path: str) -> dict:
         import numpy as np
 
         model = whisper.load_model("tiny")  # ~400MB RAM, ~0.5x real-time on CPU
-        print(f"[INFO] Whisper model loaded (tiny)", file=sys.stderr)
+        log("TRANSCRIBE", f"Whisper model loaded (tiny)")
 
         result = model.transcribe(
             audio_path,
@@ -113,8 +73,8 @@ def transcribe_whisper(audio_path: str) -> dict:
                     "text": " ".join(seg_words),
                 })
 
-        print(f"[INFO] Whisper: {len(words)} words, {len(segments)} segments, "
-              f"language={result.get('language', 'unknown')}", file=sys.stderr)
+        log("TRANSCRIBE", f"Whisper: {len(words)} words, {len(segments)} segments, "
+              f"language={result.get('language', 'unknown')}")
 
         return {
             "words": words,
@@ -124,10 +84,10 @@ def transcribe_whisper(audio_path: str) -> dict:
         }
 
     except ImportError:
-        print("[INFO] whisper not installed, skipping — try 'pip install openai-whisper'", file=sys.stderr)
+        log("TRANSCRIBE", "whisper not installed, skipping — try 'pip install openai-whisper'")
         return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
     except Exception as e:
-        print(f"[INFO] Whisper transcription failed — skipping: {e}", file=sys.stderr)
+        log("TRANSCRIBE", f"Whisper transcription failed — skipping: {e}")
         return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
 
 
@@ -173,7 +133,7 @@ def transcribe_deepgram(audio_path: str, api_key: str) -> dict:
             method='POST',
         )
 
-        print(f"[INFO] Deepgram: sending {len(audio_data)} bytes...", file=sys.stderr)
+        log("TRANSCRIBE", f"Deepgram: sending {len(audio_data)} bytes...")
         with urllib.request.urlopen(req, timeout=600) as resp:
             response_data = json.loads(resp.read().decode('utf-8'))
 
@@ -183,12 +143,12 @@ def transcribe_deepgram(audio_path: str, api_key: str) -> dict:
                .get('alternatives', [{}])[0])
 
         if not alt:
-            print("[WARN] Deepgram returned no alternatives", file=sys.stderr)
+            log("TRANSCRIBE", "WARN: Deepgram returned no alternatives")
             return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
 
         raw_words = alt.get('words', [])
         if not raw_words:
-            print("[WARN] Deepgram returned zero words", file=sys.stderr)
+            log("TRANSCRIBE", "WARN: Deepgram returned zero words")
             return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
 
         # Extract word-level timestamps (same format as Whisper)
@@ -248,8 +208,8 @@ def transcribe_deepgram(audio_path: str, api_key: str) -> dict:
         confidence = alt.get('confidence', 0)
         full_transcript = alt.get('transcript', alt.get('paragraphs', {}).get('transcript', ''))
 
-        print(f"[INFO] Deepgram: {len(words)} words, {len(segments)} segments, "
-              f"confidence={confidence:.3f}", file=sys.stderr)
+        log("TRANSCRIBE", f"Deepgram: {len(words)} words, {len(segments)} segments, "
+              f"confidence={confidence:.3f}")
 
         return {
             "words": words,
@@ -260,11 +220,11 @@ def transcribe_deepgram(audio_path: str, api_key: str) -> dict:
 
     except Exception as e:
         # Non-fatal — return empty result, caller handles gracefully
-        print(f"[INFO] Deepgram transcription unavailable: {e}", file=sys.stderr)
+        log("TRANSCRIBE", f"Deepgram transcription unavailable: {e}")
         return {"words": [], "segments": [], "full_transcript": "", "source": "none"}
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description='Word-level transcription')
     parser.add_argument('input_path', help='Path to video or audio file')
     parser.add_argument('output_json', help='Output transcription JSON')
@@ -289,34 +249,34 @@ def main():
             clip_info = ''
             if args.clip_start is not None and args.clip_end is not None:
                 clip_info = f' [clip {args.clip_start}s-{args.clip_end}s ({args.clip_end - args.clip_start:.0f}s)]'
-            print(f"[INFO] Extracting audio from {args.input_path}{clip_info}...", file=sys.stderr)
+            log("TRANSCRIBE", f"Extracting audio from {args.input_path}{clip_info}...")
             if not extract_audio(args.input_path, audio_path, args.clip_start, args.clip_end):
-                print("[WARN] Audio extraction failed", file=sys.stderr)
+                log("TRANSCRIBE", "WARN: Audio extraction failed")
                 audio_path = args.input_path
             else:
                 cleanup_audio = True
                 audio_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-                print(f"[INFO] Extracted audio: {audio_size_mb:.1f}MB", file=sys.stderr)
+                log("TRANSCRIBE", f"Extracted audio: {audio_size_mb:.1f}MB")
 
     if not os.path.exists(audio_path):
-        print(f"Error: input not found: {audio_path}", file=sys.stderr)
+        print(f"Error: input not found: {audio_path}")
         sys.exit(1)
 
     # Strategy 1: Whisper
     result = transcribe_whisper(audio_path)
     if result['source'] != 'none':
-        print(f"[TRANSCRIBE] strategy=whisper words={len(result['words'])} segments={len(result['segments'])} confidence={result.get('confidence', 'N/A')}", file=sys.stderr, flush=True)
+        log("TRANSCRIBE", f"strategy=whisper words={len(result['words'])} segments={len(result['segments'])} confidence={result.get('confidence', 'N/A')}", file=sys.stderr)
 
     # Strategy 2: Deepgram fallback (if Whisper failed and we have a key)
     if result['source'] == 'none' and args.deepgram_key:
-        print("[TRANSCRIBE] strategy=deepgram (whisper unavailable)", file=sys.stderr, flush=True)
+        print("[TRANSCRIBE] strategy=deepgram (whisper unavailable)", file=sys.stderr)
         result = transcribe_deepgram(audio_path, args.deepgram_key)
         if result['source'] != 'none':
-            print(f"[TRANSCRIBE] strategy=deepgram words={len(result['words'])} segments={len(result['segments'])} confidence={result.get('confidence', 'N/A')}", file=sys.stderr, flush=True)
+            log("TRANSCRIBE", f"strategy=deepgram words={len(result['words'])} segments={len(result['segments'])} confidence={result.get('confidence', 'N/A')}", file=sys.stderr)
 
     # Strategy 3: Both failed — write empty result, don't fail
     if result['source'] == 'none':
-        print("[TRANSCRIBE] strategy=FAILED — no transcription available, writing empty result", file=sys.stderr, flush=True)
+        print("[TRANSCRIBE] strategy=FAILED — no transcription available, writing empty result", file=sys.stderr)
         with open(args.output_json, 'w') as f:
             json.dump(result, f)
         if cleanup_audio and os.path.exists(audio_path):
@@ -331,7 +291,7 @@ def main():
         json.dump(result, f)
 
     print(f"[DONE] Source: {result['source']}, {len(result['words'])} words, "
-          f"{len(result['segments'])} segments", file=sys.stderr)
+          f"{len(result['segments'])} segments")
 
     if cleanup_audio and os.path.exists(audio_path):
         try:

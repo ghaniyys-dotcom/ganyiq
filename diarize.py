@@ -21,84 +21,19 @@ import argparse
 import subprocess
 import tempfile
 from pathlib import Path
-def load_env_vars(filename=".env.local"):
-    """Manually parse a .env file and set environment variables."""
-    try:
-        with open(filename, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    key, value = line.split('=', 1)
-                    os.environ.setdefault(key.strip(), value.strip())
-    except FileNotFoundError:
-        log(f"Info: {filename} not found, relying on system environment variables.")
-    except Exception as e:
-        log(f"Warning: Could not parse {filename}: {e}")
+
+# Allow import from speaker-hybrid package
+_SELF_PARENT = str(Path(__file__).resolve().parent / "speaker-hybrid")
+if _SELF_PARENT not in sys.path:
+    sys.path.insert(0, _SELF_PARENT)
+
+from core.logger import log
+from utils.env_utils import load_env_vars
+from utils.ffmpeg_utils import resolve_ffmpeg, extract_audio
 
 # Load env vars at script start
 load_env_vars(Path(__file__).resolve().parent / '.env.local')
 
-
-def log(msg: str):
-    """Emit structured log for GANYIQ to capture."""
-    print(f"[DIARIZE] {msg}", file=sys.stderr, flush=True)
-
-
-def resolve_ffmpeg() -> str:
-    """Return the full path to ffmpeg, checking FFMPEG_LOCATION env var first.
-
-    FFMPEG_LOCATION can contain either:
-      - A DIRECTORY (e.g., "C:\\ffmpeg\\bin") → appends "ffmpeg.exe"
-      - A FULL PATH to ffmpeg.exe → uses directly
-    """
-    ffmpeg_location = os.environ.get('FFMPEG_LOCATION')
-    if ffmpeg_location:
-        ffmpeg_location = ffmpeg_location.rstrip('/\\')  # strip trailing slashes
-        # If location already IS ffmpeg.exe or ffmpeg, use it directly
-        for exe_name in ['ffmpeg.exe', 'ffmpeg']:
-            if ffmpeg_location.endswith(exe_name):
-                if os.path.exists(ffmpeg_location):
-                    log(f"ffmpeg found at: {ffmpeg_location}")
-                    return ffmpeg_location
-        # Otherwise, treat as directory and append binary name
-        for exe_name in ['ffmpeg.exe', 'ffmpeg']:
-            candidate = os.path.join(ffmpeg_location, exe_name)
-            if os.path.exists(candidate):
-                log(f"ffmpeg found at: {candidate}")
-                return candidate
-    # On Windows, check WinGet install location
-    if sys.platform == 'win32':
-        home = os.environ.get('LOCALAPPDATA', '')
-        if home:
-            candidate = os.path.join(home, 'Microsoft', 'WinGet', 'Packages',
-                                     'Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe',
-                                     'ffmpeg-8.1.1-full_build', 'bin', 'ffmpeg.exe')
-            if os.path.exists(candidate):
-                log(f"ffmpeg found via WinGet: {candidate}")
-                return candidate
-    log("ffmpeg not found via FFMPEG_LOCATION or WinGet — falling back to PATH default")
-    return 'ffmpeg'
-
-
-def extract_audio(video_path: str, audio_path: str) -> bool:
-    """Extract audio from video file using ffmpeg."""
-    ffmpeg_bin = resolve_ffmpeg()
-    try:
-        subprocess.run(
-            [ffmpeg_bin, '-y', '-i', video_path, '-vn',
-             '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
-             audio_path],
-            capture_output=True, timeout=120
-        )
-        exists = os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000
-        if exists:
-            log(f"audio extracted: {os.path.getsize(audio_path)} bytes")
-        else:
-            log("audio extraction produced empty output")
-        return exists
-    except Exception as e:
-        log(f"audio extraction FAILED: {e}")
-        return False
 
 
 # ── Strategy 1: Deepgram Diarization ──────────────────────────────────────────
@@ -108,7 +43,7 @@ def diarize_deepgram(audio_path: str, api_key: str) -> list:
     import urllib.request
     import urllib.parse
     try:
-        log("strategy=deepgram attempting query to Deepgram API...")
+        log("DIARIZE", "strategy=deepgram attempting query to Deepgram API...")
         with open(audio_path, 'rb') as f:
             audio_data = f.read()
 
@@ -149,12 +84,12 @@ def diarize_deepgram(audio_path: str, api_key: str) -> list:
                .get('alternatives', [{}])[0])
 
         if not alt:
-            log("strategy=deepgram failed — no alternatives returned")
+            log("DIARIZE", "strategy=deepgram failed — no alternatives returned")
             return []
 
         raw_words = alt.get('words', [])
         if not raw_words:
-            log("strategy=deepgram failed — zero words returned")
+            log("DIARIZE", "strategy=deepgram failed — zero words returned")
             return []
 
         segments = []
@@ -204,21 +139,21 @@ def diarize_deepgram(audio_path: str, api_key: str) -> list:
 def diarize_pyannote(audio_path: str, hf_token: str) -> list:
     """Diarize using PyAnnote speaker-diarization-3.1."""
     try:
-        log("strategy=pyannote attempting import...")
+        log("DIARIZE", "strategy=pyannote attempting import...")
         from pyannote.audio import Pipeline
         import torch
-        log("pyannote.audio imported successfully")
+        log("DIARIZE", "pyannote.audio imported successfully")
 
-        log("loading pipeline pyannote/speaker-diarization-3.1...")
+        log("DIARIZE", "loading pipeline pyannote/speaker-diarization-3.1...")
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
             use_auth_token=hf_token
         )
-        log("pipeline loaded")
+        log("DIARIZE", "pipeline loaded")
 
         # Move to CPU if no GPU
         if not torch.cuda.is_available():
-            log("CUDA not available — moving pipeline to CPU")
+            log("DIARIZE", "CUDA not available — moving pipeline to CPU")
             pipeline.to(torch.device("cpu"))
         else:
             log(f"CUDA available: {torch.cuda.get_device_name(0)}")
@@ -361,7 +296,7 @@ def diarize_clustering(audio_path: str, num_speakers: int = 0) -> list:
         log(f"speech frames: {speech_ratio*100:.0f}% ({np.sum(is_speech)}/{num_frames})")
 
         if np.sum(is_speech) < 5:
-            log("strategy=clustering FAILED — too few speech frames")
+            log("DIARIZE", "strategy=clustering FAILED — too few speech frames")
             return []
 
         # Only cluster speech frames
@@ -382,7 +317,7 @@ def diarize_clustering(audio_path: str, num_speakers: int = 0) -> list:
             log(f"reducing clusters to {n_clusters} (insufficient speech frames)")
 
         if n_clusters < 2:
-            log("strategy=clustering FAILED — only 1 cluster possible")
+            log("DIARIZE", "strategy=clustering FAILED — only 1 cluster possible")
             return []
 
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=3)
@@ -439,7 +374,7 @@ def diarize_clustering(audio_path: str, num_speakers: int = 0) -> list:
 def diarize_energy_fallback(audio_path: str) -> list:
     """Simple energy-based VAD. Returns generic speaker_0 labels."""
     try:
-        log("strategy=energy_fallback (no clustering)")
+        log("DIARIZE", "strategy=energy_fallback (no clustering)")
         import numpy as np
         import scipy.io.wavfile as wav
 
@@ -499,7 +434,7 @@ def diarize_energy_fallback(audio_path: str) -> list:
 
 # ── Main ────────────────────────────────────────────────────────────────────────
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description='Speaker diarization')
     parser.add_argument('input_path', help='Path to video or audio file')
     parser.add_argument('output_json', help='Output speaker segments JSON')
