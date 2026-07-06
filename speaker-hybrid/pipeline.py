@@ -35,8 +35,26 @@ print("--- PIPELINE SCRIPT STARTED ---", file=sys.stderr) # DEBUG
 def log(msg: str):
     print(f"[PIPELINE] {msg}", file=sys.stderr, flush=True)
 
+def _resolve_ffmpeg(cmd: list[str]) -> list[str]:
+    """Replace bare 'ffmpeg'/'ffprobe' with full path from FFMPEG_LOCATION env."""
+    if not cmd:
+        return cmd
+    loc = os.environ.get('FFMPEG_LOCATION', '').strip()
+    if not loc:
+        return cmd
+    exe = cmd[0]
+    if exe not in ('ffmpeg', 'ffprobe'):
+        return cmd
+    # loc can be directory or full path to binary
+    full = os.path.join(loc, exe + ('.exe' if sys.platform == 'win32' else ''))
+    if not os.path.isfile(full):
+        full = loc if loc.endswith(exe) else os.path.join(loc, exe)
+    cmd[0] = full
+    return cmd
+
 def run_cmd(cmd: list[str], desc: str = "", timeout: int = 600) -> str:
     """Run a shell command and return stdout."""
+    cmd = _resolve_ffmpeg(cmd)
     if desc:
         log(desc)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
