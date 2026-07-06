@@ -131,13 +131,7 @@ function getCachedVideoPath(videoId: string): string | null {
   const entry = manifest[videoId];
   if (!entry) return null;
 
-  const cachedPath = entry.path && existsSync(entry.path) ? entry.path : join(CACHE_DIR, `${videoId}.webm`);
-  // Kalo cache-nya fallback 360p, anggap cache miss biar coba download HD lagi.
-  if (cachedPath.includes('_fallback')) {
-    delete manifest[videoId];
-    saveCacheManifest(manifest);
-    return null;
-  }
+  const cachedPath = entry.path && existsSync(entry.path) ? entry.path : join(CACHE_DIR, `${videoId}.mp4`);
   if (!existsSync(cachedPath)) {
     // File missing — remove from manifest
     delete manifest[videoId];
@@ -286,34 +280,23 @@ export async function renderClip(
   if (!existsSync(TEMP_DIR)) execSync(`mkdir "${TEMP_DIR}"`, EXEC_OPTS);
 
   // 1. Get video (cached or download)
-  // 1. Get video (cached or download) — try 3 format strategies
   let videoPath = getCachedVideoPath(videoId);
   if (!videoPath) {
     log('YTDLP', `Downloading video: ${videoUrl}`);
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     if (heartbeatFn) await heartbeatFn();
 
-    // Strategy 1: bestvideo[height<=1080]+bestaudio → simpan sebagai .webm
-    // YouTube VP9 stream native di webm container, jadi gak perlu remux.
-    const formatStr1 = 'bestvideo[height<=1080]+bestaudio';
-    videoPath = join(CACHE_DIR, `${videoId}.webm`);
-    try {
-      execSync(
-        `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "${formatStr1}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
-        EXEC_OPTS,
-      );
-    } catch (e) {
-      // Strategy 1 gagal (misal merge gagal) — fallback ke single-file format
-      log('YTDLP', `Format ${formatStr1} failed, fallback to single-file format`);
-      const fallbackPath = join(CACHE_DIR, `${videoId}_fallback.mp4`);
-      const formatStr2 = 'best[height<=720]';
-      execSync(
-        `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "${formatStr2}" -o "${fallbackPath}" "${videoUrl}" --no-playlist --quiet`,
-        EXEC_OPTS,
-      );
-      // Override videoPath to use the fallback
-      videoPath = fallbackPath;
-    }
+    // Format string with fallbacks (yt-dlp tries each, picks first that works):
+    //   1. 1080p h264 MP4 + AAC audio (merge trivial, works with Gyan.dev)
+    //   2. Best single MP4 file up to 1080p (720p h264, no merge needed)
+    //   3. VP9 + best audio (might fail merge on some env, but worth trying)
+    //   4. Best single file up to 720p (guaranteed fallback, usually format 18)
+    const formatStr = 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/bestvideo[height<=1080]+bestaudio/best[height<=720]';
+    videoPath = join(CACHE_DIR, `${videoId}.mp4`);
+    execSync(
+      `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "${formatStr}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
+      EXEC_OPTS,
+    );
     addToCache(videoId, videoPath);
   }
 
