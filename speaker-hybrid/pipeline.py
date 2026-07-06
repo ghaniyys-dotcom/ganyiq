@@ -17,6 +17,16 @@ import time
 import platform
 from pathlib import Path
 
+# Load .env.local for Deepgram key and other env vars
+_env_local = Path(__file__).resolve().parent.parent / ".env.local"
+if _env_local.exists():
+    with open(_env_local) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 # Force parent directory into sys.path to resolve sibling modules
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
