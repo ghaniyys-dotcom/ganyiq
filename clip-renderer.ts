@@ -205,6 +205,44 @@ function enforceCacheLimit(): void {
   saveCacheManifest(manifest);
 }
 
+/**
+ * Render a clip segment using the Python speaker-hybrid pipeline.
+ * Trims the segment from the full video, runs pipeline.py, cleans up.
+ */
+async function renderClipViaPython(
+  videoPath: string,
+  outputPath: string,
+  startTime: number,
+  endTime: number,
+  ffmpegBin: string,
+  tmpDir: string,
+  videoId: string,
+  heartbeatFn?: HeartbeatFn,
+): Promise<void> {
+  const pipelinePy = join(__dirname, 'speaker-hybrid', 'pipeline.py');
+  const trimmedPath = join(tmpDir, `${videoId}_${Math.round(startTime)}s_${Math.round(endTime)}s_trimmed.mp4`);
+
+  log('PIPELINE', `Python pipeline: ${pipelinePy}`);
+  if (heartbeatFn) await heartbeatFn();
+
+  // Trim segment (fast copy, no re-encode)
+  execSync(`"${ffmpegBin}" -y -ss ${startTime} -to ${endTime} -i "${videoPath}" -c copy -avoid_negative_ts make_zero "${trimmedPath}"`, EXEC_OPTS);
+  log('PIPELINE', `Trimmed: ${trimmedPath}`);
+
+  if (heartbeatFn) await heartbeatFn();
+
+  // Run Python pipeline
+  execSync(`python "${pipelinePy}" --video "${trimmedPath}" --output "${outputPath}" --vertical`, { ...EXEC_OPTS, timeout: 600_000 });
+  log('PIPELINE', 'Python pipeline done');
+
+  // Cleanup trimmed temp file
+  try { execSync(`del /f "${trimmedPath}"`, EXEC_OPTS); } catch { try { execSync(`rm -f "${trimmedPath}"`, { ...EXEC_OPTS, shell: '/bin/sh' }); } catch {} }
+
+  if (!existsSync(outputPath)) {
+    throw new Error(`Python pipeline did not produce output: ${outputPath}`);
+  }
+}
+
 export type HeartbeatFn = () => Promise<void>;
 
 export async function renderClip(
@@ -300,7 +338,15 @@ export async function renderClip(
   // Resolve ffmpeg/ffprobe paths (handles both directory and full-path-in-FFMPEG_LOCATION)
   const ffmpegBin = resolveFfmpegLocation(env.FFMPEG_LOCATION, 'ffmpeg');
 
-  // Run analysis pipeline (V2 with V1 fallback)
+  // ── Python pipeline for vertical clips (bypass TypeScript renderer) ──
+  if ((renderMode === 'vertical' || renderMode === 'vertical-split') && existsSync(join(__dirname, 'speaker-hybrid', 'pipeline.py'))) {
+    await renderClipViaPython(
+      videoPath, outputPath, startTime, endTime,
+      ffmpegBin, TEMP_DIR, videoId, heartbeatFn,
+    );
+    log('PIPELINE', `Output ready: ${outputPath}`);
+  } else {
+    // ── Original TypeScript renderer ──
   // HF Token for PyAnnote speaker diarization (optional — set HF_TOKEN in .env.local)
   const hfToken = env.HF_TOKEN || process.env.HF_TOKEN || '';
   const deepgramKey = env.DEEPGRAM_API_KEY || process.env.DEEPGRAM_API_KEY || '';
@@ -438,9 +484,10 @@ export async function renderClip(
 
     if (heartbeatFn) await heartbeatFn();
     execSync(ffmpegCmd, { ...EXEC_OPTS, timeout: 120_000 });
-  }
+  } // closes if (ffmpegCmd !== '')
+  } // closes else block (Python pipeline)
 
-  // Verify output exists (runs for both single-command and face-tracked paths)
+  // Verify output exists (runs for both Python pipeline and TypeScript renderer)
   const fileExists = existsSync(outputPath);
   log('DEBUG', `[7] outputFileExists=${fileExists}`);
   log('DEBUG', `[7b] outputFileAbsPath=${outputPath}`);
