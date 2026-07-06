@@ -294,12 +294,12 @@ export async function renderClip(
     const videoTmp = join(CACHE_DIR, `${videoId}_video.mp4`);
     const audioTmp = join(CACHE_DIR, `${videoId}_audio.m4a`);
     const finalPath = join(CACHE_DIR, `${videoId}.mkv`);
-    const playerArgs = '--extractor-args "youtube:player_client=android"';
+    const playerArgs = '--extractor-args "youtube:player_client=android" --cookies-from-browser chrome';
 
-    // Step A: download best video-only (h264 mp4 DASH — more stable than VP9)
+    // Step A: download best video-only (VP9 preferred, with browser cookies for DASH access)
     try {
       execSync(
-        `yt-dlp ${playerArgs} -f "bestvideo[ext=mp4][height<=1080]" -o "${videoTmp}" "${videoUrl}" --no-playlist --quiet`,
+        `yt-dlp ${playerArgs} -f "bestvideo[height<=1080]" -o "${videoTmp}" "${videoUrl}" --no-playlist --quiet`,
         EXEC_OPTS,
       );
     } catch (e) {
