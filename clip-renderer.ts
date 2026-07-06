@@ -131,7 +131,7 @@ function getCachedVideoPath(videoId: string): string | null {
   const entry = manifest[videoId];
   if (!entry) return null;
 
-  const cachedPath = join(CACHE_DIR, `${videoId}.mp4`);
+  const cachedPath = join(CACHE_DIR, `${videoId}.mkv`);
   if (!existsSync(cachedPath)) {
     // File missing — remove from manifest
     delete manifest[videoId];
@@ -272,19 +272,18 @@ export async function renderClip(
   // 1. Get video (cached or download)
   let videoPath = getCachedVideoPath(videoId);
   if (!videoPath) {
-    videoPath = join(CACHE_DIR, `${videoId}.mp4`);
+    videoPath = join(CACHE_DIR, `${videoId}.mkv`);
     log('YTDLP', `Downloading video: ${videoUrl}`);
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     if (heartbeatFn) await heartbeatFn();
     // P0.5: Download up to 1080p source for better quality
-    // NOTE: [vcodec^=avc1] BLOCKS VP9 streams which are YouTube's primary 1080p codec.
-    // Removing it lets yt-dlp pick the best available quality (vp9 1080p → h264 720p → etc.)
-    // Remove [ext=m4a] so VP9+Opus combos work; remux to mp4 after download
-    const formatStr = 'bestvideo[height<=1080]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]';
+    // Download in mkv (handles all codecs: h264/VP9/AV1 + any audio).
+    // Trim step below converts to mp4 for the pipeline.
+    const formatStr = 'bv+ba/b';
     const cookiesFlag = existsSync('cookies.txt') ? '--cookies "cookies.txt"' : '';
     const extractorArgs = '--extractor-args "youtube:player_client=android"';
     execSync(
-      `yt-dlp ${extractorArgs} ${ffmpegFlag} ${cookiesFlag} --remux-video mp4 -f "${formatStr}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
+      `yt-dlp ${extractorArgs} ${ffmpegFlag} ${cookiesFlag} -f "${formatStr}" --merge-output-format mkv -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
       EXEC_OPTS,
     );
     addToCache(videoId, videoPath);
