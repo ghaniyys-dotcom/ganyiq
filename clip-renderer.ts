@@ -131,7 +131,7 @@ function getCachedVideoPath(videoId: string): string | null {
   const entry = manifest[videoId];
   if (!entry) return null;
 
-  const cachedPath = join(CACHE_DIR, `${videoId}.mkv`);
+  const cachedPath = entry.path && existsSync(entry.path) ? entry.path : join(CACHE_DIR, `${videoId}.mkv`);
   if (!existsSync(cachedPath)) {
     // File missing — remove from manifest
     delete manifest[videoId];
@@ -270,22 +270,34 @@ export async function renderClip(
   if (!existsSync(TEMP_DIR)) execSync(`mkdir "${TEMP_DIR}"`, EXEC_OPTS);
 
   // 1. Get video (cached or download)
+  // 1. Get video (cached or download) — try 3 format strategies
   let videoPath = getCachedVideoPath(videoId);
   if (!videoPath) {
     videoPath = join(CACHE_DIR, `${videoId}.mkv`);
     log('YTDLP', `Downloading video: ${videoUrl}`);
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     if (heartbeatFn) await heartbeatFn();
-    // P0.5: Download up to 1080p source for better quality
-    // Download in mkv (handles all codecs: h264/VP9/AV1 + any audio).
-    // Trim step below converts to mp4 for the pipeline.
-    const formatStr = 'bv+ba/b';
-    const cookiesFlag = existsSync('cookies.txt') ? '--cookies "cookies.txt"' : '';
-    const extractorArgs = '--extractor-args "youtube:player_client=android"';
-    execSync(
-      `yt-dlp ${extractorArgs} ${ffmpegFlag} ${cookiesFlag} -f "${formatStr}" --merge-output-format mkv -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
-      EXEC_OPTS,
-    );
+
+    // Strategy 1: bestvideo+bestaudio, any codec → merge to mkv
+    // YouTube biasanya 720p+ pake VP9 (webm) + Opus. MKV handle semua codec.
+    const formatStr1 = 'bestvideo[height<=1080]+bestaudio';
+    try {
+      execSync(
+        `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "${formatStr1}" --merge-output-format mkv -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
+        EXEC_OPTS,
+      );
+    } catch (e) {
+      // Strategy 1 gagal (misal merge gagal) — fallback ke single-file format
+      log('YTDLP', `Format ${formatStr1} failed, fallback to single-file format`);
+      const fallbackPath = join(CACHE_DIR, `${videoId}_fallback.mp4`);
+      const formatStr2 = 'best[height<=720]';
+      execSync(
+        `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "${formatStr2}" -o "${fallbackPath}" "${videoUrl}" --no-playlist --quiet`,
+        EXEC_OPTS,
+      );
+      // Override videoPath to use the fallback
+      videoPath = fallbackPath;
+    }
     addToCache(videoId, videoPath);
   }
 
