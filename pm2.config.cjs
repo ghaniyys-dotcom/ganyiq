@@ -3,7 +3,7 @@ module.exports = {
     name: 'ganyiq-worker',
     script: 'npx',
     args: 'tsx index.ts',
-    cwd: '/root/GANYIQ-worker',
+    cwd: '/root/GANYIQ/worker',
     env: {
       NODE_ENV: 'production',
     },
