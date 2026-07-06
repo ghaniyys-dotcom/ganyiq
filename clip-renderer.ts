@@ -221,9 +221,12 @@ async function renderClipViaPython(
   log('PIPELINE', `Python pipeline: ${pipelinePy}`);
   if (heartbeatFn) await heartbeatFn();
 
-  // Trim segment (fast copy, no re-encode) — use -t for exact duration, not -to which drifts to next keyframe
+  // Trim segment using re-encode for frame-accurate cut.
+  // -c copy seeks to nearest keyframe -> can add 2+ extra seconds -> face tracking
+  // sees different frames -> different AVM/consolidation -> different shots.
+  // Re-encode 60s of 360p is fast (~5s). Acceptable tradeoff.
   const trimDuration = endTime - startTime;
-  execSync(`${ffmpegBin} -y -ss ${startTime} -i "${videoPath}" -t ${trimDuration} -c copy -avoid_negative_ts make_zero "${trimmedPath}"`, EXEC_OPTS);
+  execSync(ffmpegBin + ' -y -ss ' + startTime + ' -i "' + videoPath + '" -t ' + trimDuration + ' -c:v libx264 -preset fast -crf 22 -c:a aac -avoid_negative_ts make_zero "' + trimmedPath + '"', EXEC_OPTS);
   log('PIPELINE', `Trimmed: ${trimmedPath}`);
 
   if (heartbeatFn) await heartbeatFn();
@@ -276,11 +279,12 @@ export async function renderClip(
     // P0.5: Download up to 1080p source for better quality
     // NOTE: [vcodec^=avc1] BLOCKS VP9 streams which are YouTube's primary 1080p codec.
     // Removing it lets yt-dlp pick the best available quality (vp9 1080p → h264 720p → etc.)
-    const formatStr = 'bestvideo[height<=1080]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio[ext=m4a]/best[height<=720]';
+    // Remove [ext=m4a] so VP9+Opus combos work; remux to mp4 after download
+    const formatStr = 'bestvideo[height<=1080]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]';
     const cookiesFlag = existsSync('cookies.txt') ? '--cookies "cookies.txt"' : '';
     const extractorArgs = '--extractor-args "youtube:player_client=android"';
     execSync(
-      `yt-dlp ${extractorArgs} ${ffmpegFlag} ${cookiesFlag} -f "${formatStr}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
+      `yt-dlp ${extractorArgs} ${ffmpegFlag} ${cookiesFlag} --remux-video mp4 -f "${formatStr}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
       EXEC_OPTS,
     );
     addToCache(videoId, videoPath);
