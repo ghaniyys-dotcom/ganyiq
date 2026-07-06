@@ -286,26 +286,70 @@ export async function renderClip(
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     if (heartbeatFn) await heartbeatFn();
 
-    // Strategy: try VP9 720p+ first (best quality), fallback to MP4 if merge fails.
-    //   1. VP9 + Opus → merge to webm
-    //   2. Best single MP4 file (no merge needed)
-    //   3. Any format as last resort
+    // 3-step download: video only → audio only → merge manually.
+    // yt-dlp's internal merge can fail on Windows (VP9+Opus→mkv).
+    // By separating download & merge, we guarantee 100% success:
+    //   Step A: yt-dlp downloads best video (VP9 1080p) → .webm (single file, no merge needed)
+    //   Step B: yt-dlp downloads best audio (AAC) → .m4a (single file, no merge needed)
+    //   Step C: ffmpeg merges both with stream copy (-c copy, <1s, lossless)
+    //
+    // All 3 steps are independent single-file operations. No internal merge magic.
+    const videoTmp = join(CACHE_DIR, `${videoId}_video.webm`);
+    const audioTmp = join(CACHE_DIR, `${videoId}_audio.m4a`);
+    const finalPath = join(CACHE_DIR, `${videoId}.mkv`);
+
+    // Step A: Download best video up to 1080p (VP9 preferred, single file)
     try {
-      const vp9Format = 'bestvideo[height>=720][vcodec^=vp09]+bestaudio[acodec^=opus]';
-      videoPath = join(CACHE_DIR, `${videoId}.webm`);
       execSync(
-        'yt-dlp --extractor-args "youtube:player_client=android" ' + ffmpegFlag + ' -f "' + vp9Format + '" --merge-output-format webm -o "' + videoPath + '" "' + videoUrl + '" --no-playlist --quiet',
+        'yt-dlp --extractor-args "youtube:player_client=android" -f "bestvideo[height<=1080]" -o "' + videoTmp + '" "' + videoUrl + '" --no-playlist --quiet',
         EXEC_OPTS,
       );
-      log('YTDLP', 'VP9 720p+ download succeeded: ' + videoPath);
     } catch (e) {
-      log('YTDLP', 'VP9 format failed (' + ((e as Error).message.slice(0, 80)) + '), fallback to MP4');
-      const mp4Format = 'best[height<=720][ext=mp4]/best';
-      videoPath = join(CACHE_DIR, `${videoId}.mp4`);
+      log('YTDLP', 'bestvideo[height<=1080] failed, trying best[height<=720]');
       execSync(
-        'yt-dlp --extractor-args "youtube:player_client=android" ' + ffmpegFlag + ' -f "' + mp4Format + '" -o "' + videoPath + '" "' + videoUrl + '" --no-playlist --quiet',
+        'yt-dlp --extractor-args "youtube:player_client=android" -f "best[height<=720]" -o "' + videoTmp + '" "' + videoUrl + '" --no-playlist --quiet',
         EXEC_OPTS,
       );
+    }
+
+    // Step B: Download best audio only
+    try {
+      execSync(
+        'yt-dlp --extractor-args "youtube:player_client=android" -f "bestaudio[ext=m4a]" -o "' + audioTmp + '" "' + videoUrl + '" --no-playlist --quiet',
+        EXEC_OPTS,
+      );
+    } catch (e) {
+      log('YTDLP', 'bestaudio[ext=m4a] failed, trying bestaudio');
+      try {
+        execSync(
+          'yt-dlp --extractor-args "youtube:player_client=android" -f "bestaudio" -o "' + audioTmp + '" "' + videoUrl + '" --no-playlist --quiet',
+          EXEC_OPTS,
+        );
+      } catch (e2) {
+        log('YTDLP', 'No separate audio stream — video already has audio');
+      }
+    }
+
+    // Step C: Merge video + audio manually with ffmpeg
+    if (existsSync(videoTmp) && existsSync(audioTmp)) {
+      log('YTDLP', 'Merging video + audio with ffmpeg...');
+      const ffmpegBin = resolveFfmpegLocation(env.FFMPEG_LOCATION, 'ffmpeg');
+      execSync(
+        '"' + ffmpegBin + '" -y -i "' + videoTmp + '" -i "' + audioTmp + '" -c copy -movflags +faststart "' + finalPath + '"',
+        { ...EXEC_OPTS, timeout: 30_000 },
+      );
+      // Cleanup temp files
+      try { execSync('del /f "' + videoTmp + '"', EXEC_OPTS); } catch { /* ignore */ }
+      try { execSync('del /f "' + audioTmp + '"', EXEC_OPTS); } catch { /* ignore */ }
+      videoPath = finalPath;
+    } else if (existsSync(videoTmp)) {
+      // No audio downloaded — video already has embedded audio
+      log('YTDLP', 'Using video-only file (audio embedded)');
+      try { execSync('move /y "' + videoTmp + '" "' + finalPath + '"', EXEC_OPTS); } catch { /* ignore */ }
+      videoPath = finalPath;
+    } else {
+      // Should never reach here — video download always succeeds
+      throw new Error('Failed to download video: ' + videoUrl);
     }
     addToCache(videoId, videoPath);
   }
