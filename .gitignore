@@ -63,3 +63,14 @@ venv/
 # Cookies (sensitive)
 cookies.txt
 yt_cookies.txt
+
+# Setup/config templates
+setup.ps1
+setup.sh
+env-template.txt
+
+# DB
+*.db
+
+# Worker model files (downloaded on demand)
+speaker-hybrid/models/
