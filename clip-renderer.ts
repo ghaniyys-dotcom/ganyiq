@@ -286,12 +286,11 @@ export async function renderClip(
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     if (heartbeatFn) await heartbeatFn();
 
-    // Format string with fallbacks (yt-dlp tries each, picks first that works):
-    //   1. 1080p h264 MP4 + AAC audio (merge trivial, works with Gyan.dev)
-    //   2. Best single MP4 file up to 1080p (720p h264, no merge needed)
-    //   3. VP9 + best audio (might fail merge on some env, but worth trying)
-    //   4. Best single file up to 720p (guaranteed fallback, usually format 18)
-    const formatStr = 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]/bestvideo[height<=1080]+bestaudio/best[height<=720]';
+    // Strategy: only request formats yt-dlp can handle natively with Gyan.dev FFmpeg.
+    //   1. 1080p h264 MP4 + AAC audio (most compatible, guaranteed merge)
+    //   2. Best single MP4 file (720p h264, no merge needed)
+    //   3. Any format as last resort
+    const formatStr = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
     videoPath = join(CACHE_DIR, `${videoId}.mp4`);
     execSync(
       `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "${formatStr}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
