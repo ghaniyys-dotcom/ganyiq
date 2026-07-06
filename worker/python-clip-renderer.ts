@@ -81,11 +81,9 @@ function resolveFfmpegBin(location: string | undefined, binary: string): string 
   if (!location) return binary;
   const norm = location.replace(/[/\\]+$/, '');
   const exeSuffix = platform() === 'win32' ? '.exe' : '';
-  const fullPath = `${norm}/${binary}${exeSuffix}`;
-  if (norm.endsWith(`/${binary}`) || norm.endsWith(`\\${binary}`)) {
-    return `"${norm}${exeSuffix}"`;
-  }
-  return `"${fullPath}"`;
+  const binaryName = `${binary}${exeSuffix}`;
+  if (norm.endsWith(binaryName)) return norm;
+  return join(norm, binaryName);
 }
 
 // ---------------------------------------------------------------------------
