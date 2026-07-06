@@ -333,6 +333,7 @@ export async function renderClip(
 
   // Resolve ffmpeg/ffprobe paths (handles both directory and full-path-in-FFMPEG_LOCATION)
   const ffmpegBin = resolveFfmpegLocation(env.FFMPEG_LOCATION, 'ffmpeg');
+  let hasSubtitles = '0';
 
   // ── Python pipeline for vertical clips (bypass TypeScript renderer) ──
   if ((renderMode === 'vertical' || renderMode === 'vertical-split') && existsSync(join(__dirname, 'speaker-hybrid', 'pipeline.py'))) {
@@ -386,7 +387,7 @@ export async function renderClip(
     log('SUBTITLE', 'SUBTITLES disabled by feature flag');
   }
 
-  const hasSubtitles = subtitleResult !== null ? '1' : '0';
+  hasSubtitles = subtitleResult !== null ? '1' : '0';
 
   logMemoryStart('ffmpeg-render');
 
