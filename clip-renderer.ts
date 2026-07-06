@@ -273,7 +273,9 @@ export async function renderClip(
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     if (heartbeatFn) await heartbeatFn();
     // P0.5: Download up to 1080p source for better quality
-    const formatStr = 'bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=1080]';
+    // NOTE: [vcodec^=avc1] BLOCKS VP9 streams which are YouTube's primary 1080p codec.
+    // Removing it lets yt-dlp pick the best available quality (vp9 1080p → h264 720p → etc.)
+    const formatStr = 'bestvideo[height<=1080]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio[ext=m4a]/best[height<=720]';
     const cookiesFlag = existsSync('cookies.txt') ? '--cookies "cookies.txt"' : '';
     const extractorArgs = '--extractor-args "youtube:player_client=android"';
     execSync(
