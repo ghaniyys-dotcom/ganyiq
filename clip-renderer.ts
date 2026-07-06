@@ -228,7 +228,7 @@ async function renderClipViaPython(
   if (heartbeatFn) await heartbeatFn();
 
   // Run Python pipeline
-  execSync(`python "${pipelinePy}" --video "${trimmedPath}" --output "${outputPath}" --vertical`, { ...EXEC_OPTS, timeout: 600_000 });
+  execSync(`python "${pipelinePy}" --video "${trimmedPath}" --output "${outputPath}" --vertical`, { ...EXEC_OPTS, stdio: 'inherit', timeout: 600_000 });
   log('PIPELINE', 'Python pipeline done');
 
   // Cleanup trimmed temp file
