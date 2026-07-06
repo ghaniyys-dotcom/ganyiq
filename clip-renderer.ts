@@ -286,16 +286,27 @@ export async function renderClip(
     const ffmpegFlag = env.FFMPEG_LOCATION ? `--ffmpeg-location "${env.FFMPEG_LOCATION}"` : '';
     if (heartbeatFn) await heartbeatFn();
 
-    // Strategy: only request formats yt-dlp can handle natively with Gyan.dev FFmpeg.
-    //   1. 1080p h264 MP4 + AAC audio (most compatible, guaranteed merge)
-    //   2. Best single MP4 file (720p h264, no merge needed)
+    // Strategy: try VP9 720p+ first (best quality), fallback to MP4 if merge fails.
+    //   1. VP9 + Opus → merge to webm
+    //   2. Best single MP4 file (no merge needed)
     //   3. Any format as last resort
-    const formatStr = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
-    videoPath = join(CACHE_DIR, `${videoId}.mp4`);
-    execSync(
-      `yt-dlp --extractor-args "youtube:player_client=android" ${ffmpegFlag} -f "${formatStr}" -o "${videoPath}" "${videoUrl}" --no-playlist --quiet`,
-      EXEC_OPTS,
-    );
+    try {
+      const vp9Format = 'bestvideo[height>=720][vcodec^=vp09]+bestaudio[acodec^=opus]';
+      videoPath = join(CACHE_DIR, `${videoId}.webm`);
+      execSync(
+        'yt-dlp --extractor-args "youtube:player_client=android" ' + ffmpegFlag + ' -f "' + vp9Format + '" --merge-output-format webm -o "' + videoPath + '" "' + videoUrl + '" --no-playlist --quiet',
+        EXEC_OPTS,
+      );
+      log('YTDLP', 'VP9 720p+ download succeeded: ' + videoPath);
+    } catch (e) {
+      log('YTDLP', 'VP9 format failed (' + ((e as Error).message.slice(0, 80)) + '), fallback to MP4');
+      const mp4Format = 'best[height<=720][ext=mp4]/best';
+      videoPath = join(CACHE_DIR, `${videoId}.mp4`);
+      execSync(
+        'yt-dlp --extractor-args "youtube:player_client=android" ' + ffmpegFlag + ' -f "' + mp4Format + '" -o "' + videoPath + '" "' + videoUrl + '" --no-playlist --quiet',
+        EXEC_OPTS,
+      );
+    }
     addToCache(videoId, videoPath);
   }
 
