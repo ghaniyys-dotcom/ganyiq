@@ -29,6 +29,9 @@ import sys
 import time
 from pathlib import Path
 
+from core.logger import log
+from config import misc as MISC_CFG
+
 # ── Add project root to sys.path so sibling packages resolve ──
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
@@ -75,9 +78,9 @@ class SpeakerIdentifier:
         self.split_reaction_weight = split_reaction_weight
         self.verbose = verbose
 
-    def log(self, msg: str):
+    def log(self, msg: str) -> None:
         if self.verbose:
-            print(f"[SpeakerIdentifier] {msg}", file=sys.stderr)
+            log("SpeakerIdentifier", msg)
 
     # ── Public API ──────────────────────────────────────────────
 
@@ -145,29 +148,21 @@ class SpeakerIdentifier:
             with open(temp_face_path) as f:
                 visual_data = json.load(f)
 
-        self.log(f"Face detection complete: {len(visual_data.get('timeline', []))} frames")
-        
-        # ── DIAGNOSTIC: Check lip_motion field presence (print to STDOUT) ──
+        log("SpeakerIdentifier", f"Face detection complete: {len(visual_data.get('timeline', []))} frames")
+
+        # ── DIAGNOSTIC: Check lip_motion field presence ──
         timeline = visual_data.get('timeline', [])
         all_faces = [f for entry in timeline for f in entry.get('faces', [])]
         faces_with_lip = sum(1 for f in all_faces if 'lip_motion' in f)
         faces_nonzero_lip = sum(1 for f in all_faces if f.get('lip_motion', 0) != 0)
         faces_with_raw_cy = sum(1 for f in all_faces if '_raw_cy' in f)
-        
-        print(f"[DIAGNOSTIC] Face data stats:", file=sys.stderr, flush=True)
-        print(f"  Total faces: {len(all_faces)}", file=sys.stderr, flush=True)
-        print(f"  Faces with 'lip_motion': {faces_with_lip}/{len(all_faces)}", file=sys.stderr, flush=True)
-        print(f"  Faces with NON-ZERO lip_motion: {faces_nonzero_lip}/{len(all_faces)}", file=sys.stderr, flush=True)
-        print(f"  Faces with '_raw_cy': {faces_with_raw_cy}/{len(all_faces)}", file=sys.stderr, flush=True)
-        
-        if len(all_faces) > 0:
-            sample_faces = all_faces[:5]
-            print(f"  Sample face[0]: lip_motion={sample_faces[0].get('lip_motion', 'MISSING')}, _raw_cy={sample_faces[0].get('_raw_cy', 'MISSING')}, cy={sample_faces[0].get('cy', '?')}", file=sys.stderr, flush=True)
-        
+
+        log("SpeakerIdentifier", f"Face data stats: Total faces={len(all_faces)}, lip_motion={faces_with_lip}/{len(all_faces)}, nonzero_lip={faces_nonzero_lip}/{len(all_faces)}, raw_cy={faces_with_raw_cy}/{len(all_faces)}")
+
         if faces_nonzero_lip == 0:
-            print(f"[DIAGNOSTIC] ERROR: ALL lip_motion are ZERO -> ASD will fail", file=sys.stderr, flush=True)
+            log("SpeakerIdentifier", "WARN: ALL lip_motion are ZERO -> ASD will fail")
         else:
-            print(f"[DIAGNOSTIC] OK: {faces_nonzero_lip} faces have non-zero lip_motion", file=sys.stderr, flush=True)
+            log("SpeakerIdentifier", f"OK: {faces_nonzero_lip} faces have non-zero lip_motion")
 
         # ──────────────────────────────────────────
         # STEP 2: Audio-Visual Matching
@@ -437,7 +432,7 @@ class SpeakerIdentifier:
         timeline = visual_data.get("timeline", [])
         return [VisualFrame(float(e["time"]), e.get("faces", [])) for e in timeline if e]
 
-    def _consolidate_by_position(self, visual_data: dict, cx_threshold: float = 350.0):
+    def _consolidate_by_position(self, visual_data: dict, cx_threshold: float = 100.0) -> None:
         """Merge fragmented LISTENER_*/SPEAKER_* IDs whose faces are spatially close.
         
         ByteTrack creates new track IDs per re-detection → each track gets a
@@ -557,7 +552,7 @@ class SpeakerIdentifier:
 # CLI
 # =============================================================================
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="GANYIQ Speaker Hybrid Module — Full Pipeline Orchestrator"
     )

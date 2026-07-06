@@ -1,6 +1,10 @@
 from dataclasses import dataclass, field
 from collections import defaultdict
 
+from core.logger import log
+from config import director as DIR_CFG
+
+
 @dataclass
 class Shot:
     """Represents a single shot in the final video."""
@@ -15,22 +19,24 @@ class Shot:
     def duration(self) -> float:
         return self.end_time - self.start_time
 
-def _is_same_person(a, b):
+def _is_same_person(a: dict, b: dict) -> bool:
     """Compare faces to determine if they are the same person. FINAL LOGIC."""
-    # Priority 1: Same track_id → same person (most reliable per-frame).
-    # ByteTrack maintains stable IDs within a continuous detection.
-    # Different track_ids at the SAME time = different people.
-    if a.get("track_id") is not None and b.get("track_id") is not None:
-        if a["track_id"] == b["track_id"]:
-            return True
-        return False
-
-    # Priority 2: person_id (fallback when track_id absent/unavailable).
+    # Priority 1: person_id from FaceDB. Most reliable.
     if a.get("person_id") and b.get("person_id"):
-        if a["person_id"] > 0 and b["person_id"] > 0:
+        if a["person_id"] > 0 and b["person_id"] > 0: # 0 is unknown
             return a["person_id"] == b["person_id"]
 
-    # Default: assume different people to be safe.
+    # Priority 2: Different track_id = ALWAYS different people.
+    # This is the key to preventing same-person splits.
+    if a.get("track_id") != b.get("track_id"):
+        return False
+
+    # Priority 3: Same track_id = ALWAYS same person.
+    # Fallback if person_id is not available.
+    if a.get("track_id") is not None and a.get("track_id") == b.get("track_id"):
+        return True
+
+    # Default: If no reliable IDs, assume they are different to be safe.
     return False
 
 
@@ -40,7 +46,8 @@ class DirectorAI:
     to create a stateful, intelligent shot list, mimicking a human director.
     """
     def __init__(self, face_data: dict, diarization: list, video_duration: float, 
-                 min_shot_duration: float = 2.5, speaker_dominance_threshold: float = 4.0):
+                 min_shot_duration: float = DIR_CFG.MIN_SHOT_DURATION,
+                 speaker_dominance_threshold: float = DIR_CFG.SPEAKER_DOMINANCE_THRESHOLD):
         self.face_data = face_data
         self.diarization = diarization
         self.video_duration = video_duration
@@ -53,7 +60,7 @@ class DirectorAI:
     def _build_speech_timeline(self) -> defaultdict[float, list[str]]:
         """Creates a per-second lookup of active speaker IDs with anticipation offset."""
         timeline = defaultdict(list)
-        anticipation_offset = 0.6  # Shift cuts 0.6s earlier than audio to anticipate speaking
+        anticipation_offset = DIR_CFG.ANTICIPATION_OFFSET  # Shift cuts earlier to anticipate speaking
         for segment in self.diarization:
             speaker_id = segment['speaker']
             start = max(0.0, segment['start'] - anticipation_offset)
@@ -124,7 +131,7 @@ class DirectorAI:
         if not active_speakers:
             return None, None, False
         
-        raw_speaker_id = active_speakers[0]
+        speaker_id = active_speakers[0]
         
         # Get all faces visible at this specific time
         all_faces_now = []
@@ -135,11 +142,11 @@ class DirectorAI:
 
         # If no faces at all, speaker is off-screen → wide/audio-only shot
         if not all_faces_now:
-            return raw_speaker_id, None, False
+            return speaker_id, None, False
 
         # Try to find speaker's face by matching speaker_id (case-insensitive)
         speaker_face = None
-        speaker_upper = raw_speaker_id.upper()
+        speaker_upper = speaker_id.upper()
         for face in all_faces_now:
             if face.get('speaker_id', '').upper() == speaker_upper:
                 speaker_face = face
@@ -147,18 +154,13 @@ class DirectorAI:
 
         # If speaker not found by id, pick the most central face as primary
         if not speaker_face:
-            valid_faces = [f for f in all_faces_now if f.get('w', 0) >= 40 and f.get('h', 0) >= 40]
+            valid_faces = [f for f in all_faces_now if f.get('w', 0) >= DIR_CFG.FACE_MIN_SIZE and f.get('h', 0) >= DIR_CFG.FACE_MIN_SIZE]
             if valid_faces:
                 valid_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
                 speaker_face = valid_faces[0]
 
         if not speaker_face:
-            return raw_speaker_id, None, False
-
-        # Use the face's own speaker_id, not the raw diarization ID.
-        # AVM may map audio speakers to different ID formats (e.g. '0' vs 'SPEAKER_00').
-        # Using the face ID ensures _get_speaker_bbox can find it by direct match.
-        speaker_id = speaker_face.get("speaker_id") or raw_speaker_id
+            return speaker_id, None, False
 
         # Collect other faces (listeners) that are NOT the speaker
         other_faces = []
@@ -168,22 +170,22 @@ class DirectorAI:
                 continue
             # Skip if face too close to speaker (same person, tracking artifact)
             dx = abs(face.get("cx", 0) - speaker_face.get("cx", 0))
-            if dx < 150.0:
+            if dx < DIR_CFG.DX_FILTER:
                 continue
             # Apply size filter to filter out hands/noise
-            if face.get('w', 0) >= 40 and face.get('h', 0) >= 40:
+            if face.get('w', 0) >= DIR_CFG.FACE_MIN_SIZE and face.get('h', 0) >= DIR_CFG.FACE_MIN_SIZE:
                 other_faces.append(face)
 
         # Score and pick the best listener from remaining faces
         if other_faces:
             # Score each candidate by centrality + lip_motion (FASE 16)
-            _CENTER = 640  # frame center x for 1280-wide
+            _CENTER = DIR_CFG.FRAME_CENTER_X
             def _score_candidate(f):
                 cx = f.get('cx', _CENTER)
                 centrality = 1.0 - abs(cx - _CENTER) / _CENTER
                 lip = float(f.get('lip_motion', 0.0))
                 lip_score = min(1.0, lip * 500.0) if lip > 0 else 0.0
-                return centrality * 0.6 + lip_score * 0.4
+                return centrality * DIR_CFG.CENTRALITY_WEIGHT + lip_score * DIR_CFG.LIP_SCORE_WEIGHT
             other_faces.sort(key=_score_candidate, reverse=True)
             best_listener = other_faces[0]
             
@@ -196,7 +198,7 @@ class DirectorAI:
             
             # Check if they are sitting very close (threshold: 300px horizontally)
             dist_x = abs(speaker_face.get('cx', 0) - best_listener.get('cx', 0))
-            is_close = dist_x < 300.0
+            is_close = dist_x < DIR_CFG.DIST_CLOSE_THRESHOLD
             
             return speaker_id, listener_id, is_close
 
@@ -241,11 +243,11 @@ class DirectorAI:
             else:
                 layout_merged.append(next_shot)
         
-        # Second pass: absorb micro-shots (<2.5s) into previous shot
+        # Second pass: absorb micro-shots (<DIR_CFG.MERGE_MIN_DURATION s) into previous shot
         final = [layout_merged[0]]
         for next_shot in layout_merged[1:]:
             last_shot = final[-1]
-            if next_shot.duration < 2.5:
+            if next_shot.duration < DIR_CFG.MERGE_MIN_DURATION:
                 # Absorb into previous shot (keep that layout)
                 last_shot.end_time = next_shot.end_time
             else:

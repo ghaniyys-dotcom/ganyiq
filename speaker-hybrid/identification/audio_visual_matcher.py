@@ -18,6 +18,8 @@ import sys
 import os
 from pathlib import Path
 
+from core.logger import log, warn
+
 
 # =============================================================================
 # Types
@@ -31,7 +33,7 @@ class AudioSegment:
         self.end = end
         self.duration = end - start
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {
             "speaker_id": self.speaker_id,
             "start": round(self.start, 2),
@@ -243,8 +245,7 @@ class AudioVisualMatcher:
                         listener_counter += 1
 
         if listener_counter:
-            print(f"[AVM] Detected {listener_counter} listener track(s)",
-                  file=sys.stderr)
+            log("AVM", f"Detected {listener_counter} listener track(s)")
 
         return track_to_audio
     def _find_overlapping_frames(
@@ -303,7 +304,6 @@ class AudioVisualMatcher:
     def _build_from_visual_only(
         self, frames: list[VisualFrame]
     ) -> list[dict]:
-        """Fallback: build timeline from visual only."""
         if not frames:
             return []
 
@@ -342,7 +342,6 @@ class AudioVisualMatcher:
     def _build_from_audio_only(
         self, segments: list[AudioSegment]
     ) -> list[dict]:
-        """Fallback: build timeline from audio only."""
         return [
             {
                 "start": seg.start,
@@ -396,7 +395,7 @@ def load_diarization(path: str) -> list[AudioSegment]:
 # CLI
 # =============================================================================
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="GANYIQ Audio-Visual Speaker Matcher"
     )
@@ -410,22 +409,19 @@ def main():
 
     # Validate
     if not os.path.exists(args.visual_json):
-        print(f"Error: {args.visual_json} not found", file=sys.stderr)
+        warn("AVM", f"Visual JSON not found: {args.visual_json}")
         sys.exit(1)
     if not os.path.exists(args.audio_json):
-        print(f"Error: {args.audio_json} not found", file=sys.stderr)
+        warn("AVM", f"Audio JSON not found: {args.audio_json}")
         sys.exit(1)
 
     # Load
-    print(f"[INFO] Loading visual: {args.visual_json}", file=sys.stderr)
+    log("AVM", f"Loading visual: {args.visual_json}")
     visual_frames = load_hybrid_detector_output(args.visual_json)
-    print(f"[INFO] Loading audio: {args.audio_json}", file=sys.stderr)
+    log("AVM", f"Loading audio: {args.audio_json}")
     audio_segments = load_diarization(args.audio_json)
 
-    print(
-        f"[INFO] {len(visual_frames)} visual frames, {len(audio_segments)} audio segments",
-        file=sys.stderr,
-    )
+    log("AVM", f"{len(visual_frames)} visual frames, {len(audio_segments)} audio segments")
 
     # Match
     matcher = AudioVisualMatcher(
@@ -448,7 +444,7 @@ def main():
     with open(args.output_json, "w") as f:
         json.dump(output, f, indent=2)
 
-    print(f"[DONE] {len(timeline)} matched segments → {args.output_json}", file=sys.stderr)
+    log("AVM", f"{len(timeline)} matched segments → {args.output_json}")
 
 
 if __name__ == "__main__":

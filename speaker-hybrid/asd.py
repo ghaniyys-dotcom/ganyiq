@@ -19,12 +19,15 @@ import math
 import argparse
 from collections import defaultdict
 
+from core.logger import log
+from config import asd_cfg as ASD_CFG
+
 
 def compute_lip_energy(
     face_data_path: str,
-    window_sec: float = 0.5,
-    min_lip_threshold: float = 0.02,
-    fps: float = 10.0,
+    window_sec: float = ASD_CFG.WINDOW_SEC,
+    min_lip_threshold: float = ASD_CFG.MIN_LIP_THRESHOLD,
+    fps: float = ASD_CFG.FPS,
 ) -> list[dict]:
     """Compute per-track lip motion energy using rolling variance.
 
@@ -56,7 +59,7 @@ def compute_lip_energy(
             raw[tid].append((t, lm))
             raw_cy[tid].append((t, rcy))
 
-    window_frames = max(3, int(window_sec * fps))
+    window_frames = max(ASD_CFG.MIN_WINDOW_FRAMES, int(window_sec * fps))
 
     # Build per-frame result
     result = []
@@ -120,7 +123,7 @@ def compute_lip_energy(
 # CLI
 # ---------------------------------------------------------------------------
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="GANYIQ Active Speaker Detection (lip-motion ASD)"
     )
@@ -147,7 +150,7 @@ def main():
     if args.output:
         with open(args.output, "w") as f:
             f.write(out_str)
-        print(f"[ASD] {len(result)} frames → {args.output}", file=sys.stderr)
+        log("ASD", f"{len(result)} frames → {args.output}")
     else:
         print(out_str)
 

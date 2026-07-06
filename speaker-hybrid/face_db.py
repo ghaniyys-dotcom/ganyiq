@@ -15,6 +15,8 @@ import sqlite3
 import numpy as np
 from pathlib import Path
 
+from core.logger import log, warn
+
 class FaceDB:
     """Persistent face identity via embedding matching."""
 
@@ -56,7 +58,7 @@ class FaceDB:
             self._embedder_loaded = True
             return True
         except Exception:
-            print("[FaceDB] deepface not available — person_id disabled", file=__import__('sys').stderr)
+            warn("FaceDB", "deepface not available — person_id disabled")
             return False
 
     # ── Embedding extraction ───────────────────────────────────────
@@ -138,7 +140,7 @@ class FaceDB:
             self._cache[track_id] = pid
         return pid
 
-    def close(self):
+    def close(self) -> None:
         self._cache.clear()
         self._emb_cache.clear()
         self._conn.close()
