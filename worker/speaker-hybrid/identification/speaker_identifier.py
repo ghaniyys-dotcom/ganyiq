@@ -224,7 +224,7 @@ class SpeakerIdentifier:
         self.log("Registering canonical person identities...")
         
         for entry in visual_data.get("timeline", []):
-            time = entry.get("time", 0.0)
+            t_frame = entry.get("time", 0.0)
             for face in entry.get("faces", []):
                 track_id = face.get("track_id")
                 if track_id is None or track_id < 0:
@@ -244,7 +244,7 @@ class SpeakerIdentifier:
                 # Register with canonical registry
                 canonical_id = self.canonical_registry.register_observation(
                     track_id=track_id,
-                    time=time,
+                    time=t_frame,
                     bbox=bbox,
                     embedding=embedding,
                     person_id=person_id
