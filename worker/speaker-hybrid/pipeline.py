@@ -195,12 +195,14 @@ class Pipeline:
         return id_map
 
     def _get_speaker_bbox(self, face_data: dict, id_bridge: dict, target_id: str, start: float, end: float, frame_w: int, frame_h: int) -> dict | None:
-        """Finds a target's face BBox using the ID bridge."""
-        if not target_id or not face_data: return None
+        """Finds a target's face BBox using the ID bridge with structured logging."""
+        if not target_id or not face_data:
+            log(f"  [BBOX-FAIL] NO_TARGET_OR_DATA | target={target_id}")
+            return None
         
         canonical_id = id_bridge.get(target_id.upper())
         if not canonical_id:
-            # Fallback for IDs that might not be in the bridge (e.g. old formats)
+            log(f"  [BBOX-WARN] ID_NOT_IN_BRIDGE | target={target_id} | bridge_keys={list(id_bridge.keys())[:3]}")
             canonical_id = target_id
 
         # 1. Direct search using canonical ID
@@ -222,6 +224,8 @@ class Pipeline:
                 if current_face_canon == canonical_id:
                     cx, cy, w, h = face.get("cx"), face.get("cy"), face.get("w"), face.get("h")
                     if cx and cy and w and h:
+                        age = start - t
+                        log(f"  [BBOX-OK] EXACT_MATCH | target={target_id} | canonical={canonical_id} | time={t:.1f}s | age={age:.1f}s")
                         return {"cx": cx, "cy": cy, "w": w, "h": h}
 
         # 2. Fallback: search for the raw target_id case-insensitively
@@ -233,7 +237,8 @@ class Pipeline:
                 if face.get("speaker_id", "").upper() == target_upper:
                     cx, cy, w, h = face.get("cx"), face.get("cy"), face.get("w"), face.get("h")
                     if cx and cy and w and h:
-                        log(f"  [BBOX-FALLBACK-1] Found '{target_id}' via raw uppercase match.")
+                        age = start - t
+                        log(f"  [BBOX-OK] FALLBACK_RAW_MATCH | target={target_id} | time={t:.1f}s | age={age:.1f}s")
                         return {"cx": cx, "cy": cy, "w": w, "h": h}
 
         # 3. Last resort: use the best (largest) face in the shot range
@@ -248,10 +253,10 @@ class Pipeline:
         
         if candidates:
             best = max(candidates, key=lambda x: x[0])
-            log(f"  [BBOX-FALLBACK-2] Target '{target_id}' not found — using largest face in shot.")
+            log(f"  [BBOX-WARN] LARGEST_FACE_FALLBACK | target={target_id} | canonical={canonical_id} | face_area={best[0]:.0f}")
             return {"cx": best[1], "cy": best[2], "w": best[3], "h": best[4]}
         
-        log(f"  [BBOX-WARN] Target '{target_id}' not found in any cluster for {start:.1f}s-{end:.1f}s")
+        log(f"  [BBOX-FAIL] NO_MATCH_FOUND | target={target_id} | canonical={canonical_id} | range={start:.1f}s-{end:.1f}s")
         return None
 
 
