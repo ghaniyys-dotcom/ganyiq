@@ -174,20 +174,26 @@ class SpeakerIdentifier:
         # ──────────────────────────────────────────
         # ── TASK 1: DIARIZATION QUALITY GATE ──
         # Detect suspicious single-speaker result when multiple distinct faces visible
+        # Load audio data first if available
+        audio_data = None
         diarization_status = "VALID"
-        if audio_data:
-            unique_audio_speakers = len(set(seg.get("speaker", seg.get("speaker_id", "unknown")) 
-                                            for seg in audio_data.get("segments", [])))
-            unique_visual_tracks = len(set(f.get("track_id", -1) for entry in visual_data.get("timeline", []) 
-                                          for f in entry.get("faces", []) if f.get("track_id", -1) >= 0))
-            
-            if unique_audio_speakers == 1 and unique_visual_tracks >= 2:
-                diarization_status = "LOW_CONFIDENCE_SINGLE_SPEAKER"
-                self.log(f"[DIARIZATION-QUALITY] SUSPICIOUS: audio_speakers=1, visual_tracks={unique_visual_tracks}")
-                self.log(f"[DIARIZATION-QUALITY] Status: {diarization_status}")
+        if diarization_path and os.path.exists(diarization_path):
+            with open(diarization_path) as f:
+                audio_data = json.load(f)
+            if audio_data:
+                unique_audio_speakers = len(set(seg.get("speaker", seg.get("speaker_id", "unknown")) 
+                                                for seg in audio_data.get("segments", [])))
+                unique_visual_tracks = len(set(f.get("track_id", -1) for entry in visual_data.get("timeline", []) 
+                                              for f in entry.get("faces", []) if f.get("track_id", -1) >= 0))
+                
+                if unique_audio_speakers == 1 and unique_visual_tracks >= 2:
+                    diarization_status = "LOW_CONFIDENCE_SINGLE_SPEAKER"
+                    self.log(f"[DIARIZATION-QUALITY] SUSPICIOUS: audio_speakers=1, visual_tracks={unique_visual_tracks}")
+                    self.log(f"[DIARIZATION-QUALITY] Status: {diarization_status}")
         
-        # Store status for downstream consumers
-        audio_data["diarization_status"] = diarization_status
+        # Store status for downstream consumers  
+        if audio_data:
+            audio_data["diarization_status"] = diarization_status
         # ──────────────────────────────────────────
         matched_timeline = None
         asd_timeline = None
