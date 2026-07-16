@@ -149,8 +149,9 @@ class Pipeline:
         return None
 
     def _build_id_bridge(self, face_data: dict) -> dict:
-        """Create a mapping from any ID (track, person, speaker) to a canonical ID."""
+        """Build ID aliases → canonical ID map with structured logging."""
         if not face_data or "timeline" not in face_data:
+            log("  [ID-BRIDGE] No face_data or timeline - returning empty bridge")
             return {}
             
         id_map = {} # From any ID to a canonical ID
@@ -192,6 +193,7 @@ class Pipeline:
             if canon in id_map and id_map[canon] != canon:
                 id_map[alias] = id_map[canon]
 
+        log(f"  [ID-BRIDGE] Built bridge with {len(id_map)} mappings | sample: {list(id_map.items())[:3]}")
         return id_map
 
     def _get_speaker_bbox(self, face_data: dict, id_bridge: dict, target_id: str, start: float, end: float, frame_w: int, frame_h: int) -> dict | None:
