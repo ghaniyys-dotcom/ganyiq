@@ -47,6 +47,12 @@ from identification.audio_visual_matcher import AudioVisualMatcher, AudioSegment
 from reaction.reaction_detector import analyze_reactions
 from asd import compute_lip_energy
 
+# Sprint 3: Canonical identity and honest validation
+import numpy as np
+from canonical_person_registry import CanonicalPersonRegistry
+from asd_validator import ASDValidator, ASDStatus
+from reaction.reaction_validator import ReactionValidator
+
 
 # =============================================================================
 # Orchestrator
@@ -76,6 +82,23 @@ class SpeakerIdentifier:
         self.avm_min_overlap = avm_min_overlap
         self.split_reaction_weight = split_reaction_weight
         self.verbose = verbose
+        
+        # Sprint 3: Initialize validators and registry
+        self.canonical_registry = CanonicalPersonRegistry(
+            embedding_threshold=0.50,
+            temporal_gap_threshold=5.0,
+            spatial_distance_threshold=100.0
+        )
+        self.asd_validator = ASDValidator(
+            min_nonzero_ratio=0.05,
+            min_variance_threshold=0.0001
+        )
+        self.reaction_validator = ReactionValidator(
+            min_landmark_count=10,
+            baseline_window=30,
+            smile_delta_threshold=0.3,
+            surprise_delta_threshold=0.4
+        )
 
     def log(self, msg: str):
         if self.verbose:
@@ -195,6 +218,57 @@ class SpeakerIdentifier:
         if audio_data:
             audio_data["diarization_status"] = diarization_status
         # ──────────────────────────────────────────
+        # ── SPRINT 3: CANONICAL PERSON REGISTRATION ──
+        # Register all face observations with canonical person registry
+        # This must happen BEFORE audio-visual matching
+        self.log("Registering canonical person identities...")
+        
+        for entry in visual_data.get("timeline", []):
+            time = entry.get("time", 0.0)
+            for face in entry.get("faces", []):
+                track_id = face.get("track_id")
+                if track_id is None or track_id < 0:
+                    continue
+                
+                bbox = {
+                    'cx': face.get('cx', 0),
+                    'cy': face.get('cy', 0),
+                    'w': face.get('w', 0),
+                    'h': face.get('h', 0),
+                }
+                
+                # Extract face embedding if available (from FaceDB person_id)
+                embedding = None
+                person_id = face.get("person_id")
+                
+                # Register with canonical registry
+                canonical_id = self.canonical_registry.register_observation(
+                    track_id=track_id,
+                    time=time,
+                    bbox=bbox,
+                    embedding=embedding,
+                    person_id=person_id
+                )
+                
+                # Store canonical_id in face data
+                face["canonical_person_id"] = canonical_id
+        
+        # Get registry statistics
+        registry_stats = self.canonical_registry.get_statistics()
+        self.log(f"Canonical person registry: {registry_stats['total_canonical_persons']} persons from {registry_stats['total_track_ids']} track IDs")
+        
+        # ──────────────────────────────────────────
+        # ── SPRINT 3: ASD VALIDATION ──
+        self.log("Validating lip motion data quality...")
+        asd_status_obj, asd_diagnostics = self.asd_validator.validate_lip_motion_data(visual_data)
+        asd_status = asd_status_obj.value
+        
+        self.log(f"ASD Status: {asd_status}")
+        self.log(f"  Lip motion observations: {asd_diagnostics['total_observations']}")
+        self.log(f"  Non-zero ratio: {asd_diagnostics['nonzero_ratio']}")
+        self.log(f"  Reasoning: {asd_diagnostics['reasoning']}")
+        
+        # ──────────────────────────────────────────
         matched_timeline = None
         asd_timeline = None
 
@@ -253,6 +327,15 @@ class SpeakerIdentifier:
                         temp_face_path, window_sec=0.5,
                         min_lip_threshold=0.02, fps=self.face_sample_rate,
                     )
+                    
+                    # Sprint 3: Filter ASD timeline based on validation status
+                    original_asd_count = len(asd_timeline)
+                    asd_timeline = self.asd_validator.filter_asd_timeline(asd_timeline, asd_status_obj)
+                    filtered_count = len(asd_timeline)
+                    
+                    if filtered_count < original_asd_count:
+                        self.log(f"ASD filtered: {original_asd_count} → {filtered_count} frames (status={asd_status})")
+                    
                     # ── TASK 2: ASD VALIDITY GATE ──
                     # Validate ASD signal quality before trusting active speaker claims
                     total_faces = len(all_faces)
@@ -355,6 +438,13 @@ class SpeakerIdentifier:
                         with open(temp_face_path, "w") as _f:
                             json.dump(visual_data, _f, indent=2, default=str)
 
+        # Sprint 3: Enforce honest active speaker reporting
+        if matched_timeline:
+            self.log("Enforcing honest active speaker status...")
+            matched_timeline = self.asd_validator.enforce_honest_active_speaker(
+                matched_timeline, asd_status_obj
+            )
+        
         speaker_list = self._extract_speakers(matched_timeline)
 
         # ──────────────────────────────────────────
@@ -431,12 +521,16 @@ class SpeakerIdentifier:
             },
             'asd': {
                 'tracker': 'bytetrack_kalman',
+                'status': asd_status,
+                'diagnostics': asd_diagnostics,
                 'total_frames': len(asd_timeline) if asd_timeline else 0,
                 'active_frames': sum(
                     1 for e in (asd_timeline if asd_timeline else [])
                     if e.get('active_track_id', -1) >= 0
                 ),
             },
+            'canonical_persons': registry_stats,
+            'track_to_person_map': self.canonical_registry.export_track_to_person_map(),
         }
 
         if output_path:
