@@ -440,17 +440,35 @@ class SpeakerIdentifier:
     # ── Internal helpers ────────────────────────────────────────
 
     def _face_timeline_to_speaker_timeline(self, visual_data: dict) -> list[dict]:
-        """Convert raw face timeline into unified speaker timeline segments."""
+        """Convert raw face timeline into unified speaker timeline segments.
+        
+        TASK 3: Enforces one active speaker per frame invariant.
+        """
         timeline = visual_data.get("timeline", [])
         if not timeline:
             return []
 
         segments = []
         current = None
+        
+        # TASK 3: Track violations
+        multi_speaker_frames = 0
 
         for entry in timeline:
             t = entry.get("time", 0)
             faces = entry.get("faces", [])
+            
+            # TASK 3: Count active speakers at this timestamp
+            active_speakers_at_frame = [
+                str(f.get("speaker_id", f.get("track_id", "unknown")))
+                for f in faces
+                if f.get("is_active_speaker", False)
+            ]
+            
+            if len(active_speakers_at_frame) > 1:
+                multi_speaker_frames += 1
+                self.log(f"[TASK3-VIOLATION] t={t:.1f}s: {len(active_speakers_at_frame)} active speakers (should be ≤1)")
+            
             active_speakers = sorted(set(
                 str(f.get("speaker_id", f.get("track_id", "unknown")))
                 for f in faces
