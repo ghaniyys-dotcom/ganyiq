@@ -76,9 +76,10 @@ class DirectorAI:
         if not assoc:
             return None
         
-        # Only use CONFIRMED associations
-        if assoc.get('status') == 'CONFIRMED' and assoc.get('canonical_person_id'):
-            return assoc['canonical_person_id']
+        # Only use CONFIRMED associations (assoc is a dict)
+        if isinstance(assoc, dict):
+            if assoc.get('status') == 'CONFIRMED' and assoc.get('canonical_person_id'):
+                return assoc['canonical_person_id']
         
         return None
 
