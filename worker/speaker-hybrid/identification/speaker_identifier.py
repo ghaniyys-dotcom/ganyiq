@@ -315,7 +315,7 @@ class SpeakerIdentifier:
                                     else:
                                         # Keep track-based identity for LOW_CONFIDENCE diarization
                                         face["speaker_id"] = f"TRACK_{tid}"
-                                        self.log(f"[TASK4] Preserved visual identity TRACK_{tid} (diarization={diarization_status})")
+                                        # Log aggregated at end of processing
 
                         # Remap matched_timeline visual_speakers
                         # speaker_X → extract track_id → map to audio speaker
