@@ -55,7 +55,7 @@ class SpeakerToPersonAssociator:
     # Confidence thresholds
     CONFIRMED_THRESHOLD = 0.6  # High confidence association
     AMBIGUOUS_THRESHOLD = 0.3  # Multiple candidates with similar scores
-    MIN_EVIDENCE_INTERVALS = 2  # Minimum speech intervals for confidence
+    MIN_EVIDENCE_INTERVALS = 1  # Minimum speech intervals for confidence (changed from 2)
     MIN_SUPPORTING_DURATION = 2.0  # Minimum seconds of evidence
     
     # Temporal correlation parameters
