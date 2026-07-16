@@ -232,13 +232,19 @@ class DirectorAI:
     def _determine_layout(self, speaker_id: str | None, listener_id: str | None, is_close: bool) -> str:
         """Determines the layout based on who is present.
         
-        TASK 5: Validates split_screen decisions - primary and secondary must be different.
+        Sprint 3 Task 5 & 6: Validates split_screen decisions - primary and secondary must be different.
         """
         if speaker_id and listener_id:
-            # TASK 5: Prevent same-target split-screen
+            # Sprint 3 Task 6: Prevent same-target split-screen
             if speaker_id == listener_id:
                 # Same person - cannot do split screen
                 return "fullscreen"
+            
+            # Sprint 3 Task 6: Additional validation for canonical person IDs
+            # If both are canonical IDs (PERSON_XXX), they should be different
+            if speaker_id.startswith("PERSON_") and listener_id.startswith("PERSON_"):
+                if speaker_id == listener_id:
+                    return "fullscreen"
             
             if is_close:
                 return "two_shot_wide"
