@@ -222,15 +222,23 @@ class DirectorAI:
         return speaker_id, None, False
 
     def _determine_layout(self, speaker_id: str | None, listener_id: str | None, is_close: bool) -> str:
-        """Determines the layout based on who is present."""
+        """Determines the layout based on who is present.
+        
+        TASK 5: Validates split_screen decisions - primary and secondary must be different.
+        """
         if speaker_id and listener_id:
+            # TASK 5: Prevent same-target split-screen
+            if speaker_id == listener_id:
+                # Same person - cannot do split screen
+                return "fullscreen"
+            
             if is_close:
                 return "two_shot_wide"
             return "split_screen"
         elif speaker_id:
             return "fullscreen"
         else:
-            return "wide_shot" # Fallback if no one is active
+            return "wide_shot"  # Fallback if no one is active
 
     def _merge_consecutive_shots(self, shots: list[Shot]) -> list[Shot]:
         """Merge consecutive shots with the same layout.

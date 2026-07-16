@@ -288,13 +288,28 @@ class SpeakerIdentifier:
                             f"to {n_audio} audio speakers"
                         )
 
-                        # Remap face data in-place so downstream render uses
-                        # stable audio speaker IDs, not fragmented track IDs
+                        # TASK 4: Preserve visual identity - don't overwrite canonical identity
+                        # Store audio mapping as attribute, not replacement
                         for entry in visual_data.get("timeline", []):
                             for face in entry.get("faces", []):
                                 tid = str(face.get("track_id", -1))
                                 if tid in audio_visual_map:
-                                    face["speaker_id"] = audio_visual_map[tid]
+                                    # Preserve original identity fields
+                                    if "person_id" not in face:
+                                        face["person_id"] = face.get("track_id", -1)
+                                    
+                                    # Add audio mapping as separate attribute
+                                    face["audio_speaker_id"] = audio_visual_map[tid]
+                                    face["speaker_match_confidence"] = 0.7  # AVM confidence
+                                    face["speaker_evidence_source"] = "audio_visual_matching"
+                                    
+                                    # ONLY set speaker_id if diarization is reliable
+                                    if diarization_status == "VALID":
+                                        face["speaker_id"] = audio_visual_map[tid]
+                                    else:
+                                        # Keep track-based identity for LOW_CONFIDENCE diarization
+                                        face["speaker_id"] = f"TRACK_{tid}"
+                                        self.log(f"[TASK4] Preserved visual identity TRACK_{tid} (diarization={diarization_status})")
 
                         # Remap matched_timeline visual_speakers
                         # speaker_X → extract track_id → map to audio speaker
