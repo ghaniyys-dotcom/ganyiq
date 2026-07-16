@@ -52,6 +52,7 @@ import numpy as np
 from canonical_person_registry import CanonicalPersonRegistry
 from asd_validator import ASDValidator, ASDStatus
 from reaction.reaction_validator import ReactionValidator
+from speaker_to_person_associator import SpeakerToPersonAssociator
 
 
 # =============================================================================
@@ -98,6 +99,10 @@ class SpeakerIdentifier:
             baseline_window=30,
             smile_delta_threshold=0.3,
             surprise_delta_threshold=0.4
+        )
+        
+        self.speaker_associator = SpeakerToPersonAssociator(
+            log_fn=self.log
         )
 
     def log(self, msg: str):
@@ -445,6 +450,18 @@ class SpeakerIdentifier:
                 matched_timeline, asd_status_obj
             )
         
+        # Sprint 3.1: Associate audio speakers to canonical persons
+        speaker_associations = {}
+        if audio_data and not visual_only:
+            self.log("Associating audio speakers to canonical persons...")
+            speaker_associations = self.speaker_associator.associate_speakers_to_persons(
+                diarization_segments=audio_data.get("segments", []),
+                face_timeline=matched_timeline,
+                asd_available=(asd_status_obj.status != ASDStatus.UNAVAILABLE),
+                canonical_persons=registry_stats,
+                track_to_person_map=self.canonical_registry.export_track_to_person_map()
+            )
+        
         speaker_list = self._extract_speakers(matched_timeline)
 
         # ──────────────────────────────────────────
@@ -477,7 +494,8 @@ class SpeakerIdentifier:
         director = DirectorAI(
             face_data=visual_data,
             diarization=diarization_raw.get("segments", []) if 'diarization_raw' in locals() else [],
-            video_duration=float(video_dur)
+            video_duration=float(video_dur),
+            speaker_associations=speaker_associations
         )
         
         shot_list = director.create_shot_list()
@@ -531,6 +549,17 @@ class SpeakerIdentifier:
             },
             'canonical_persons': registry_stats,
             'track_to_person_map': self.canonical_registry.export_track_to_person_map(),
+            'speaker_associations': {
+                speaker_id: {
+                    'canonical_person_id': assoc.canonical_person_id,
+                    'confidence': assoc.confidence,
+                    'evidence_count': assoc.evidence_count,
+                    'supporting_duration': assoc.supporting_duration,
+                    'status': assoc.association_status,
+                    'failure_reason': assoc.failure_reason
+                }
+                for speaker_id, assoc in speaker_associations.items()
+            } if speaker_associations else {},
         }
 
         if output_path:

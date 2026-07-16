@@ -257,8 +257,16 @@ export async function renderClipV2(
   // ── Step 3: Run Python speaker-hybrid pipeline ──────────────────────
   const outName = `${videoId}_${Math.round(startTime)}s_${Math.round(endTime)}s_${renderMode || 'landscape'}.mp4`;
   const outputPath = join(TEMP_DIR, outName);
+  
+  // Check for FORCE_REGENERATE environment flag for benchmarks
+  const forceRegenerate = process.env.FORCE_REGENERATE === '1' || process.env.FORCE_REGENERATE === 'true';
+  const shouldRegenerate = forceRegenerate || !existsSync(outputPath);
 
-  if (!existsSync(outputPath)) {
+  if (shouldRegenerate) {
+    if (forceRegenerate && existsSync(outputPath)) {
+      log('PYTHON', `Force regenerate enabled - removing existing output: ${outputPath}`);
+      unlinkSync(outputPath);
+    }
     log('PYTHON', `Running pipeline on: ${tempClipPath}`);
     if (heartbeatFn) await heartbeatFn();
 

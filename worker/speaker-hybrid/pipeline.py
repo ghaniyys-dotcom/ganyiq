@@ -596,6 +596,7 @@ def main():
     parser.add_argument("--work-dir", help="Working directory for temp files")
     parser.add_argument("--vertical", action="store_true", help="Output 9:16 vertical video")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode overlays")
+    parser.add_argument("--force-regenerate", action="store_true", help="Force regeneration even if output exists (for benchmarks)")
     args = parser.parse_args()
     pipeline = Pipeline(
         video_path=args.video,

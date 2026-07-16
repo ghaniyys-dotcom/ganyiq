@@ -51,15 +51,36 @@ class DirectorAI:
     to create a stateful, intelligent shot list, mimicking a human director.
     """
     def __init__(self, face_data: dict, diarization: list, video_duration: float, 
-                 min_shot_duration: float = 2.5, speaker_dominance_threshold: float = 4.0):
+                 min_shot_duration: float = 2.5, speaker_dominance_threshold: float = 4.0,
+                 speaker_associations: dict = None):
         self.face_data = face_data
         self.diarization = diarization
         self.video_duration = video_duration
         self.min_shot_duration = min_shot_duration
         self.speaker_dominance_threshold = speaker_dominance_threshold
+        self.speaker_associations = speaker_associations or {}
 
         # Pre-process data for quick lookups
         self.speech_timeline = self._build_speech_timeline()
+
+    def _resolve_speaker_to_person(self, speaker_id: str) -> str | None:
+        """
+        Resolve audio speaker ID to canonical person ID using associations.
+        
+        Returns canonical PERSON_* ID if confirmed association exists, None otherwise.
+        """
+        if not self.speaker_associations:
+            return None
+        
+        assoc = self.speaker_associations.get(speaker_id)
+        if not assoc:
+            return None
+        
+        # Only use CONFIRMED associations
+        if assoc.get('status') == 'CONFIRMED' and assoc.get('canonical_person_id'):
+            return assoc['canonical_person_id']
+        
+        return None
 
     def _build_speech_timeline(self) -> defaultdict[float, list[str]]:
         """Creates a per-second lookup of active speaker IDs with anticipation offset."""
@@ -158,9 +179,23 @@ class DirectorAI:
             return speaker_id, None, False
 
         # Try to find speaker's face by matching speaker_id (case-insensitive)
+        # Sprint 3.1: Resolve audio speaker to canonical person FIRST
+        resolved_person_id = self._resolve_speaker_to_person(speaker_id)
+        if resolved_person_id:
+            # Use the canonical person ID as the primary target
+            target_id = resolved_person_id
+        else:
+            # Fallback: use original speaker_id (may be unresolved)
+            target_id = speaker_id
+        
         speaker_face = None
         speaker_upper = speaker_id.upper()
         for face in all_faces_now:
+            # Match by canonical_person_id if resolved
+            if resolved_person_id and face.get('canonical_person_id') == resolved_person_id:
+                speaker_face = face
+                break
+            # Fallback: match by speaker_id
             if face.get('speaker_id', '').upper() == speaker_upper:
                 speaker_face = face
                 break
@@ -171,17 +206,13 @@ class DirectorAI:
             if valid_faces:
                 valid_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
                 speaker_face = valid_faces[0]
-                # Use the face's actual speaker_id so render can find it
-                face_sid = speaker_face.get('speaker_id')
-                if face_sid:
-                    speaker_id = face_sid
-                # Sprint 3: Also update to canonical_person_id if available
+                # Sprint 3.1: Use canonical_person_id if available
                 canonical_id = speaker_face.get('canonical_person_id')
                 if canonical_id:
-                    speaker_id = canonical_id
+                    target_id = canonical_id
 
         if not speaker_face:
-            return speaker_id, None, False
+            return target_id, None, False
 
         # Collect other faces (listeners) that are NOT the speaker
         other_faces = []
@@ -225,9 +256,9 @@ class DirectorAI:
             dist_x = abs(speaker_face.get('cx', 0) - best_listener.get('cx', 0))
             is_close = dist_x < 300.0
             
-            return speaker_id, listener_id, is_close
+            return target_id, listener_id, is_close
 
-        return speaker_id, None, False
+        return target_id, None, False
 
     def _determine_layout(self, speaker_id: str | None, listener_id: str | None, is_close: bool) -> str:
         """Determines the layout based on who is present.
