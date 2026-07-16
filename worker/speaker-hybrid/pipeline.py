@@ -123,10 +123,10 @@ class Pipeline:
         # Sprint 3.1: Store analysis_result for bbox resolver access
         self.analysis_result = analysis_result
 
-        log(f"Analysis complete: {len(result.get('speakers', []))} speakers, {len(result.get('split_plan', {}).get('scenes', []))} scenes")
+        log(f"Analysis complete: {len(analysis_result.get('speakers', []))} speakers, {len(analysis_result.get('split_plan', {}).get('scenes', []))} scenes")
 
         # Step 4: Render from shot list
-        log("Rendering output video...")
+        shot_list = analysis_result.get("split_plan", {}).get("scenes", [])
         self._render_from_shot_list(result)
 
         # Cleanup
@@ -137,10 +137,10 @@ class Pipeline:
             if f.exists(): f.unlink()
 
         t_elapsed = time.time() - t_start
-        log(f"Pipeline complete in {t_elapsed:.1f}s → {self.output_path}")
+        log(f"Analysis complete: {len(analysis_result.get('speakers', []))} speakers, {len(analysis_result.get('split_plan', {}).get('scenes', []))} scenes")
 
-        # Print final plan
-        scenes = result.get("split_plan", {}).get("scenes", [])
+        # Step 4: Render from shot list
+        shot_list = analysis_result.get("split_plan", {}).get("scenes", [])
         print(f"\n{'='*50}", file=sys.stderr)
         print(f"DIRECTOR'S CUT — {len(scenes)} shots", file=sys.stderr)
         print(f"{'='*50}", file=sys.stderr)
