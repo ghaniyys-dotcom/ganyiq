@@ -126,11 +126,10 @@ class Pipeline:
         log(f"Analysis complete: {len(analysis_result.get('speakers', []))} speakers, {len(analysis_result.get('split_plan', {}).get('scenes', []))} scenes")
 
         # Step 4: Render from shot list
-        shot_list = analysis_result.get("split_plan", {}).get("scenes", [])
-        self._render_from_shot_list(result)
+        self._render_from_shot_list(analysis_result)
 
         # Cleanup
-        face_data_path = result.get("face_data_path")
+        face_data_path = analysis_result.get("face_data_path")
         if face_data_path and os.path.exists(face_data_path):
             os.remove(face_data_path)
         for f in [self.audio_path, self.diarization_path]:
