@@ -67,6 +67,10 @@ class CameraSmoother:
 
 class Pipeline:
     """Pipeline for orchestrating face detection and video rendering."""
+    
+    # Identity resolution config
+    MAX_BBOX_AGE_SECONDS = 5.0  # Reject bboxes older than this
+    
     def __init__(self, video_path: str, output_path: str,
                  work_dir: str | None = None, vertical: bool = False,
                  debug_mode: bool = False):
@@ -227,6 +231,9 @@ class Pipeline:
                     cx, cy, w, h = face.get("cx"), face.get("cy"), face.get("w"), face.get("h")
                     if cx and cy and w and h:
                         age = start - t
+                        if age > self.MAX_BBOX_AGE_SECONDS:
+                            log(f"  [BBOX-REJECT] BBOX_TOO_OLD | target={target_id} | canonical={canonical_id} | age={age:.1f}s > {self.MAX_BBOX_AGE_SECONDS:.1f}s")
+                            continue
                         log(f"  [BBOX-OK] EXACT_MATCH | target={target_id} | canonical={canonical_id} | time={t:.1f}s | age={age:.1f}s")
                         return {"cx": cx, "cy": cy, "w": w, "h": h}
 
@@ -240,6 +247,9 @@ class Pipeline:
                     cx, cy, w, h = face.get("cx"), face.get("cy"), face.get("w"), face.get("h")
                     if cx and cy and w and h:
                         age = start - t
+                        if age > self.MAX_BBOX_AGE_SECONDS:
+                            log(f"  [BBOX-REJECT] FALLBACK_TOO_OLD | target={target_id} | age={age:.1f}s > {self.MAX_BBOX_AGE_SECONDS:.1f}s")
+                            continue
                         log(f"  [BBOX-OK] FALLBACK_RAW_MATCH | target={target_id} | time={t:.1f}s | age={age:.1f}s")
                         return {"cx": cx, "cy": cy, "w": w, "h": h}
 
