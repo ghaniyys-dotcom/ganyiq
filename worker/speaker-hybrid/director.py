@@ -170,15 +170,15 @@ class DirectorAI:
             valid_faces = [f for f in all_faces_now if f.get('w', 0) >= 40 and f.get('h', 0) >= 40]
             if valid_faces:
                 valid_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
-                if faces:
-                    # Use the face's actual speaker_id so render can find it
-                    face_sid = speaker_face.get('speaker_id')
-                    if face_sid:
-                        speaker_id = face_sid
-                    # Sprint 3: Also update to canonical_person_id if available
-                    canonical_id = speaker_face.get('canonical_person_id')
-                    if canonical_id:
-                        speaker_id = canonical_id
+                speaker_face = valid_faces[0]
+                # Use the face's actual speaker_id so render can find it
+                face_sid = speaker_face.get('speaker_id')
+                if face_sid:
+                    speaker_id = face_sid
+                # Sprint 3: Also update to canonical_person_id if available
+                canonical_id = speaker_face.get('canonical_person_id')
+                if canonical_id:
+                    speaker_id = canonical_id
 
         if not speaker_face:
             return speaker_id, None, False
