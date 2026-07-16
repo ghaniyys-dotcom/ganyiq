@@ -55,7 +55,10 @@ def main():
     os.chdir(str(pipeline_file.parent))
     
     # Execute the pipeline script directly from its source file.
-    compiled = compile(open(pipeline_file).read(), "pipeline.py", "exec")
+    # Use UTF-8 encoding explicitly for Windows compatibility
+    with open(pipeline_file, 'r', encoding='utf-8') as f:
+        pipeline_code = f.read()
+    compiled = compile(pipeline_code, "pipeline.py", "exec")
     exec(compiled, {"__file__": str(pipeline_file.resolve()),
                      "__name__": "__main__",
                      "__package__": None})
