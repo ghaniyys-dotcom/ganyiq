@@ -334,28 +334,6 @@ class SpeakerIdentifier:
                     if filtered_count < original_asd_count:
                         self.log(f"ASD filtered: {original_asd_count} → {filtered_count} frames (status={asd_status})")
                     
-                    # ── TASK 2: ASD VALIDITY GATE ──
-                    # Validate ASD signal quality before trusting active speaker claims
-                    total_faces = len(all_faces)
-                    faces_with_lip = sum(1 for f in all_faces if 'lip_motion' in f)
-                    faces_nonzero_lip = sum(1 for f in all_faces if f.get('lip_motion', 0) != 0)
-                    
-                    asd_status = "UNAVAILABLE"
-                    if faces_with_lip == 0:
-                        asd_status = "UNAVAILABLE"
-                        self.log(f"[ASD-VALIDITY] Status: UNAVAILABLE (no lip_motion field)")
-                    elif faces_nonzero_lip == 0:
-                        asd_status = "UNAVAILABLE"
-                        self.log(f"[ASD-VALIDITY] Status: UNAVAILABLE (all lip_motion zero)")
-                    elif faces_nonzero_lip / total_faces < 0.05:  # <5% non-zero
-                        asd_status = "LOW_SIGNAL"
-                        self.log(f"[ASD-VALIDITY] Status: LOW_SIGNAL ({faces_nonzero_lip}/{total_faces} non-zero)")
-                    else:
-                        asd_status = "VALID"
-                        self.log(f"[ASD-VALIDITY] Status: VALID ({faces_nonzero_lip}/{total_faces} non-zero)")
-                    
-                    visual_data["asd_status"] = asd_status
-                    
                     asd_active = sum(
                         1 for e in asd_timeline if e["active_track_id"] >= 0
                     )
