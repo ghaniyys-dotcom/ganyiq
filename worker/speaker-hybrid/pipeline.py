@@ -136,10 +136,10 @@ class Pipeline:
             if f.exists(): f.unlink()
 
         t_elapsed = time.time() - t_start
-        log(f"Analysis complete: {len(analysis_result.get('speakers', []))} speakers, {len(analysis_result.get('split_plan', {}).get('scenes', []))} scenes")
+        log(f"Pipeline complete in {t_elapsed:.1f}s → {self.output_path}")
 
-        # Step 4: Render from shot list
-        shot_list = analysis_result.get("split_plan", {}).get("scenes", [])
+        # Print final plan
+        scenes = analysis_result.get("split_plan", {}).get("scenes", [])
         print(f"\n{'='*50}", file=sys.stderr)
         print(f"DIRECTOR'S CUT — {len(scenes)} shots", file=sys.stderr)
         print(f"{'='*50}", file=sys.stderr)
@@ -152,7 +152,7 @@ class Pipeline:
             print(f"  {icon} {s['start_time']:6.1f}s-{s['end_time']:6.1f}s  {layout:15s} ({targets})", file=sys.stderr)
         print(f"{'='*50}\n", file=sys.stderr)
 
-        return result
+        return analysis_result
 
     def _load_face_data(self, result: dict) -> dict | None:
         face_path = result.get("face_data_path")
