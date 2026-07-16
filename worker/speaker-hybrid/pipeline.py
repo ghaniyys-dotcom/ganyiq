@@ -30,6 +30,7 @@ if _SELF_DIR not in sys.path:
 
 # Sprint 3.1: Canonical person bbox resolver
 from person_bbox_resolver import PersonBboxResolver
+from target_validator import TargetNamespaceValidator
 
 from director import DirectorAI
 from camera_planner import CameraPlanner, CameraTrajectory
@@ -88,6 +89,8 @@ class Pipeline:
         self.debug_fontfile = ""
         # Sprint 3.1: Initialize bbox resolver
         self.bbox_resolver = PersonBboxResolver(max_bbox_age=5.0)
+        # Sprint 3.1: Initialize target namespace validator
+        self.target_validator = TargetNamespaceValidator(log_fn=log)
         if debug_mode and platform.system() == "Windows":
             for cand in ["C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/calibri.ttf"]:
                 if os.path.exists(cand):
@@ -138,8 +141,26 @@ class Pipeline:
         t_elapsed = time.time() - t_start
         log(f"Pipeline complete in {t_elapsed:.1f}s → {self.output_path}")
 
-        # Print final plan
+        # Sprint 3.1: Validate target namespaces before returning
         scenes = analysis_result.get("split_plan", {}).get("scenes", [])
+        validation_result = self.target_validator.validate_shot_list(scenes)
+        
+        # Add validation results to output
+        analysis_result["target_validation"] = {
+            "valid": validation_result.valid,
+            "error_type": validation_result.error_type,
+            "error_message": validation_result.error_message,
+            "person_target_count": validation_result.person_target_count,
+            "null_target_count": validation_result.null_target_count,
+            "mixed_namespace_count": validation_result.mixed_namespace_count,
+            "non_canonical_count": validation_result.non_canonical_count,
+            "unresolved_count": validation_result.unresolved_count
+        }
+        
+        if not validation_result.valid:
+            log(f"⚠️  Target validation FAILED: {validation_result.error_message}")
+
+        # Print final plan
         print(f"\n{'='*50}", file=sys.stderr)
         print(f"DIRECTOR'S CUT — {len(scenes)} shots", file=sys.stderr)
         print(f"{'='*50}", file=sys.stderr)
