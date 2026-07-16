@@ -457,7 +457,7 @@ class SpeakerIdentifier:
             speaker_associations = self.speaker_associator.associate_speakers_to_persons(
                 diarization_segments=audio_data.get("segments", []),
                 face_timeline=matched_timeline,
-                asd_available=(asd_status_obj.status != ASDStatus.UNAVAILABLE),
+                asd_available=(asd_status_obj != ASDStatus.UNAVAILABLE),
                 canonical_persons=registry_stats,
                 track_to_person_map=self.canonical_registry.export_track_to_person_map()
             )
