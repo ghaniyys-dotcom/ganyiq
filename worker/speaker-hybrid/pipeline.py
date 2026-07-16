@@ -16,6 +16,7 @@ import tempfile
 import time
 import platform
 from pathlib import Path
+from pathlib import Path
 
 # Force parent directory into sys.path to resolve sibling modules
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -26,6 +27,9 @@ if _PROJECT_ROOT not in sys.path:
 _SELF_DIR = str(Path(__file__).resolve().parent)
 if _SELF_DIR not in sys.path:
     sys.path.insert(0, _SELF_DIR)
+
+# Sprint 3.1: Canonical person bbox resolver
+from person_bbox_resolver import PersonBboxResolver
 
 from director import DirectorAI
 from camera_planner import CameraPlanner, CameraTrajectory
@@ -82,6 +86,8 @@ class Pipeline:
         self.debug_mode = debug_mode
         self.debug_log_path = self.work_dir / "debug.log" if debug_mode else None
         self.debug_fontfile = ""
+        # Sprint 3.1: Initialize bbox resolver
+        self.bbox_resolver = PersonBboxResolver(max_bbox_age=5.0)
         if debug_mode and platform.system() == "Windows":
             for cand in ["C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/calibri.ttf"]:
                 if os.path.exists(cand):
@@ -112,7 +118,10 @@ class Pipeline:
         run_cmd([sys.executable, str(speaker_id_script), "--video", str(self.video_path), "--diarization", str(self.diarization_path), "--output", str(self.result_path)], "Running face detection + AVM...")
 
         with open(self.result_path) as f:
-            result = json.load(f)
+            analysis_result = json.load(f)
+        
+        # Sprint 3.1: Store analysis_result for bbox resolver access
+        self.analysis_result = analysis_result
 
         log(f"Analysis complete: {len(result.get('speakers', []))} speakers, {len(result.get('split_plan', {}).get('scenes', []))} scenes")
 
@@ -418,8 +427,50 @@ class Pipeline:
             primary_id = shot['primary_target_id']
             secondary_id = shot['secondary_target_id']
 
-            bbox_primary = self._get_speaker_bbox(face_data, id_bridge, primary_id, start, start + dur, frame_w, frame_h) if face_data and primary_id else None
-            bbox_secondary = self._get_speaker_bbox(face_data, id_bridge, secondary_id, start, start + dur, frame_w, frame_h) if face_data and secondary_id else None
+            # Sprint 3.1: Use PersonBboxResolver for canonical persons
+            # Load analysis_result for canonical_persons and track_to_person_map
+            bbox_primary = None
+            bbox_secondary = None
+            
+            if face_data and primary_id:
+                if primary_id.startswith("PERSON_"):
+                    # Canonical person - use resolver
+                    resolution = self.bbox_resolver.resolve(
+                        canonical_person_id=primary_id,
+                        shot_start=start,
+                        shot_end=start + dur,
+                        face_data=face_data,
+                        canonical_persons=self.analysis_result.get("canonical_persons", {}),
+                        track_to_person_map=self.analysis_result.get("track_to_person_map", {})
+                    )
+                    if resolution.success:
+                        bbox_primary = resolution.bbox
+                        log(f"  [PERSON-BBOX] RESOLVED | person={primary_id} | track={resolution.track_id} | method={resolution.resolution_method} | confidence={resolution.confidence:.2f}")
+                    else:
+                        log(f"  [PERSON-BBOX] FAILED | person={primary_id} | reason={resolution.failure_reason}")
+                else:
+                    # Legacy TRACK_X or speaker_id
+                    bbox_primary = self._get_speaker_bbox(face_data, id_bridge, primary_id, start, start + dur, frame_w, frame_h)
+            
+            if face_data and secondary_id:
+                if secondary_id.startswith("PERSON_"):
+                    # Canonical person - use resolver
+                    resolution = self.bbox_resolver.resolve(
+                        canonical_person_id=secondary_id,
+                        shot_start=start,
+                        shot_end=start + dur,
+                        face_data=face_data,
+                        canonical_persons=self.analysis_result.get("canonical_persons", {}),
+                        track_to_person_map=self.analysis_result.get("track_to_person_map", {})
+                    )
+                    if resolution.success:
+                        bbox_secondary = resolution.bbox
+                        log(f"  [PERSON-BBOX] RESOLVED | person={secondary_id} | track={resolution.track_id} | method={resolution.resolution_method} | confidence={resolution.confidence:.2f}")
+                    else:
+                        log(f"  [PERSON-BBOX] FAILED | person={secondary_id} | reason={resolution.failure_reason}")
+                else:
+                    # Legacy TRACK_X or speaker_id
+                    bbox_secondary = self._get_speaker_bbox(face_data, id_bridge, secondary_id, start, start + dur, frame_w, frame_h)
             
             # [RENDER-CONTRACT] Log shot execution details
             log(f"  [RENDER-CONTRACT] Shot {i+1}/{len(shot_list)} | requested_layout={layout} | primary={primary_id} | secondary={secondary_id} | bbox_primary={'found' if bbox_primary else 'MISSING'} | bbox_secondary={'found' if bbox_secondary else 'MISSING'}")
