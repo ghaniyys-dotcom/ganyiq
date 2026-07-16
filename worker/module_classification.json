@@ -200,6 +200,17 @@
 
   "UNCERTAIN": [],
 
+  "legacy_compatibility_paths": {
+    "bbox_resolution": {
+      "canonical": "PersonBboxResolver (Sprint 3.1)",
+      "legacy": "pipeline._get_speaker_bbox() + _build_id_bridge()",
+      "status": "BOTH_REACHABLE",
+      "flow": "IF target.startsWith('PERSON_') THEN canonical ELSE legacy",
+      "issue": "Legacy path still needed if Director emits non-PERSON targets",
+      "recommendation": "Remove after confirming Director outputs only PERSON_* targets"
+    }
+  },
+
   "competing_execution_paths": {
     "asd_pathway": {
       "legacy": "asd.py compute_lip_energy()",
