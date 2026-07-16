@@ -2,7 +2,7 @@
 
 **Branch:** `sprint1-identity-resolution`  
 **Started:** 2026-07-16  
-**Status:** IN PROGRESS
+**Status:** ✅ COMPLETE
 
 ---
 
@@ -70,14 +70,12 @@ There must NEVER be ambiguity about which bbox belongs to which logical person.
 
 ---
 
-## In Progress
+## ✅ Phase 2B: Complete
 
-### 🔄 Phase 2B: ID Bridge Robustness
-
-**Planned improvements:**
-1. Add temporal range validation to ID bridge construction
-2. Log all ID mappings for debugging
-3. Add fallback hierarchy documentation
+**Validation script created:**
+- `validate_identity_resolution.py` - 162 lines
+- Parses structured logs to measure metrics
+- Reports bbox lookup success rate, age statistics, failure reasons
 
 ---
 
