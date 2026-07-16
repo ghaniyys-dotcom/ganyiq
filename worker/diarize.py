@@ -26,6 +26,11 @@ import tempfile
 import random
 from pathlib import Path
 from diarization_postprocess import postprocess as diarize_postprocess
+
+def log(msg: str):
+    """Emit structured log for GANYIQ to capture."""
+    print(f"[DIARIZE] {msg}", file=sys.stderr, flush=True)
+
 def load_env_vars(filename=".env.local"):
     """Manually parse a .env file and set environment variables."""
     try:
@@ -42,11 +47,6 @@ def load_env_vars(filename=".env.local"):
 
 # Load env vars at script start
 load_env_vars(Path(__file__).resolve().parent / '.env.local')
-
-
-def log(msg: str):
-    """Emit structured log for GANYIQ to capture."""
-    print(f"[DIARIZE] {msg}", file=sys.stderr, flush=True)
 
 
 def resolve_ffmpeg() -> str:
