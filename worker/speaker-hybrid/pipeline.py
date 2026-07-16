@@ -293,13 +293,12 @@ class Pipeline:
     def _build_split_filter(bbox_top, bbox_bottom, frame_w, frame_h, out_w, out_h):
         """Build filter_complex for split-screen vertical (9:16).
         
-        Traces execution to verify split-screen rendering path.
+        Top half: crop around primary speaker -> scale to 720x640
+        Bottom half: crop around secondary speaker -> scale to 720x640
+        vstack -> 720x1280
         """
         log(f"  [RENDER-CONTRACT] BUILD_SPLIT_FILTER | top_bbox={bool(bbox_top)} | bottom_bbox={bool(bbox_bottom)} | output={out_w}x{out_h}")
-        Top half: crop around primary speaker → scale to 720x640
-        Bottom half: crop around secondary speaker → scale to 720x640
-        vstack → 720x1280
-        """
+        
         half_h = out_h // 2            # 640
         zoom_factor = 1.6
         crop_h = frame_h / zoom_factor
