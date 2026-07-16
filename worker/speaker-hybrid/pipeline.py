@@ -421,15 +421,29 @@ class Pipeline:
             # [RENDER-CONTRACT] Log shot execution details
             log(f"  [RENDER-CONTRACT] Shot {i+1}/{len(shot_list)} | requested_layout={layout} | primary={primary_id} | secondary={secondary_id} | bbox_primary={'found' if bbox_primary else 'MISSING'} | bbox_secondary={'found' if bbox_secondary else 'MISSING'}")
             
-            # Anti-Nyangsang Safety Net
+            # Anti-Nyangsang Safety Net - Strict fallback hierarchy
             original_layout = layout
             if layout == 'split_screen' and not (bbox_primary and bbox_secondary):
-                layout = 'fullscreen'
-                log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | split_screen → fullscreen | reason=missing_target | primary={'found' if bbox_primary else 'MISSING'} | secondary={'found' if bbox_secondary else 'MISSING'}")
+                if bbox_primary:
+                    layout = 'fullscreen'
+                    log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | split_screen → fullscreen | reason=missing_secondary | executing=primary_fullscreen")
+                elif bbox_secondary:
+                    layout = 'fullscreen'
+                    log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | split_screen → fullscreen | reason=missing_primary | executing=secondary_fullscreen")
+                else:
+                    layout = 'fullscreen'
+                    log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | split_screen → fullscreen | reason=missing_both | executing=fallback_largest_face")
             
             if layout == 'two_shot_wide' and not (bbox_primary and bbox_secondary):
-                layout = 'fullscreen'
-                log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | two_shot_wide → fullscreen | reason=missing_target | primary={'found' if bbox_primary else 'MISSING'} | secondary={'found' if bbox_secondary else 'MISSING'}")
+                if bbox_primary:
+                    layout = 'fullscreen'
+                    log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | two_shot_wide → fullscreen | reason=missing_secondary | executing=primary_fullscreen")
+                elif bbox_secondary:
+                    layout = 'fullscreen'
+                    log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | two_shot_wide → fullscreen | reason=missing_primary | executing=secondary_fullscreen")
+                else:
+                    layout = 'fullscreen'
+                    log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | two_shot_wide → fullscreen | reason=missing_both | executing=fallback_largest_face")
 
             # FASE-19: Overlap safety — if both bboxes overlap >60%, skip split
             if layout == 'split_screen' and bbox_primary and bbox_secondary:
