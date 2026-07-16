@@ -418,14 +418,18 @@ class Pipeline:
             bbox_primary = self._get_speaker_bbox(face_data, id_bridge, primary_id, start, start + dur, frame_w, frame_h) if face_data and primary_id else None
             bbox_secondary = self._get_speaker_bbox(face_data, id_bridge, secondary_id, start, start + dur, frame_w, frame_h) if face_data and secondary_id else None
             
+            # [RENDER-CONTRACT] Log shot execution details
+            log(f"  [RENDER-CONTRACT] Shot {i+1}/{len(shot_list)} | requested_layout={layout} | primary={primary_id} | secondary={secondary_id} | bbox_primary={'found' if bbox_primary else 'MISSING'} | bbox_secondary={'found' if bbox_secondary else 'MISSING'}")
+            
             # Anti-Nyangsang Safety Net
+            original_layout = layout
             if layout == 'split_screen' and not (bbox_primary and bbox_secondary):
                 layout = 'fullscreen'
-                log(f"  [RENDER-WARN] Shot {i+1} fallback to fullscreen (missing target)")
+                log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | split_screen → fullscreen | reason=missing_target | primary={'found' if bbox_primary else 'MISSING'} | secondary={'found' if bbox_secondary else 'MISSING'}")
             
             if layout == 'two_shot_wide' and not (bbox_primary and bbox_secondary):
                 layout = 'fullscreen'
-                log(f"  [RENDER-WARN] Shot {i+1} fallback to fullscreen (missing target for two-shot)")
+                log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | two_shot_wide → fullscreen | reason=missing_target | primary={'found' if bbox_primary else 'MISSING'} | secondary={'found' if bbox_secondary else 'MISSING'}")
 
             # FASE-19: Overlap safety — if both bboxes overlap >60%, skip split
             if layout == 'split_screen' and bbox_primary and bbox_secondary:
@@ -434,32 +438,36 @@ class Pipeline:
                 _ay1, _ay2 = _a['cy'] - _a['h']/2, _a['cy'] + _a['h']/2
                 _bx1, _bx2 = _b['cx'] - _b['w']/2, _b['cx'] + _b['w']/2
                 _by1, _by2 = _b['cy'] - _b['h']/2, _b['cy'] + _b['h']/2
-                _ix1 = max(_ax1, _bx1); _ix2 = min(_ax2, _bx2)
-                _iy1 = max(_ay1, _by1); _iy2 = min(_ay2, _by2)
-                _inter = max(0.0, _ix2 - _ix1) * max(0.0, _iy2 - _iy1)
+                _inter_w = max(0, min(_ax2, _bx2) - max(_ax1, _bx1))
+                _inter_h = max(0, min(_ay2, _by2) - max(_ay1, _by1))
+                _inter = _inter_w * _inter_h
                 _min_area = min(_a['w'] * _a['h'], _b['w'] * _b['h'])
-                if _min_area > 0 and (_inter / _min_area) > 0.6:
+                if _min_area > 0 and _inter / _min_area > 0.6:
                     layout = 'fullscreen'
-                    log(f"  [RENDER-WARN] Shot {i+1} fallback to fullscreen (bbox overlap {_inter/_min_area:.0%})")
+                    log(f"  [RENDER-CONTRACT] DOWNGRADE | Shot {i+1} | split_screen → fullscreen | reason=bbox_overlap | overlap={_inter/_min_area:.0%}")
 
             # Get pre-computed trajectory for this shot
             traj = trajectories[i] if i < len(trajectories) else None
 
             vf = ""
+            filter_type = None
             if self.vertical:
                 if layout == 'split_screen':
+                    filter_type = "split_screen"
                     # Use camera planner's smooth split filter if trajectory available
                     if traj and (traj.top_frames or traj.bottom_frames):
                         vf = self.camera_planner.to_split_filter(traj, fps=30.0)
                     else:
                         vf = self._build_split_filter(bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h)
                 elif layout == 'two_shot_wide':
+                    filter_type = "two_shot_wide"
                     # Use smooth crop for two-shot via trajectory
                     if traj and traj.frames:
                         vf = self.camera_planner.to_crop_keyframes(traj, fps=30.0)
                     else:
                         vf = self._build_two_shot_filter(bbox_primary, bbox_secondary, frame_w, frame_h, out_w, out_h)
                 else:
+                    filter_type = "fullscreen"
                     # Fullscreen/close-up: use smooth zoompan-based crop
                     if traj and traj.frames:
                         vf = self.camera_planner.to_crop_keyframes(traj, fps=30.0)
@@ -467,8 +475,12 @@ class Pipeline:
                         bbox_to_track = bbox_primary or bbox_secondary
                         vf = self._build_crop_filter(bbox_to_track, frame_w, frame_h, out_w, out_h, self.vertical, "fullscreen")
             else:
+                filter_type = "landscape_fullscreen"
                 bbox_to_track = bbox_primary or bbox_secondary
                 vf = self._build_crop_filter(bbox_to_track, frame_w, frame_h, out_w, out_h, self.vertical)
+            
+            # [RENDER-CONTRACT] Log final executed layout
+            log(f"  [RENDER-CONTRACT] EXECUTE | Shot {i+1} | requested={original_layout} | executed={layout} | filter={filter_type}")
 
             debug_ov = ""
             if self.debug_mode:
