@@ -172,7 +172,22 @@ class SpeakerIdentifier:
             print(f"[DIAGNOSTIC] OK: {faces_nonzero_lip} faces have non-zero lip_motion", file=sys.stderr, flush=True)
 
         # ──────────────────────────────────────────
-        # STEP 2: Audio-Visual Matching
+        # ── TASK 1: DIARIZATION QUALITY GATE ──
+        # Detect suspicious single-speaker result when multiple distinct faces visible
+        diarization_status = "VALID"
+        if audio_data:
+            unique_audio_speakers = len(set(seg.get("speaker", seg.get("speaker_id", "unknown")) 
+                                            for seg in audio_data.get("segments", [])))
+            unique_visual_tracks = len(set(f.get("track_id", -1) for entry in visual_data.get("timeline", []) 
+                                          for f in entry.get("faces", []) if f.get("track_id", -1) >= 0))
+            
+            if unique_audio_speakers == 1 and unique_visual_tracks >= 2:
+                diarization_status = "LOW_CONFIDENCE_SINGLE_SPEAKER"
+                self.log(f"[DIARIZATION-QUALITY] SUSPICIOUS: audio_speakers=1, visual_tracks={unique_visual_tracks}")
+                self.log(f"[DIARIZATION-QUALITY] Status: {diarization_status}")
+        
+        # Store status for downstream consumers
+        audio_data["diarization_status"] = diarization_status
         # ──────────────────────────────────────────
         matched_timeline = None
         asd_timeline = None
@@ -232,6 +247,28 @@ class SpeakerIdentifier:
                         temp_face_path, window_sec=0.5,
                         min_lip_threshold=0.02, fps=self.face_sample_rate,
                     )
+                    # ── TASK 2: ASD VALIDITY GATE ──
+                    # Validate ASD signal quality before trusting active speaker claims
+                    total_faces = len(all_faces)
+                    faces_with_lip = sum(1 for f in all_faces if 'lip_motion' in f)
+                    faces_nonzero_lip = sum(1 for f in all_faces if f.get('lip_motion', 0) != 0)
+                    
+                    asd_status = "UNAVAILABLE"
+                    if faces_with_lip == 0:
+                        asd_status = "UNAVAILABLE"
+                        self.log(f"[ASD-VALIDITY] Status: UNAVAILABLE (no lip_motion field)")
+                    elif faces_nonzero_lip == 0:
+                        asd_status = "UNAVAILABLE"
+                        self.log(f"[ASD-VALIDITY] Status: UNAVAILABLE (all lip_motion zero)")
+                    elif faces_nonzero_lip / total_faces < 0.05:  # <5% non-zero
+                        asd_status = "LOW_SIGNAL"
+                        self.log(f"[ASD-VALIDITY] Status: LOW_SIGNAL ({faces_nonzero_lip}/{total_faces} non-zero)")
+                    else:
+                        asd_status = "VALID"
+                        self.log(f"[ASD-VALIDITY] Status: VALID ({faces_nonzero_lip}/{total_faces} non-zero)")
+                    
+                    visual_data["asd_status"] = asd_status
+                    
                     asd_active = sum(
                         1 for e in asd_timeline if e["active_track_id"] >= 0
                     )
