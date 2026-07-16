@@ -170,11 +170,15 @@ class DirectorAI:
             valid_faces = [f for f in all_faces_now if f.get('w', 0) >= 40 and f.get('h', 0) >= 40]
             if valid_faces:
                 valid_faces.sort(key=lambda f: abs(f.get('cx', 640) - 640))
-                speaker_face = valid_faces[0]
-                # Use the face's actual speaker_id so render can find it
-                face_sid = speaker_face.get('speaker_id')
-                if face_sid:
-                    speaker_id = face_sid
+                if faces:
+                    # Use the face's actual speaker_id so render can find it
+                    face_sid = speaker_face.get('speaker_id')
+                    if face_sid:
+                        speaker_id = face_sid
+                    # Sprint 3: Also update to canonical_person_id if available
+                    canonical_id = speaker_face.get('canonical_person_id')
+                    if canonical_id:
+                        speaker_id = canonical_id
 
         if not speaker_face:
             return speaker_id, None, False
@@ -206,12 +210,16 @@ class DirectorAI:
             other_faces.sort(key=_score_candidate, reverse=True)
             best_listener = other_faces[0]
             
-            # Use person_id if available, then speaker_id, then track_id
-            _pid = best_listener.get('person_id')
-            if _pid is not None and _pid > 0:
-                listener_id = f"person_{_pid}"
+            # Sprint 3: Use canonical_person_id if available, fallback to person_id, speaker_id, track_id
+            canonical_id = best_listener.get('canonical_person_id')
+            if canonical_id:
+                listener_id = canonical_id
             else:
-                listener_id = best_listener.get('speaker_id') or f"track_{best_listener.get('track_id')}"
+                _pid = best_listener.get('person_id')
+                if _pid is not None and _pid > 0:
+                    listener_id = f"person_{_pid}"
+                else:
+                    listener_id = best_listener.get('speaker_id') or f"track_{best_listener.get('track_id')}"
             
             # Check if they are sitting very close (threshold: 300px horizontally)
             dist_x = abs(speaker_face.get('cx', 0) - best_listener.get('cx', 0))
