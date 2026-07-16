@@ -1,0 +1,198 @@
+{
+  "manifest_version": "1.0",
+  "date": "2026-07-16",
+  "branch": "cleanup/production-codepath",
+  "rollback_tag": "stable-pre-cleanup",
+  
+  "archived_files": [
+    {
+      "original_path": "speaker-hybrid/reaction/reaction_validator.py",
+      "archive_path": "speaker-hybrid/archive/legacy-pipeline/reaction/reaction_validator.py",
+      "classification": "DEAD",
+      "lines": 250,
+      "reason": "ReactionValidator class instantiated but never invoked",
+      "evidence": "grep search found zero .validate() or .filter() calls",
+      "replacement": "reaction_detector.py analyze_reactions() is canonical",
+      "action": "ARCHIVED",
+      "commit": "4f73afb5"
+    },
+    {
+      "original_path": "speaker-hybrid/core/id_bridge.py",
+      "archive_path": "speaker-hybrid/archive/legacy-pipeline/core/id_bridge.py",
+      "classification": "DEAD",
+      "lines": 150,
+      "reason": "Zero imports found in codebase",
+      "evidence": "grep search confirmed no production references",
+      "replacement": "pipeline.py._build_id_bridge() method (duplicate implementation)",
+      "action": "ARCHIVED",
+      "commit": "4f73afb5"
+    },
+    {
+      "original_path": "speaker-hybrid/core/logger.py",
+      "archive_path": "speaker-hybrid/archive/legacy-pipeline/core/logger.py",
+      "classification": "DEAD",
+      "lines": 50,
+      "reason": "Only imported by core/id_bridge.py (dead file)",
+      "evidence": "Single import from dead file, no other references",
+      "replacement": "None needed (utility only)",
+      "action": "ARCHIVED",
+      "commit": "4f73afb5"
+    },
+    {
+      "original_path": "speaker-hybrid/core/speaker_tracker.py",
+      "archive_path": "speaker-hybrid/archive/legacy-pipeline/core/speaker_tracker.py",
+      "classification": "DEAD",
+      "lines": 200,
+      "reason": "Zero imports found in codebase",
+      "evidence": "grep search confirmed no production references",
+      "replacement": "ByteTrack is canonical tracker",
+      "action": "ARCHIVED",
+      "commit": "4f73afb5"
+    },
+    {
+      "original_path": "speaker-hybrid/core/render_utils.py",
+      "archive_path": "speaker-hybrid/archive/legacy-pipeline/core/render_utils.py",
+      "classification": "DEAD",
+      "lines": 180,
+      "reason": "Zero imports found in codebase",
+      "evidence": "grep search confirmed no production references",
+      "replacement": "pipeline.py rendering methods",
+      "action": "ARCHIVED",
+      "commit": "4f73afb5"
+    },
+    {
+      "original_path": "speaker-hybrid/config.py",
+      "archive_path": "speaker-hybrid/archive/legacy-pipeline/config.py",
+      "classification": "DEAD",
+      "lines": 120,
+      "reason": "Zero imports found in codebase",
+      "evidence": "grep search confirmed no production references",
+      "replacement": "None needed (unused config module)",
+      "action": "ARCHIVED",
+      "commit": "4f73afb5"
+    },
+    {
+      "original_path": "speaker-hybrid/split/split_decision_engine.py",
+      "archive_path": "speaker-hybrid/archive/legacy-pipeline/split/split_decision_engine.py",
+      "classification": "LEGACY",
+      "lines": 450,
+      "reason": "SplitDecisionEngine class never imported",
+      "evidence": "grep search confirmed DirectorAI is used instead",
+      "replacement": "director.py DirectorAI (canonical shot planner)",
+      "action": "ARCHIVED",
+      "commit": "4f73afb5"
+    }
+  ],
+  
+  "removed_code_blocks": [
+    {
+      "file": "speaker-hybrid/identification/speaker_identifier.py",
+      "location": "line 54",
+      "description": "ReactionValidator import statement",
+      "lines_removed": 1,
+      "reason": "Class never invoked after instantiation",
+      "commit": "346501d8"
+    },
+    {
+      "file": "speaker-hybrid/identification/speaker_identifier.py",
+      "location": "lines 96-101",
+      "description": "ReactionValidator instantiation",
+      "lines_removed": 6,
+      "reason": "Dead code - validator never called",
+      "commit": "346501d8"
+    },
+    {
+      "file": "speaker-hybrid/identification/speaker_identifier.py",
+      "location": "lines 337-357",
+      "description": "Duplicate ASD validation logic",
+      "lines_removed": 22,
+      "reason": "Overwrote ASDValidator result with duplicate manual validation",
+      "replacement": "ASDValidator.validate_lip_motion_data() is canonical",
+      "commit": "d4abdbf8"
+    },
+    {
+      "file": "speaker-hybrid/identification/speaker_identifier.py",
+      "location": "lines 180-193",
+      "description": "Verbose diagnostic prints",
+      "lines_removed": 14,
+      "reason": "Excessive per-field logging in normal operation",
+      "replacement": "Single WARNING log for critical condition",
+      "commit": "030da072"
+    }
+  ],
+  
+  "competing_paths_resolved": [
+    {
+      "domain": "ASD Validation",
+      "legacy_path": "Manual validation at line 337-357",
+      "canonical_path": "ASDValidator.validate_lip_motion_data()",
+      "status": "RESOLVED",
+      "issue": "Validator returned status but was immediately overwritten by duplicate logic",
+      "fix": "Removed duplicate validation, trust validator result",
+      "commit": "d4abdbf8"
+    },
+    {
+      "domain": "Reaction Validation",
+      "legacy_path": "ReactionValidator (instantiated but never called)",
+      "canonical_path": "reaction_detector.analyze_reactions()",
+      "status": "RESOLVED",
+      "issue": "ReactionValidator created but never invoked",
+      "fix": "Removed unused instantiation and import",
+      "commit": "346501d8"
+    }
+  ],
+  
+  "remaining_compatibility_paths": [
+    {
+      "domain": "Bbox Resolution",
+      "canonical": "PersonBboxResolver (Sprint 3.1)",
+      "legacy": "pipeline._get_speaker_bbox() + _build_id_bridge()",
+      "status": "INTENTIONAL_DUAL_PATH",
+      "reason": "Legacy path needed if Director emits non-PERSON_* targets",
+      "flow": "if target.startsWith('PERSON_') then canonical else legacy",
+      "recommendation": "Remove legacy after confirming Director outputs only PERSON_*"
+    },
+    {
+      "domain": "ASD Detection",
+      "legacy_detector": "asd.py compute_lip_energy()",
+      "validator": "asd_validator.py filter_asd_timeline()",
+      "status": "SEQUENTIAL_EXECUTION",
+      "reason": "Detector produces data, validator filters it based on quality",
+      "flow": "compute_lip_energy() → ASDValidator.filter_asd_timeline()",
+      "recommendation": "Keep both - validator is post-processing filter, not replacement"
+    }
+  ],
+  
+  "verification_results": {
+    "python_compilation": "PASS",
+    "typescript_compilation": "PASS",
+    "import_smoke_test": "PASS",
+    "modules_imported": [
+      "pipeline.Pipeline",
+      "identification.speaker_identifier.SpeakerIdentifier",
+      "director.DirectorAI",
+      "canonical_person_registry.CanonicalPersonRegistry",
+      "asd_validator.ASDValidator",
+      "speaker_to_person_associator.SpeakerToPersonAssociator",
+      "person_bbox_resolver.PersonBboxResolver",
+      "target_validator.TargetNamespaceValidator"
+    ]
+  },
+  
+  "statistics": {
+    "files_archived": 7,
+    "total_archived_lines": 1400,
+    "code_blocks_removed": 4,
+    "total_removed_lines": 43,
+    "competing_paths_resolved": 2,
+    "remaining_compatibility_paths": 2
+  },
+  
+  "next_steps": [
+    "Monitor production for 1 stabilization cycle",
+    "Verify Director outputs only PERSON_* targets",
+    "Consider removing legacy bbox resolution if Director is clean",
+    "Delete archived files after 1 cycle if no issues",
+    "Document ASD detector+validator sequential flow in canonical_data_contract.md"
+  ]
+}
