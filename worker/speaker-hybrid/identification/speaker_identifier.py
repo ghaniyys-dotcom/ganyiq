@@ -51,7 +51,6 @@ from asd import compute_lip_energy
 import numpy as np
 from canonical_person_registry import CanonicalPersonRegistry
 from asd_validator import ASDValidator, ASDStatus
-from reaction.reaction_validator import ReactionValidator
 from speaker_to_person_associator import SpeakerToPersonAssociator
 
 
@@ -93,12 +92,6 @@ class SpeakerIdentifier:
         self.asd_validator = ASDValidator(
             min_nonzero_ratio=0.05,
             min_variance_threshold=0.0001
-        )
-        self.reaction_validator = ReactionValidator(
-            min_landmark_count=10,
-            baseline_window=30,
-            smile_delta_threshold=0.3,
-            surprise_delta_threshold=0.4
         )
         
         self.speaker_associator = SpeakerToPersonAssociator(

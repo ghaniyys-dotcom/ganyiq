@@ -1,0 +1,230 @@
+{
+  "classification_date": "2026-07-16",
+  "scope": "worker/speaker-hybrid/",
+  
+  "A_CANONICAL_PRODUCTION": [
+    {
+      "path": "speaker-hybrid/pipeline.py",
+      "role": "orchestrator",
+      "evidence": "Called via run.py subprocess, coordinates all stages",
+      "dependencies": ["diarize.py", "identification/speaker_identifier.py"]
+    },
+    {
+      "path": "speaker-hybrid/identification/speaker_identifier.py",
+      "role": "identity_pipeline",
+      "evidence": "Called by pipeline.py line 121, executes face→audio→director flow",
+      "dependencies": ["hybrid_face_detector", "canonical_person_registry", "asd_validator", "audio_visual_matcher", "speaker_to_person_associator", "director", "reaction_detector"]
+    },
+    {
+      "path": "speaker-hybrid/hybrid_face_detector.py",
+      "role": "face_detection",
+      "evidence": "Called by speaker_identifier.py line 161 via run_face_detection()",
+      "status": "canonical"
+    },
+    {
+      "path": "speaker-hybrid/canonical_person_registry.py",
+      "role": "identity_canonical",
+      "evidence": "Instantiated line 88, register_observation called line 250",
+      "status": "canonical_sprint3"
+    },
+    {
+      "path": "speaker-hybrid/asd_validator.py",
+      "role": "validation",
+      "evidence": "Instantiated line 93, validate_lip_motion_data called line 268, filter_asd_timeline called line 338",
+      "status": "canonical_sprint3"
+    },
+    {
+      "path": "speaker-hybrid/identification/audio_visual_matcher.py",
+      "role": "matching",
+      "evidence": "Instantiated as AudioVisualMatcher, match() called line 325+",
+      "status": "canonical"
+    },
+    {
+      "path": "speaker-hybrid/speaker_to_person_associator.py",
+      "role": "association",
+      "evidence": "Instantiated line 104, associate_speakers_to_persons called line 450+",
+      "status": "canonical_sprint3"
+    },
+    {
+      "path": "speaker-hybrid/director.py",
+      "role": "shot_planning",
+      "evidence": "DirectorAI instantiated line 494, create_shot_list() called line 501",
+      "status": "canonical"
+    },
+    {
+      "path": "speaker-hybrid/reaction/reaction_detector.py",
+      "role": "reaction_detection",
+      "evidence": "analyze_reactions() called line 472",
+      "status": "canonical"
+    },
+    {
+      "path": "speaker-hybrid/person_bbox_resolver.py",
+      "role": "bbox_resolution",
+      "evidence": "PersonBboxResolver instantiated pipeline.py line 91",
+      "status": "canonical_sprint3_1"
+    },
+    {
+      "path": "speaker-hybrid/target_validator.py",
+      "role": "validation",
+      "evidence": "TargetNamespaceValidator instantiated pipeline.py line 92, validate_shot_list called line 146",
+      "status": "canonical_sprint3_1"
+    },
+    {
+      "path": "speaker-hybrid/camera_planner.py",
+      "role": "camera_trajectory",
+      "evidence": "CameraPlanner imported pipeline.py line 36",
+      "status": "canonical_fase13"
+    },
+    {
+      "path": "speaker-hybrid/asd.py",
+      "role": "asd_legacy_detector",
+      "evidence": "compute_lip_energy() called line 331 BUT filtered by ASDValidator line 338",
+      "status": "canonical_but_filtered",
+      "note": "Still executes but output is post-processed by validator"
+    },
+    {
+      "path": "diarize.py",
+      "role": "audio_diarization",
+      "evidence": "Called via subprocess pipeline.py line 117",
+      "status": "canonical"
+    },
+    {
+      "path": "diarization_postprocess.py",
+      "role": "audio_postprocessing",
+      "evidence": "Imported and called speaker_identifier.py line 298-304",
+      "status": "canonical"
+    },
+    {
+      "path": "speaker-hybrid/face_db.py",
+      "role": "face_embedding_storage",
+      "evidence": "FaceDB imported by hybrid_face_detector.py line 26, instantiated line 489",
+      "status": "canonical",
+      "note": "Optional feature - only used if deepface available"
+    }
+  ],
+
+  "B_OPTIONAL_FEATURE": [],
+
+  "C_TEST_OR_DIAGNOSTIC": [
+    {
+      "path": "speaker-hybrid/test_e2e_canonical_targets.py",
+      "evidence": "Filename prefix test_",
+      "status": "test"
+    },
+    {
+      "path": "speaker-hybrid/test_speaker_association.py",
+      "evidence": "Filename prefix test_",
+      "status": "test"
+    },
+    {
+      "path": "speaker-hybrid/sprint2_5_validation.py",
+      "evidence": "Validation script, not imported in production path",
+      "status": "diagnostic"
+    },
+    {
+      "path": "speaker-hybrid/sprint2_render_metrics.py",
+      "evidence": "Metrics script, not imported in production path",
+      "status": "diagnostic"
+    },
+    {
+      "path": "speaker-hybrid/sprint3_validation.py",
+      "evidence": "Validation script, not imported in production path",
+      "status": "diagnostic"
+    },
+    {
+      "path": "speaker-hybrid/validate_identity_resolution.py",
+      "evidence": "Validation script, not imported in production path",
+      "status": "diagnostic"
+    }
+  ],
+
+  "D_LEGACY_COMPATIBILITY": [
+    {
+      "path": "speaker-hybrid/split/split_decision_engine.py",
+      "evidence": "NOT imported anywhere, DirectorAI supersedes this",
+      "replacement": "director.py (DirectorAI)",
+      "status": "legacy_unused"
+    }
+  ],
+
+  "E_DEAD": [
+    {
+      "path": "speaker-hybrid/reaction/reaction_validator.py",
+      "evidence": "ReactionValidator instantiated line 97 but NEVER called - no .validate() or .filter() invocation found",
+      "replacement": "reaction_detector.py (analyze_reactions) is used instead",
+      "status": "dead_code",
+      "confidence": "high"
+    },
+    {
+      "path": "speaker-hybrid/core/id_bridge.py",
+      "evidence": "NOT imported anywhere, pipeline.py has duplicate _build_id_bridge() method line 184",
+      "replacement": "pipeline.py._build_id_bridge()",
+      "status": "dead_code",
+      "confidence": "high"
+    },
+    {
+      "path": "speaker-hybrid/core/logger.py",
+      "evidence": "Only imported by core/id_bridge.py (dead file)",
+      "status": "dead_code",
+      "confidence": "high"
+    },
+    {
+      "path": "speaker-hybrid/core/speaker_tracker.py",
+      "evidence": "No imports found in codebase",
+      "status": "dead_code",
+      "confidence": "high"
+    },
+    {
+      "path": "speaker-hybrid/core/render_utils.py",
+      "evidence": "No imports found in codebase",
+      "status": "dead_code",
+      "confidence": "high"
+    },
+    {
+      "path": "speaker-hybrid/config.py",
+      "evidence": "No imports found in codebase",
+      "status": "dead_code",
+      "confidence": "high"
+    }
+  ],
+
+  "F_DUPLICATE": [
+    {
+      "path": "pipeline.py._build_id_bridge() method",
+      "original": "core/id_bridge.py",
+      "evidence": "pipeline.py lines 184-230 duplicate functionality from core/id_bridge.py",
+      "status": "duplicate_implementation",
+      "canonical": "pipeline.py (since it's actually called)"
+    }
+  ],
+
+  "UNCERTAIN": [],
+
+  "competing_execution_paths": {
+    "asd_pathway": {
+      "legacy": "asd.py compute_lip_energy()",
+      "validator": "asd_validator.py",
+      "status": "BOTH_EXECUTE_SEQUENTIALLY",
+      "flow": "compute_lip_energy() produces data → ASDValidator.filter_asd_timeline() filters it",
+      "issue": "Validator only filters, detector still runs even when status=UNAVAILABLE"
+    },
+    "reaction_pathway": {
+      "detector": "reaction/reaction_detector.py analyze_reactions()",
+      "validator": "reaction/reaction_validator.py ReactionValidator",
+      "status": "DETECTOR_ONLY",
+      "issue": "ReactionValidator instantiated but never invoked - dead code"
+    },
+    "id_bridge": {
+      "legacy": "core/id_bridge.py",
+      "canonical": "pipeline.py._build_id_bridge()",
+      "status": "CANONICAL_ONLY",
+      "issue": "core/id_bridge.py is completely unused"
+    },
+    "director": {
+      "legacy": "split/split_decision_engine.py SplitDecisionEngine",
+      "canonical": "director.py DirectorAI",
+      "status": "CANONICAL_ONLY",
+      "issue": "SplitDecisionEngine never imported"
+    }
+  }
+}

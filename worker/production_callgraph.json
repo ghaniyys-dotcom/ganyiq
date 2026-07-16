@@ -1,0 +1,220 @@
+{
+  "entrypoint": "worker/index.ts",
+  "production_path": [
+    {
+      "module": "worker/index.ts",
+      "type": "typescript",
+      "role": "worker_orchestrator",
+      "invokes": ["python-clip-renderer.ts"],
+      "execution_condition": "job.jobType === 'render_clip'",
+      "production_reachable": true
+    },
+    {
+      "module": "worker/python-clip-renderer.ts",
+      "type": "typescript",
+      "role": "bridge",
+      "invokes": ["run.py"],
+      "subprocess_cmd": "python3 run.py --video ... --output ... --work-dir ... [--vertical]",
+      "production_reachable": true
+    },
+    {
+      "module": "worker/run.py",
+      "type": "python",
+      "role": "entrypoint_shim",
+      "invokes": ["speaker-hybrid/pipeline.py"],
+      "execution_method": "exec() with chdir to speaker-hybrid/",
+      "production_reachable": true
+    },
+    {
+      "module": "speaker-hybrid/pipeline.py",
+      "type": "python",
+      "role": "pipeline_orchestrator",
+      "invokes": [
+        "diarize.py",
+        "identification/speaker_identifier.py",
+        "person_bbox_resolver.py",
+        "target_validator.py",
+        "camera_planner.py",
+        "director.py"
+      ],
+      "stages": [
+        "audio_extraction",
+        "diarization",
+        "speaker_identification",
+        "rendering"
+      ],
+      "production_reachable": true
+    },
+    {
+      "module": "diarize.py",
+      "type": "python",
+      "role": "audio_diarization",
+      "subprocess": true,
+      "invokes": [],
+      "production_reachable": true,
+      "note": "Called via subprocess from pipeline.py line 117"
+    },
+    {
+      "module": "speaker-hybrid/identification/speaker_identifier.py",
+      "type": "python",
+      "role": "identity_pipeline",
+      "subprocess": true,
+      "invokes": [
+        "hybrid_face_detector.py",
+        "canonical_person_registry.py",
+        "asd_validator.py",
+        "reaction_validator.py",
+        "audio_visual_matcher.py",
+        "speaker_to_person_associator.py",
+        "director.py",
+        "reaction/reaction_detector.py"
+      ],
+      "stages": [
+        "face_detection_tracking",
+        "canonical_registration",
+        "asd_validation",
+        "audio_visual_matching",
+        "speaker_association",
+        "reaction_validation",
+        "director_shot_planning"
+      ],
+      "production_reachable": true,
+      "note": "Called via subprocess from pipeline.py line 121"
+    },
+    {
+      "module": "speaker-hybrid/hybrid_face_detector.py",
+      "type": "python",
+      "role": "face_detection_tracking",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "Called by speaker_identifier.py line 161"
+    },
+    {
+      "module": "speaker-hybrid/canonical_person_registry.py",
+      "type": "python",
+      "role": "canonical_identity",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "Sprint 3.1 canonical person identity - instantiated line 88"
+    },
+    {
+      "module": "speaker-hybrid/asd_validator.py",
+      "type": "python",
+      "role": "validation",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "Sprint 3 ASD quality gate - instantiated line 93"
+    },
+    {
+      "module": "speaker-hybrid/reaction/reaction_validator.py",
+      "type": "python",
+      "role": "validation",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "Sprint 3 reaction quality gate - instantiated line 97"
+    },
+    {
+      "module": "speaker-hybrid/identification/audio_visual_matcher.py",
+      "type": "python",
+      "role": "audio_visual_matching",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "AVM algorithm - called line 320+"
+    },
+    {
+      "module": "speaker-hybrid/speaker_to_person_associator.py",
+      "type": "python",
+      "role": "association",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "Sprint 3 speaker→person association - instantiated line 104"
+    },
+    {
+      "module": "speaker-hybrid/director.py",
+      "type": "python",
+      "role": "shot_planning",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "DirectorAI shot planning - instantiated line 494"
+    },
+    {
+      "module": "speaker-hybrid/reaction/reaction_detector.py",
+      "type": "python",
+      "role": "reaction_detection",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "Called via analyze_reactions() line 472"
+    },
+    {
+      "module": "speaker-hybrid/person_bbox_resolver.py",
+      "type": "python",
+      "role": "bbox_resolution",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "Sprint 3.1 canonical bbox resolver - instantiated pipeline.py line 91"
+    },
+    {
+      "module": "speaker-hybrid/target_validator.py",
+      "type": "python",
+      "role": "validation",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "Sprint 3.1 target namespace validator - instantiated pipeline.py line 92"
+    },
+    {
+      "module": "speaker-hybrid/camera_planner.py",
+      "type": "python",
+      "role": "camera_planning",
+      "invokes": [],
+      "production_reachable": true,
+      "note": "FASE 13 camera trajectory - imported line 36, used in rendering"
+    }
+  ],
+  "potentially_legacy": [
+    {
+      "module": "speaker-hybrid/asd.py",
+      "reason": "compute_lip_energy imported but ASDValidator may supersede it",
+      "imported_by": "identification/speaker_identifier.py line 48",
+      "status": "unclear"
+    },
+    {
+      "module": "speaker-hybrid/core/id_bridge.py",
+      "reason": "ID bridge logic duplicated in pipeline.py _build_id_bridge",
+      "status": "possible_duplicate"
+    },
+    {
+      "module": "speaker-hybrid/core/speaker_tracker.py",
+      "reason": "Not imported in production path",
+      "status": "unclear"
+    },
+    {
+      "module": "speaker-hybrid/core/render_utils.py",
+      "reason": "Not imported in production path",
+      "status": "unclear"
+    },
+    {
+      "module": "speaker-hybrid/split/split_decision_engine.py",
+      "reason": "Not imported in production path - DirectorAI may supersede",
+      "status": "possible_legacy"
+    },
+    {
+      "module": "speaker-hybrid/face_db.py",
+      "reason": "Not imported in production path",
+      "status": "unclear"
+    }
+  ],
+  "test_diagnostic_files": [
+    "speaker-hybrid/test_e2e_canonical_targets.py",
+    "speaker-hybrid/test_speaker_association.py",
+    "speaker-hybrid/sprint2_5_validation.py",
+    "speaker-hybrid/sprint2_render_metrics.py",
+    "speaker-hybrid/sprint3_validation.py",
+    "speaker-hybrid/validate_identity_resolution.py"
+  ],
+  "observations": {
+    "id_bridge_duplication": "pipeline.py _build_id_bridge (line 184) may duplicate core/id_bridge.py functionality",
+    "asd_pathway_unclear": "asd.py imported but ASDValidator instantiated - unclear if both execute",
+    "reaction_pathway_unclear": "reaction_detector.analyze_reactions() called AND ReactionValidator instantiated - unclear if both execute or validator filters detector output",
+    "speaker_hybrid_name": "speaker-hybrid/ dir name suggests old architecture - canonical pipeline now dominant"
+  }
+}
