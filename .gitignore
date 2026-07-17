@@ -74,3 +74,31 @@ env-template.txt
 
 # Worker model files (downloaded on demand)
 speaker-hybrid/models/
+# Generated content
+temp/
+cache/
+output/
+logs/
+*.log
+
+# Local env
+.env.local
+yt_cookies.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Models
+*.onnx
+*.task
+*.pth
+*.pt
+
+# Media
+*.mp4
+*.webm
+*.avi
+*.mov
