@@ -36,7 +36,7 @@ function hasFlag(name: string): boolean {
   return process.argv.includes(`--${name}`);
 }
 
-const CSV_PATH = resolve(PROJECT_ROOT, getArg('csv', 'eval/url-tracker.csv'));
+const CSV_PATH = resolve(PROJECT_ROOT, getArg('csv', 'docs/archive/eval-data/url-tracker.csv'));
 const OUTPUT_PATH = resolve(PROJECT_ROOT, getArg('output', 'eval/exported-results.csv'));
 const FILTER_ID = getArg('id', '');
 const FILTER_STATUS = getArg('status', 'submitted');

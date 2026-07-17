@@ -2,7 +2,7 @@
 /**
  * batch-analyze.ts — Submit pending URLs to the ganyIQ analysis API.
  *
- * Reads rows from eval/url-tracker.csv where review_status = "pending",
+ * Reads rows from docs/archive/eval-data/url-tracker.csv where review_status = "pending",
  * submits each to POST /api/analyze, records the analysisId, and updates
  * the CSV status.
  *
@@ -39,7 +39,7 @@ function hasFlag(name: string): boolean {
 
 const MAX_ANALYSES = parseInt(getArg('max', '5'), 10);
 const API_BASE = getArg('api', 'http://localhost:3000');
-const CSV_PATH = resolve(PROJECT_ROOT, getArg('csv', 'eval/url-tracker.csv'));
+const CSV_PATH = resolve(PROJECT_ROOT, getArg('csv', 'docs/archive/eval-data/url-tracker.csv'));
 const DRY_RUN = hasFlag('dry-run');
 
 // ---------------------------------------------------------------------------
